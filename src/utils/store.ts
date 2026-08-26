@@ -1,0 +1,117 @@
+export type Subscriber<T> = (value: T) => void;
+export type Unsubscribe = () => void;
+export type EventListener = () => void;
+
+export class Store<T> {
+  private value: T;
+  private readonly subscribers = new Set<Subscriber<T>>();
+  private readonly mountListeners = new Set<EventListener>();
+  private readonly unmountListeners = new Set<EventListener>();
+
+  constructor(initial: T) {
+    this.value = initial;
+  }
+
+  get(): T {
+    return this.value;
+  }
+
+  set(next: T): void {
+    this.value = next;
+    for (const subscriber of this.subscribers) {
+      subscriber(this.value);
+    }
+  }
+
+  /** Calls `subscriber` immediately with the current value, then on every subsequent `set`. */
+  subscribe(subscriber: Subscriber<T>): Unsubscribe {
+    this.addSubscriber(subscriber);
+    subscriber(this.value);
+    return () => this.removeSubscriber(subscriber);
+  }
+
+  /** Calls `subscriber` only on subsequent `set` calls, not with the current value. */
+  listen(subscriber: Subscriber<T>): Unsubscribe {
+    this.addSubscriber(subscriber);
+    return () => this.removeSubscriber(subscriber);
+  }
+
+  /** Fires once a first subscriber is registered (via `subscribe` or `listen`). */
+  private onMount(listener: EventListener): Unsubscribe {
+    this.mountListeners.add(listener);
+    return () => {
+      this.mountListeners.delete(listener);
+    };
+  }
+
+  /** Fires once the last subscriber is removed. */
+  private onUnmount(listener: EventListener): Unsubscribe {
+    this.unmountListeners.add(listener);
+    return () => {
+      this.unmountListeners.delete(listener);
+    };
+  }
+
+  private addSubscriber(subscriber: Subscriber<T>): void {
+    const wasEmpty = this.subscribers.size === 0;
+    if (wasEmpty) {
+      // Mount side effects (e.g. `computed`'s source subscription) may call `set()`
+      // before `subscriber` is registered, so it doesn't receive a duplicate emission.
+      for (const listener of this.mountListeners) listener();
+    }
+    this.subscribers.add(subscriber);
+  }
+
+  private removeSubscriber(subscriber: Subscriber<T>): void {
+    if (!this.subscribers.delete(subscriber)) return;
+    if (this.subscribers.size === 0) {
+      for (const listener of this.unmountListeners) listener();
+    }
+  }
+
+  /**
+   * Runs `callback` on mount; if it returns a function, that function runs on unmount.
+   * Returns an unsubscribe that tears down the wiring (running any pending cleanup first).
+   */
+  static onMount<T>(store: Store<T>, callback: () => void | Unsubscribe): Unsubscribe {
+    let cleanup: void | Unsubscribe;
+
+    const unsubMount = store.onMount(() => {
+      cleanup = callback();
+    });
+    const unsubUnmount = store.onUnmount(() => {
+      cleanup?.();
+      cleanup = undefined;
+    });
+
+    return () => {
+      cleanup?.();
+      cleanup = undefined;
+      unsubMount();
+      unsubUnmount();
+    };
+  }
+}
+
+function create<T>(initial: T): Store<T> {
+  return new Store(initial);
+}
+
+/**
+ * Derives a read-through `Store<R>` from `source` via `selector`. It only subscribes to
+ * `source` while it has subscribers of its own, so mounting/unmounting the computed store
+ * mounts/unmounts `source` in turn.
+ */
+function computed<T, R>(source: Store<T>, selector: (value: T) => R): Store<R> {
+  const result = new Store<R>(selector(source.get()));
+  Store.onMount(result, () => {
+    return source.subscribe((value) => {
+      result.set(selector(value));
+    });
+  });
+  return result;
+}
+
+export const store = { create, computed, onMount: Store.onMount };
+
+export default store;
