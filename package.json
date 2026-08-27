@@ -1,13 +1,37 @@
 {
   "name": "@jondotsoy/configs",
   "version": "0.1.0",
+  "description": "A reactive, typed configuration library backed by pluggable datasources (env, fetch, sse).",
+  "keywords": [
+    "config",
+    "configuration",
+    "env",
+    "environment-variables",
+    "reactive",
+    "typescript",
+    "datasource",
+    "sse",
+    "fetch"
+  ],
   "module": "src/configs.ts",
   "type": "module",
+  "sideEffects": false,
   "license": "MIT",
   "author": {
     "name": "Jonathan Delgado",
     "email": "hi@jon.soy",
     "url": "https://jon.soy"
+  },
+  "homepage": "https://github.com/JonDotsoy/configs#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JonDotsoy/configs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/JonDotsoy/configs/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "dist"
