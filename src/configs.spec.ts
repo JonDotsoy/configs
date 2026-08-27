@@ -1,6 +1,12 @@
 import { describe, expect, expectTypeOf, test } from "bun:test";
-import { ConfigError, configs, DataSource } from "./configs";
 import { Store, store } from "./utils/store";
+import { DataSource } from "./datasources/datasource";
+import { envDataSource, envKeyToPath } from "./datasources/env";
+import { ConfigError } from "./errors";
+import { ConfigNode, ConfigNodeResolved } from "./config.types.ts";
+import type { configs, InferReadOnlyAccessors, ReadOnlyStore, SchemaGroup } from "./config.types.ts";
+
+declare const configs: configs;
 
 /** Builds a `DataSource` that immediately publishes `value` and closes, since `datasources` now requires actual `DataSource` instances. */
 function testSource<T>(value: T): DataSource<T> {
@@ -44,10 +50,10 @@ describe("configs.create", () => {
     expect(serverConfigs.tls.key.get()).toBe("key.pem");
     expect(serverConfigs.tls.cert.get()).toBe("cert.pem");
 
-    expectTypeOf(serverConfigs.port).toEqualTypeOf<Store<number | null>>();
-    expectTypeOf(serverConfigs.host).toEqualTypeOf<Store<string | null>>();
-    expectTypeOf(serverConfigs.tls.key).toEqualTypeOf<Store<string | null>>();
-    expectTypeOf(serverConfigs.tls.cert).toEqualTypeOf<Store<string | null>>();
+    expectTypeOf(serverConfigs.port).toEqualTypeOf<ReadOnlyStore<number | null>>();
+    expectTypeOf(serverConfigs.host).toEqualTypeOf<ReadOnlyStore<string | null>>();
+    expectTypeOf(serverConfigs.tls.key).toEqualTypeOf<ReadOnlyStore<string | null>>();
+    expectTypeOf(serverConfigs.tls.cert).toEqualTypeOf<ReadOnlyStore<string | null>>();
   });
 
   test("falls back to the next datasource when the first store's value is null", async () => {
@@ -127,8 +133,11 @@ describe("configs.create", () => {
       { datasources: [testSource({ port: 80, tls: { key: "k" } })] },
     );
 
-    expect(() => serverConfigs.port.set(90)).toThrow(ConfigError);
-    expect(() => serverConfigs.tls.key.set("k2")).toThrow(ConfigError);
+    expectTypeOf(serverConfigs.port).not.toHaveProperty("set");
+    expectTypeOf(serverConfigs.tls.key).not.toHaveProperty("set");
+
+    expect(() => (serverConfigs.port as unknown as Store<number>).set(90)).toThrow(ConfigError);
+    expect(() => (serverConfigs.tls.key as unknown as Store<string>).set("k2")).toThrow(ConfigError);
   });
 
   test("the field's Store is the same instance across accesses", async () => {
@@ -231,6 +240,157 @@ describe("configs.create", () => {
     const group = configs.create({ key: { type: "string" } });
     expectTypeOf(group).not.toEqualTypeOf<Promise<unknown>>();
     expect(group.get()).toEqual({ key: null });
+  });
+});
+
+describe("nested groups with their own datasources", () => {
+  test("a nested group resolves its own datasource independently of the parent", async () => {
+    const cfg = await configs.create({
+      server: configs.create(
+        { port: { type: "number" } },
+        { datasources: [envDataSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+      ),
+    });
+
+    expect(cfg.server.port.get()).toBe(3000);
+  });
+
+  test("a nested group's own datasource does not leak into the parent's fields", async () => {
+    const cfg = await configs.create(
+      {
+        name: { type: "string" },
+        server: configs.create(
+          { port: { type: "number" } },
+          { datasources: [envDataSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+        ),
+      },
+      { datasources: [testSource({ name: "svc" })] },
+    );
+
+    expect(cfg.name.get()).toBe("svc");
+    expect(cfg.server.port.get()).toBe(3000);
+    expect((cfg.get() as Record<string, unknown>).port).toBeUndefined();
+  });
+
+  test("the parent's datasources do not leak into a nested group with its own datasource", async () => {
+    const cfg = await configs.create(
+      {
+        server: configs.create(
+          { port: { type: "number" } },
+          { datasources: [envDataSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+        ),
+      },
+      { datasources: [testSource({ server: { port: 9999 } })] },
+    );
+
+    expect(cfg.server.port.get()).toBe(3000);
+  });
+
+  test("multiple independent nested groups each resolve from their own datasource", async () => {
+    const cfg = await configs.create({
+      primary: configs.create(
+        { port: { type: "number" } },
+        { datasources: [envDataSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+      ),
+      secondary: configs.create(
+        { port: { type: "number" } },
+        { datasources: [envDataSource({ env: { PORT: "4000" }, mapKey: envKeyToPath })] },
+      ),
+    });
+
+    expect(cfg.primary.port.get()).toBe(3000);
+    expect(cfg.secondary.port.get()).toBe(4000);
+  });
+
+  test("closing the parent also closes a nested group's own datasources", async () => {
+    let closed = false;
+    const nestedSource = new DataSource<{ port: number }>({
+      start(control) {
+        control.set({ port: 3000 });
+        control.close();
+      },
+      close() {
+        closed = true;
+      },
+    });
+
+    const cfg = await configs.create({
+      server: configs.create({ port: { type: "number" } }, { datasources: [nestedSource] }),
+    });
+
+    expect(cfg.server.port.get()).toBe(3000);
+    await cfg.close();
+    expect(closed).toBe(true);
+  });
+
+  test("stays a synchronous, thenable ConfigNode even once a nested group carries its own datasources", () => {
+    const pending = configs.create({
+      server: configs.create(
+        { port: { type: "number" } },
+        { datasources: [envDataSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+      ),
+    });
+
+    expectTypeOf(pending).toEqualTypeOf<
+      ConfigNode<{ server: SchemaGroup<{ port: { type: "number" } }> }> &
+        InferReadOnlyAccessors<{ server: SchemaGroup<{ port: { type: "number" } }> }>
+    >();
+  });
+
+  test("infers a nested group's field the same whether it shares or owns its datasources", async () => {
+    const cfg = await configs.create({
+      server: configs.create(
+        { port: { type: "number" } },
+        { datasources: [envDataSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+      ),
+    });
+
+    expectTypeOf(cfg.server.port.get()).toEqualTypeOf<number | null>();
+    expectTypeOf(cfg.server).toHaveProperty("close");
+    expectTypeOf(cfg.server.close()).toEqualTypeOf<Promise<void>>();
+  });
+});
+
+describe("configs.create() as a ConfigNode", () => {
+  test("root form returns a ConfigNode instance synchronously, before it resolves", () => {
+    const cfg = configs.create(
+      { port: { type: "number" } },
+      { datasources: [testSource({ port: 3000 })] },
+    );
+
+    expect(cfg).toBeInstanceOf(ConfigNode);
+    expectTypeOf(cfg).not.toEqualTypeOf<Promise<unknown>>();
+  });
+
+  test("ConfigNode.then() resolves to a ConfigNodeResolved instance", async () => {
+    const cfg = configs.create(
+      { port: { type: "number" } },
+      { datasources: [testSource({ port: 3000 })] },
+    );
+
+    const resolved = await cfg;
+
+    expect(resolved).toBeInstanceOf(ConfigNodeResolved);
+  });
+
+  test("a ConfigNodeResolved is still a ConfigNode", async () => {
+    const cfg = configs.create(
+      { port: { type: "number" } },
+      { datasources: [testSource({ port: 3000 })] },
+    );
+
+    const resolved = await cfg;
+
+    expect(resolved).toBeInstanceOf(ConfigNode);
+  });
+
+  test("awaiting still exposes live field access on the resolved node", async () => {
+    const cfg = await configs.create(
+      { port: { type: "number" } },
+      { datasources: [testSource({ port: 3000 })] },
+    );
+
+    expect(cfg.port.get()).toBe(3000);
   });
 });
 
@@ -354,7 +514,7 @@ describe("DataSource", () => {
     });
 
     await expect(
-      configs.create({ port: { type: "number" } }, { datasources: [failing] }),
+      Promise.resolve(configs.create({ port: { type: "number" } }, { datasources: [failing] })),
     ).rejects.toThrow("boom");
   });
 
@@ -683,40 +843,81 @@ describe("DataSource wrapping a Store", () => {
     unsub();
   });
 
-  test("falls back to defaultValues once every datasource loses the field, staying live", async () => {
+  test("a readonly field freezes at its first resolved value, ignoring later datasource updates", async () => {
     const store1 = store.create<Record<string, unknown>>({});
-    const store2 = store.create<Record<string, unknown>>({});
-    store1.set({ server: { port: 3000 } });
-    store2.set({});
+    store1.set({ port: 3000 });
 
-    const systemConfigs = await configs.create(
-      {
-        server: configs.create({
-          port: { type: "number", summary: "HTTP port", required: true },
-        }),
-      },
-      {
-        datasources: [testSourceStream(store1), testSourceStream(store2)],
-        defaultValues: { server: { port: 3000 } },
-      },
+    const cfg = await configs.create(
+      { port: { type: "number", readonly: true } },
+      { datasources: [testSourceStream(store1)] },
     );
 
-    const seen: (number | null)[] = [];
-    const unsub = systemConfigs.server.port.subscribe((value) => {
+    expect(cfg.port.get()).toBe(3000);
+
+    store1.set({ port: 9090 });
+
+    expect(cfg.port.get()).toBe(3000);
+  });
+
+  test("cfg.get() reflects a readonly field frozen at its first resolved value", async () => {
+    const store1 = store.create<Record<string, unknown>>({});
+    store1.set({ port: 3000 });
+
+    const cfg = await configs.create(
+      { port: { type: "number", readonly: true } },
+      { datasources: [testSourceStream(store1)] },
+    );
+
+    expect(cfg.get()).toEqual({ port: 3000 });
+
+    store1.set({ port: 4000 });
+
+    expect(cfg.get()).toEqual({ port: 3000 });
+  });
+
+  test("cfg.subscribe() fires only once for a readonly field, since its resolved snapshot never mutates", async () => {
+    const store1 = store.create<Record<string, unknown>>({});
+    store1.set({ port: 3000 });
+
+    const cfg = await configs.create(
+      { port: { type: "number", readonly: true } },
+      { datasources: [testSourceStream(store1)] },
+    );
+
+    const seen: { port: number | null }[] = [];
+    const unsub = cfg.subscribe((value) => {
       seen.push(value);
     });
 
-    store1.set({ server: { port: 9090 } });
-    // store1 still wins over store2, so this resolves to the same 9090: no emission.
-    store2.set({ server: { port: 1414 } });
-    // store1 no longer has a port, so resolution falls through to store2's already-set 1414.
-    store1.set({ server: { port: null } });
-    // now neither datasource has a port, so resolution falls through to defaultValues.
-    store2.set({ server: { port: null } });
-    // store1 has a port again, taking priority back over defaultValues.
-    store1.set({ server: { port: 5000 } });
+    expect(seen).toEqual([{ port: 3000 }]);
 
-    expect(seen).toEqual([3000, 9090, 1414, 3000, 5000]);
+    store1.set({ port: 4000 });
+
+    // the field is readonly, so the resolved snapshot is still { port: 3000 }: no new emission.
+    expect(seen).toEqual([{ port: 3000 }]);
+
+    unsub();
+  });
+
+  test("cfg.listen() does not fire immediately, and never fires again for a readonly field", async () => {
+    const store1 = store.create<Record<string, unknown>>({});
+    store1.set({ port: 3000 });
+
+    const cfg = await configs.create(
+      { port: { type: "number", readonly: true } },
+      { datasources: [testSourceStream(store1)] },
+    );
+
+    const seen: { port: number | null }[] = [];
+    const unsub = cfg.listen((value) => {
+      seen.push(value);
+    });
+
+    expect(seen).toEqual([]);
+
+    store1.set({ port: 4000 });
+
+    expect(seen).toEqual([]);
 
     unsub();
   });
