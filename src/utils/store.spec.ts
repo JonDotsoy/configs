@@ -231,6 +231,93 @@ describe("store", () => {
     expect(events).toEqual(["mount", "unmount"]);
   });
 
+  test("subscribe calls the subscriber's returned cleanup when it unsubscribes", () => {
+    const s = store.create<number>(0);
+    let cleanups = 0;
+
+    const unsub = s.subscribe(() => {
+      return () => {
+        cleanups++;
+      };
+    });
+
+    expect(cleanups).toBe(0);
+    unsub();
+    expect(cleanups).toBe(1);
+  });
+
+  test("subscribe does not call cleanup before the subscriber unsubscribes", () => {
+    const s = store.create<number>(0);
+    let cleanups = 0;
+
+    const unsub = s.subscribe(() => {
+      return () => {
+        cleanups++;
+      };
+    });
+
+    s.set(1);
+    s.set(2);
+
+    expect(cleanups).toBe(0);
+    unsub();
+  });
+
+  test("subscribe tolerates a subscriber that returns nothing", () => {
+    const s = store.create<number>(0);
+
+    const unsub = s.subscribe(() => {});
+
+    expect(() => unsub()).not.toThrow();
+  });
+
+  test("subscribe does not double-call cleanup when unsubscribed twice", () => {
+    const s = store.create<number>(0);
+    let cleanups = 0;
+
+    const unsub = s.subscribe(() => {
+      return () => {
+        cleanups++;
+      };
+    });
+
+    unsub();
+    unsub();
+
+    expect(cleanups).toBe(1);
+  });
+
+  test("subscribe calls each independent subscriber's own cleanup", () => {
+    const s = store.create<number>(0);
+    const cleaned: string[] = [];
+
+    const unsubA = s.subscribe(() => () => cleaned.push("a"));
+    const unsubB = s.subscribe(() => () => cleaned.push("b"));
+
+    unsubA();
+    expect(cleaned).toEqual(["a"]);
+
+    unsubB();
+    expect(cleaned).toEqual(["a", "b"]);
+  });
+
+  test("listen calls the subscriber's returned cleanup when it unsubscribes", () => {
+    const s = store.create<number>(0);
+    let cleanups = 0;
+
+    const unsub = s.listen(() => {
+      return () => {
+        cleanups++;
+      };
+    });
+
+    s.set(1);
+    expect(cleanups).toBe(0);
+
+    unsub();
+    expect(cleanups).toBe(1);
+  });
+
   test("works with non-primitive values", () => {
     const s = store.create<{ count: number }>({ count: 0 });
 

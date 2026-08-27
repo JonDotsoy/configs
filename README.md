@@ -45,7 +45,8 @@ npm install @jondotsoy/configs
 
 ### `DataSource` — building a custom datasource
 
-The building block behind `envDataSource`, `fetchDataSource`, and `sseDataSource`. It takes an
+The building block behind `envDataSource`, `fetchDataSource`, `sseDataSource`, and
+`fileDataSource`. It takes an
 object with `start(control)` and an optional `close()`, mirroring `ReadableStream`'s
 `UnderlyingSource`: `start` runs once and pushes snapshots via `control.set(value)`, while `close`
 — called from within `start` via `control.close()`, or from the outside via the `DataSource`'s own
@@ -126,6 +127,23 @@ A message that isn't valid JSON, or doesn't parse to a plain object, is logged v
 Opening the datasource waits for the first message (so the `Store` you get back already has data,
 not `null`), then keeps the connection alive in the background, applying further messages as
 patches until the resource closes the stream.
+
+### `fileDataSource` — a local `.json` or `.env` file
+
+Reads a config tree from `path`, parsed by its extension: `.json` or `.env` (matched by extension,
+or by the bare `.env` filename itself — a `.env` file always parses to a flat string map, one
+entry per `KEY=VALUE` line, blank lines and `#`-comments skipped). `watch` defaults to `true`: the
+file is re-read and the store updated live on every change; `watch: false` reads it once. A
+missing file, an unrecognized extension, or a parse failure (including on a later watched change)
+is logged via `console.error` and leaves the store empty instead of throwing — a parse error on a
+later change keeps the last good value instead.
+
+```ts
+import { fileDataSource } from "@jondotsoy/configs";
+
+const source = fileDataSource<{ port: number; host: string }>("./config.json");
+// config.json: { "port": 3000, "host": "localhost" }
+```
 
 ### Reacting to changes — restarting a periodic task
 

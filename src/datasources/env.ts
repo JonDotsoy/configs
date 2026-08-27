@@ -6,6 +6,10 @@ export type EnvKeyMapper = (key: string) => string[];
 export interface EnvDataSourceOptions {
   /** The env vars to read. Defaults to `process.env`. */
   env?: Record<string, string | undefined>;
+  /** Only keys starting with `prefix` are included; the prefix is stripped before `mapKey` runs. */
+  prefix?: string;
+  /** Only keys ending with `suffix` are included; the suffix is stripped before `mapKey` runs. */
+  suffix?: string;
   /** Maps each key to a path. Defaults to the identity mapping: `"FOO_TAR" => ["FOO_TAR"]`. */
   mapKey?: EnvKeyMapper;
 }
@@ -30,6 +34,7 @@ function setPath(target: Record<string, unknown>, path: string[], value: string)
 /** A `DataSource` that snapshots `env` into a config tree, one field per key (as mapped by `mapKey`). */
 export function envDataSource(options: EnvDataSourceOptions = {}): DataSource<Record<string, unknown>> {
   const env = options.env ?? process.env;
+  const { prefix, suffix } = options;
   const mapKey = options.mapKey ?? ((key: string) => [key]);
 
   return new DataSource<Record<string, unknown>>({
@@ -37,7 +42,14 @@ export function envDataSource(options: EnvDataSourceOptions = {}): DataSource<Re
       const tree: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(env)) {
         if (value === undefined) continue;
-        setPath(tree, mapKey(key), value);
+        if (prefix !== undefined && !key.startsWith(prefix)) continue;
+        if (suffix !== undefined && !key.endsWith(suffix)) continue;
+
+        const trimmedKey = key.slice(
+          prefix !== undefined ? prefix.length : 0,
+          suffix !== undefined ? key.length - suffix.length : key.length,
+        );
+        setPath(tree, mapKey(trimmedKey), value);
       }
       control.set(tree);
       control.close();
