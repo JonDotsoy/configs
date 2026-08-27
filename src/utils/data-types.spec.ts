@@ -84,19 +84,15 @@ describe("DataTypes.boolean.from", () => {
 });
 
 describe("DataTypes.factory", () => {
-  test("returns the number converter", () => {
-    expect(DataTypes.factory("number").from("42")).toBe(42);
+  test.each([
+    ["number", "42", 42],
+    ["string", 42, "42"],
+    ["boolean", "true", true],
+  ])("returns the %s converter", (type, input, expected) => {
+    expect(DataTypes.factory(type).from(input)).toBe(expected);
   });
 
-  test("returns the string converter", () => {
-    expect(DataTypes.factory("string").from(42)).toBe("42");
-  });
-
-  test("returns the boolean converter", () => {
-    expect(DataTypes.factory("boolean").from("true")).toBe(true);
-  });
-
-  test("throws on an unknown type name", () => {
-    expect(() => DataTypes.factory("date")).toThrow(ConfigError);
+  test.each(["date", "array", ""])("throws on an unknown type name: %s", (type) => {
+    expect(() => DataTypes.factory(type)).toThrow(ConfigError);
   });
 });
