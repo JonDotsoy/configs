@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "module": "src/configs.ts",
   "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "Jonathan Delgado",
+    "email": "hi@jon.soy",
+    "url": "https://jon.soy"
+  },
   "files": [
     "dist"
   ],
