@@ -39,6 +39,12 @@ console.log(serverConfigs.server.port.get());
 // 3000
 ```
 
+## Install
+
+```sh
+npm install @jondotsoy/configs
+```
+
 ## Guide
 
 ### `DataSource` — building a custom datasource
@@ -190,10 +196,4 @@ async function run() {
   console.log(serverConfigs.port.get());
   // closed automatically here, no explicit serverConfigs.close() needed
 }
-```
-
-## Install
-
-```sh
-npm install @jondotsoy/configs
 ```
