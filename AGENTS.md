@@ -77,6 +77,48 @@ DENO_LATEST_BIN=/path/to/deno \
 bun run test:integration
 ```
 
+### Types-first development mode
+
+When reshaping a public API (e.g. a new `configs.create()` return shape),
+design the type surface before touching the runtime:
+
+1. Write the new types in a standalone file (e.g. `src/config.types.ts`),
+   without editing the runtime module (`configs.ts` can stay empty/unchanged
+   during this phase).
+2. Update only the spec file's imports and `expectTypeOf(...)` assertions to
+   match the new surface — leave its `expect(...)` runtime assertions as the
+   target behavior to implement later.
+3. Validate with `bunx tsc --noEmit -p tsconfig.json` only. Do **not** run
+   `bun test` yet — the runtime isn't implemented, so those assertions are
+   expected to fail until a later pass wires up the real `ConfigNode`.
+
+This separates "does the API shape type-check and compose correctly" from
+"does it work," and catches type-design mistakes (ambiguous overloads,
+literal-widening through nested generic calls, self-referential `then()`
+types) before they're tangled up with runtime bugs.
+
+Gotchas hit doing this for `configs.create()`:
+
+- **Don't name a new top-level file `src/types.ts`** while `src/types/`
+  (a directory) exists — bare `"./types"` imports resolve to the file over
+  the directory index project-wide, silently breaking every other file's
+  `"../types"` import. Use a distinct name (e.g. `config.types.ts`).
+- **A `Node<any>` (or `SchemaGroup<any>`) union member inside a shape's
+  index-signature type poisons literal inference** for a nested generic
+  call written inline as a shape property (e.g.
+  `configs.create({ tls: configs.create({ key: { type: "string" } }) })`):
+  the `any` becomes the contextual type TS propagates into that inner call,
+  widening every `type: "string"` literal to `string`. Use a plain,
+  non-generic marker interface (just enough to discriminate "this is a
+  nested group") for the union member instead, and keep the fully generic
+  type (`SchemaGroup<S>`) only for external-facing type expressions.
+- **A "resolved" class must not itself be thenable** if its unresolved
+  counterpart is: `ConfigNodeResolved extends ConfigNode` where `ConfigNode`
+  implements `PromiseLike<ConfigNodeResolved<S> & ...>` makes
+  `ConfigNodeResolved`'s own inherited `then()` resolve to itself — both the
+  Promise spec (chaining-cycle) and TS's `Awaited<T>` reject that. Split a
+  shared, non-thenable base class instead of one extending the other.
+
 It builds and packs the current source on every run, but installs the
 tarball into a temp dir cached across runs (`$TMPDIR/jondotsoy-configs-integration-cache`),
 keyed by the tarball's sha256 — `npm install` only reruns when the packed
