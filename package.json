@@ -1,10 +1,72 @@
 {
-  "name": "configs",
+  "name": "@jondotsoy/configs",
+  "version": "0.1.0",
+  "description": "A reactive, typed configuration library backed by pluggable datasources (env, fetch, sse).",
+  "keywords": [
+    "config",
+    "configuration",
+    "env",
+    "environment-variables",
+    "reactive",
+    "typescript",
+    "datasource",
+    "sse",
+    "fetch"
+  ],
   "module": "src/configs.ts",
   "type": "module",
-  "private": true,
+  "sideEffects": false,
+  "license": "MIT",
+  "author": {
+    "name": "Jonathan Delgado",
+    "email": "hi@jon.soy",
+    "url": "https://jon.soy"
+  },
+  "homepage": "https://github.com/JonDotsoy/configs#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JonDotsoy/configs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/JonDotsoy/configs/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "_entryPoint": "./src/configs.ts",
+      "types": "./dist/configs.d.ts",
+      "import": "./dist/configs.js"
+    },
+    "./datasources/env": {
+      "_entryPoint": "./src/datasources/env.ts",
+      "types": "./dist/datasources/env.d.ts",
+      "import": "./dist/datasources/env.js"
+    },
+    "./datasources/fetch": {
+      "_entryPoint": "./src/datasources/fetch.ts",
+      "types": "./dist/datasources/fetch.d.ts",
+      "import": "./dist/datasources/fetch.js"
+    },
+    "./datasources/sse": {
+      "_entryPoint": "./src/datasources/sse.ts",
+      "types": "./dist/datasources/sse.d.ts",
+      "import": "./dist/datasources/sse.js"
+    }
+  },
+  "scripts": {
+    "build": "bash scripts/build.sh",
+    "build:types": "tsc -p tsconfig.build.json",
+    "test:pack": "bun run scripts/manual-pack-test.ts",
+    "test:integration": "bun test ./test/integration/runtime-imports.ts"
+  },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "typescript": "^5"
   },
   "peerDependencies": {
     "typescript": "^5"
