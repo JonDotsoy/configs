@@ -52,6 +52,11 @@ async function readEvents(
  * e.g. `{"port":3000}` then `{"host":"10.0.0.1"}` end up as `{ port: 3000, host: "10.0.0.1" }`.
  * A message that isn't valid JSON, or doesn't parse to a plain object, is logged via
  * `console.error` and skipped, without disturbing the accumulated state or the connection.
+ *
+ * `start()` only resolves once the first message has been applied (or the connection closed
+ * without ever receiving one) — so `open()` always hands back a `Store` with data already in it,
+ * not one waiting on a race. The connection then stays open in the background, applying further
+ * messages as patches, until the resource itself closes the stream.
  */
 export function sseDataSource<T = unknown>(options: SseDataSourceOptions): DataSource<T> {
   const { url, method = "GET", headers } = options;
@@ -75,30 +80,43 @@ export function sseDataSource<T = unknown>(options: SseDataSourceOptions): DataS
 
       let state: Record<string, unknown> = {};
 
-      readEvents(response.body, (rawEvent) => {
-        const raw = extractData(rawEvent);
-        if (raw === null || raw.trim() === "") return;
+      await new Promise<void>((resolveFirstMessage) => {
+        let settled = false;
+        const settle = () => {
+          if (settled) return;
+          settled = true;
+          resolveFirstMessage();
+        };
 
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(raw);
-        } catch (error) {
-          console.error(`sseDataSource: message from "${url}" is not valid JSON`, error);
-          return;
-        }
+        readEvents(response.body!, (rawEvent) => {
+          const raw = extractData(rawEvent);
+          if (raw === null || raw.trim() === "") return;
 
-        if (!isPatch(parsed)) {
-          console.error(`sseDataSource: message from "${url}" did not parse to a JSON object`, parsed);
-          return;
-        }
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(raw);
+          } catch (error) {
+            console.error(`sseDataSource: message from "${url}" is not valid JSON`, error);
+            return;
+          }
 
-        state = { ...state, ...parsed };
-        control.set(state as T);
-      })
-        .catch((error) => {
-          console.error(`sseDataSource: connection to "${url}" ended with an error`, error);
+          if (!isPatch(parsed)) {
+            console.error(`sseDataSource: message from "${url}" did not parse to a JSON object`, parsed);
+            return;
+          }
+
+          state = { ...state, ...parsed };
+          control.set(state as T);
+          settle();
         })
-        .finally(() => control.close());
+          .catch((error) => {
+            console.error(`sseDataSource: connection to "${url}" ended with an error`, error);
+          })
+          .finally(() => {
+            control.close();
+            settle();
+          });
+      });
     },
   });
 }

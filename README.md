@@ -94,6 +94,10 @@ const source = sseDataSource<{ port?: number; host?: string }>({
 A message that isn't valid JSON, or doesn't parse to a plain object, is logged via
 `console.error` and skipped — it never resets what was already received.
 
+Opening the datasource waits for the first message (so the `Store` you get back already has data,
+not `null`), then keeps the connection alive in the background, applying further messages as
+patches until the resource closes the stream.
+
 ## Install
 
 ```sh

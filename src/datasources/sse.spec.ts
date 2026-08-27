@@ -22,6 +22,27 @@ function sseResponse(messages: string[]): Response {
   return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
 }
 
+/** An SSE response that streams `messages` one at a time, waiting for `release()` before each. */
+function controlledSseResponse(messages: string[]): { response: Response; release: () => void } {
+  let release = () => {};
+  const body = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const encoder = new TextEncoder();
+      for (const message of messages) {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        controller.enqueue(encoder.encode(`data: ${message}\n\n`));
+      }
+      controller.close();
+    },
+  });
+  return {
+    response: new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+    release: () => release(),
+  };
+}
+
 /** Resolves once `store`'s value satisfies `predicate`, so tests don't race the background reader. */
 function waitForValue<T>(store: Store<T>, predicate: (value: T) => boolean): Promise<T> {
   return new Promise((resolve) => {
@@ -36,13 +57,45 @@ function waitForValue<T>(store: Store<T>, predicate: (value: T) => boolean): Pro
 }
 
 describe("sseDataSource", () => {
-  test("applies each message as a shallow patch onto the accumulated state", async () => {
-    globalThis.fetch = (async () =>
-      sseResponse([JSON.stringify({ port: 3000 }), JSON.stringify({ host: "10.0.0.1" })])) as unknown as typeof fetch;
+  test("open() resolves only after the first message, already applied", async () => {
+    const { response, release } = controlledSseResponse([JSON.stringify({ port: 3000 })]);
+    globalThis.fetch = (async () => response) as unknown as typeof fetch;
+
+    const source = sseDataSource<{ port?: number }>({ url: "https://example.com/events" });
+
+    let opened = false;
+    const openPromise = source.open().then((store) => {
+      opened = true;
+      return store;
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(opened).toBe(false); // still waiting on the resource's first message
+
+    release();
+    const store = await openPromise;
+
+    expect(opened).toBe(true);
+    expect(store.get()).toEqual({ port: 3000 });
+  });
+
+  test("stays connected after open() and keeps applying messages as patches", async () => {
+    const { response, release } = controlledSseResponse([
+      JSON.stringify({ port: 3000 }),
+      JSON.stringify({ host: "10.0.0.1" }),
+    ]);
+    globalThis.fetch = (async () => response) as unknown as typeof fetch;
 
     const source = sseDataSource<{ port?: number; host?: string }>({ url: "https://example.com/events" });
+
+    release(); // let the first message through so open() can resolve
     const store = await source.open();
 
+    // The first message is already applied by the time `open()` resolves.
+    expect(store.get()).toEqual({ port: 3000 });
+
+    release(); // the connection is still alive: let the second message through
     const final = await waitForValue(store, (value) => value?.host !== undefined);
 
     expect(final).toEqual({ port: 3000, host: "10.0.0.1" });
@@ -61,8 +114,8 @@ describe("sseDataSource", () => {
       headers: { authorization: "Bearer token" },
     });
     const store = await source.open();
-    await waitForValue(store, (value) => value !== null);
 
+    expect(store.get()).toEqual({ ok: true });
     expect(receivedInit?.method).toBe("POST");
     expect(receivedInit?.headers).toEqual({ authorization: "Bearer token" });
   });
@@ -74,9 +127,7 @@ describe("sseDataSource", () => {
     const source = sseDataSource({ url: "https://example.com/events" });
     const store = await source.open();
 
-    const final = await waitForValue(store, (value) => value !== null);
-
-    expect(final).toEqual({ port: 3000 });
+    expect(store.get()).toEqual({ port: 3000 });
     expect(errorSpy).toHaveBeenCalledTimes(1);
     errorSpy.mockRestore();
   });
@@ -88,9 +139,19 @@ describe("sseDataSource", () => {
     const source = sseDataSource({ url: "https://example.com/events" });
     const store = await source.open();
 
-    const final = await waitForValue(store, (value) => value !== null);
+    expect(store.get()).toEqual({ port: 3000 });
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+  });
 
-    expect(final).toEqual({ port: 3000 });
+  test("resolves open() with an empty store when the connection closes without any valid message", async () => {
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    globalThis.fetch = (async () => sseResponse(["{not json"])) as unknown as typeof fetch;
+
+    const source = sseDataSource({ url: "https://example.com/events" });
+    const store = await source.open();
+
+    expect(store.get()).toBeNull();
     expect(errorSpy).toHaveBeenCalledTimes(1);
     errorSpy.mockRestore();
   });
