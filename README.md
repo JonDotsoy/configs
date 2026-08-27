@@ -35,6 +35,18 @@ console.log(serverConfigs.server.port.get());
 // 3000
 ```
 
+## Table of contents
+
+- [Install](#install)
+- [Guide](#guide)
+  - [`DataSource` — building a custom datasource](#datasource--building-a-custom-datasource)
+  - [`envDataSource` — environment variables](#envdatasource--environment-variables)
+  - [`fetchDataSource` — a JSON endpoint over HTTP](#fetchdatasource--a-json-endpoint-over-http)
+  - [`sseDataSource` — live updates over Server-Sent Events](#ssedatasource--live-updates-over-server-sent-events)
+  - [`fileDataSource` — a local `.json` or `.env` file](#filedatasource--a-local-json-or-env-file)
+  - [Reacting to changes — restarting a periodic task](#reacting-to-changes--restarting-a-periodic-task)
+  - [Closing a config tree](#closing-a-config-tree)
+
 ## Install
 
 ```sh
