@@ -40,8 +40,8 @@ serverConfigs.port.subscribe((port) => {
   console.log(`listening on port ${port}`);
 });
 
-console.log(serverConfigs.get());
-// { port: 3000, host: "localhost", tls: { key: null, cert: null } }
+console.log(serverConfigs.port.get());
+// 3000
 ```
 
 ## Install
