@@ -1,10 +1,12 @@
-export type Subscriber<T> = (value: T) => void;
+/** Return `Unsubscribe` for cleanup run when this subscriber unsubscribes; any other return value is ignored. */
+export type Subscriber<T> = (value: T) => unknown;
 export type Unsubscribe = () => void;
 export type EventListener = () => void;
 
 export class Store<T> {
   private value: T;
   private readonly subscribers = new Set<Subscriber<T>>();
+  private readonly cleanups = new Map<Subscriber<T>, Unsubscribe>();
   private readonly mountListeners = new Set<EventListener>();
   private readonly unmountListeners = new Set<EventListener>();
 
@@ -19,14 +21,14 @@ export class Store<T> {
   set(next: T): void {
     this.value = next;
     for (const subscriber of this.subscribers) {
-      subscriber(this.value);
+      this.runSubscriber(subscriber, this.value);
     }
   }
 
   /** Calls `subscriber` immediately with the current value, then on every subsequent `set`. */
   subscribe(subscriber: Subscriber<T>): Unsubscribe {
     this.addSubscriber(subscriber);
-    subscriber(this.value);
+    this.runSubscriber(subscriber, this.value);
     return () => this.removeSubscriber(subscriber);
   }
 
@@ -34,6 +36,12 @@ export class Store<T> {
   listen(subscriber: Subscriber<T>): Unsubscribe {
     this.addSubscriber(subscriber);
     return () => this.removeSubscriber(subscriber);
+  }
+
+  /** Runs `subscriber` and stores its returned cleanup, if any, to run on unsubscribe. */
+  private runSubscriber(subscriber: Subscriber<T>, value: T): void {
+    const cleanup = subscriber(value);
+    if (typeof cleanup === "function") this.cleanups.set(subscriber, cleanup as Unsubscribe);
   }
 
   /** Fires once a first subscriber is registered (via `subscribe` or `listen`). */
@@ -64,6 +72,9 @@ export class Store<T> {
 
   private removeSubscriber(subscriber: Subscriber<T>): void {
     if (!this.subscribers.delete(subscriber)) return;
+    const cleanup = this.cleanups.get(subscriber);
+    this.cleanups.delete(subscriber);
+    cleanup?.();
     if (this.subscribers.size === 0) {
       for (const listener of this.unmountListeners) listener();
     }
