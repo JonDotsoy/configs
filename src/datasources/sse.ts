@@ -56,18 +56,22 @@ async function readEvents(
  * `start()` only resolves once the first message has been applied (or the connection closed
  * without ever receiving one) — so `open()` always hands back a `Store` with data already in it,
  * not one waiting on a race. The connection then stays open in the background, applying further
- * messages as patches, until the resource itself closes the stream.
+ * messages as patches, until the resource closes the stream — or `close()` is called on the
+ * returned `DataSource` (or via a config tree's own `close()`), which aborts the connection.
  */
 export function sseDataSource<T = unknown>(options: SseDataSourceOptions): DataSource<T> {
   const { url, method = "GET", headers } = options;
+  const abortController = new AbortController();
 
   return new DataSource<T>({
     async start(control) {
       let response: Response;
       try {
-        response = await fetch(url, { method, headers });
+        response = await fetch(url, { method, headers, signal: abortController.signal });
       } catch (error) {
-        console.error(`sseDataSource: failed to connect to "${url}"`, error);
+        if (!abortController.signal.aborted) {
+          console.error(`sseDataSource: failed to connect to "${url}"`, error);
+        }
         control.close();
         return;
       }
@@ -110,13 +114,18 @@ export function sseDataSource<T = unknown>(options: SseDataSourceOptions): DataS
           settle();
         })
           .catch((error) => {
-            console.error(`sseDataSource: connection to "${url}" ended with an error`, error);
+            if (!abortController.signal.aborted) {
+              console.error(`sseDataSource: connection to "${url}" ended with an error`, error);
+            }
           })
           .finally(() => {
             control.close();
             settle();
           });
       });
+    },
+    close() {
+      abortController.abort();
     },
   });
 }

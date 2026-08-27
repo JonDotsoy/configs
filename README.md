@@ -98,6 +98,21 @@ Opening the datasource waits for the first message (so the `Store` you get back 
 not `null`), then keeps the connection alive in the background, applying further messages as
 patches until the resource closes the stream.
 
+### Closing a config tree
+
+`configs.create(...)` results (and their nested groups) expose `close()`, which closes every
+datasource backing them — for `sseDataSource`, this aborts the live connection instead of leaving
+it open in the background:
+
+```ts
+import { configs, sseDataSource } from "@jondotsoy/configs";
+
+const source = sseDataSource({ url: "https://config-service.internal/app/events" });
+const serverConfigs = await configs.create({ port: { type: "number" } }, { datasources: [source] });
+
+await serverConfigs.close();
+```
+
 ## Install
 
 ```sh

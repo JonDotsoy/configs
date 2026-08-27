@@ -43,6 +43,19 @@ function controlledSseResponse(messages: string[]): { response: Response; releas
   };
 }
 
+/** An SSE response that emits one message, then stays open (simulating a live connection) until `signal` aborts. */
+function hangingSseResponse(firstMessage: string, signal: AbortSignal | undefined): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(`data: ${firstMessage}\n\n`));
+      signal?.addEventListener("abort", () => {
+        controller.error(new DOMException("The operation was aborted.", "AbortError"));
+      });
+    },
+  });
+  return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+}
+
 /** Resolves once `store`'s value satisfies `predicate`, so tests don't race the background reader. */
 function waitForValue<T>(store: Store<T>, predicate: (value: T) => boolean): Promise<T> {
   return new Promise((resolve) => {
@@ -179,6 +192,28 @@ describe("sseDataSource", () => {
 
     expect(store.get()).toBeNull();
     expect(errorSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+  });
+
+  test("close() aborts the connection, without logging an error", async () => {
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    let receivedSignal: AbortSignal | undefined;
+    globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+      receivedSignal = init?.signal ?? undefined;
+      return hangingSseResponse(JSON.stringify({ port: 3000 }), receivedSignal);
+    }) as unknown as typeof fetch;
+
+    const source = sseDataSource<{ port?: number }>({ url: "https://example.com/events" });
+    const store = await source.open();
+
+    expect(store.get()).toEqual({ port: 3000 });
+    expect(receivedSignal?.aborted).toBe(false);
+
+    await source.close();
+    await Promise.resolve();
+
+    expect(receivedSignal?.aborted).toBe(true);
+    expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
   });
 });
