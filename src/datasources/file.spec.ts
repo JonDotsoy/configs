@@ -88,6 +88,127 @@ describe("fileDataSource", () => {
     });
   });
 
+  describe("treePath", () => {
+    test("selects a nested subtree, ignoring everything else in the file", async () => {
+      const path = join(dir, "config.json");
+      await Bun.write(
+        path,
+        JSON.stringify({
+          containers: { settings: { port: 3000, host: "localhost" } },
+          metadata: { generatedAt: "2024-01-01" },
+        }),
+      );
+
+      const source = fileDataSource(path, { watch: false, treePath: ["containers", "settings"] });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000, host: "localhost" });
+    });
+
+    test("selects a single-segment subtree", async () => {
+      const path = join(dir, "config.json");
+      await Bun.write(path, JSON.stringify({ server: { port: 3000 }, other: 1 }));
+
+      const source = fileDataSource(path, { watch: false, treePath: ["server"] });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000 });
+    });
+
+    test("an empty treePath (or omitting it) uses the whole tree, same as the default", async () => {
+      const path = join(dir, "config.json");
+      await Bun.write(path, JSON.stringify({ port: 3000 }));
+
+      const source = fileDataSource(path, { watch: false, treePath: [] });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000 });
+    });
+
+    test("a leaf value at treePath is used as-is, not just objects", async () => {
+      const path = join(dir, "config.json");
+      await Bun.write(path, JSON.stringify({ server: { port: 3000 } }));
+
+      const source = fileDataSource(path, { watch: false, treePath: ["server", "port"] });
+      const store = await source.open();
+
+      expect(store.get()).toBe(3000);
+    });
+
+    test("logs and sets an empty object when treePath doesn't resolve to anything", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      const path = join(dir, "config.json");
+      await Bun.write(path, JSON.stringify({ containers: {} }));
+
+      const source = fileDataSource(path, { watch: false, treePath: ["containers", "settings"] });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({});
+      expect(errorSpy).toHaveBeenCalled();
+      errorSpy.mockRestore();
+    });
+
+    test("logs and sets an empty object when an intermediate segment isn't an object", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      const path = join(dir, "config.json");
+      await Bun.write(path, JSON.stringify({ containers: "not an object" }));
+
+      const source = fileDataSource(path, { watch: false, treePath: ["containers", "settings"] });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({});
+      expect(errorSpy).toHaveBeenCalled();
+      errorSpy.mockRestore();
+    });
+
+    test("stays live: a later change that no longer matches treePath sets an empty object", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      const path = join(dir, "config.json");
+      await Bun.write(
+        path,
+        JSON.stringify({ containers: { settings: { port: 3000 } }, metadata: {} }),
+      );
+
+      const source = fileDataSource(path, { treePath: ["containers", "settings"] });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000 });
+
+      await Bun.write(path, JSON.stringify({ containers: {}, metadata: {} }));
+      await waitFor(() => errorSpy.mock.calls.length > 0);
+
+      expect(store.get()).toEqual({});
+
+      await source.close();
+      errorSpy.mockRestore();
+    });
+
+    test("stays live: a later change updates only the selected subtree", async () => {
+      const path = join(dir, "config.json");
+      await Bun.write(
+        path,
+        JSON.stringify({ containers: { settings: { port: 3000 } }, metadata: {} }),
+      );
+
+      const source = fileDataSource<{ port: number }>(path, {
+        treePath: ["containers", "settings"],
+      });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000 });
+
+      await Bun.write(
+        path,
+        JSON.stringify({ containers: { settings: { port: 4000 } }, metadata: {} }),
+      );
+      await waitFor(() => store.get()?.port === 4000);
+
+      expect(store.get()).toEqual({ port: 4000 });
+
+      await source.close();
+    });
+  });
+
   describe("error handling", () => {
     test("logs and leaves the store null for an unrecognized extension", async () => {
       const errorSpy = spyOn(console, "error").mockImplementation(() => {});
