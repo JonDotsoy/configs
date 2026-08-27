@@ -109,11 +109,27 @@ describe("DataTypes.array.from", () => {
 
 describe("DataTypes.factory", () => {
   test.each([
+    ["number", 42, 42],
     ["number", "42", 42],
+    ["number", true, 1],
+    ["number", false, 0],
+    ["string", "hello", "hello"],
     ["string", 42, "42"],
+    ["string", true, "true"],
+    ["string", false, "false"],
+    ["boolean", true, true],
+    ["boolean", false, false],
+    ["boolean", 1, true],
+    ["boolean", 0, false],
     ["boolean", "true", true],
+    ["boolean", "1", true],
+    ["boolean", "false", false],
+    ["boolean", "0", false],
     ["array", "foo,tar,biz", ["foo", "tar", "biz"]],
-  ])("returns the %s converter", (type, input, expected) => {
+    ["array", "foo, tar, biz", ["foo", "tar", "biz"]],
+    ["array", ["foo", "tar", "biz"], ["foo", "tar", "biz"]],
+    ["array", [1, true], ["1", "true"]],
+  ])("returns the %s converter for %p", (type, input, expected) => {
     expect(DataTypes.factory(type).from(input)).toEqual(expected);
   });
 
