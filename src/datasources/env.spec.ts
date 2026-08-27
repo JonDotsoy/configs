@@ -41,7 +41,8 @@ describe("envDataSource", () => {
   });
 
   test("maps a specific key while falling back to the identity mapping for the rest", async () => {
-    const mapKey = (key: string) => (key === "PORT" ? ["server", "port"] : [key]);
+    const mapKey = (key: string) =>
+      ({ PORT: ["server", "port"] } as Record<string, string[]>)[key] ?? [key];
 
     const source = envDataSource({
       env: { PORT: "3000", HOST: "localhost" },
