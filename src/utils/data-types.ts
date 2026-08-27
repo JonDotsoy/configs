@@ -2,13 +2,17 @@ import { ConfigError } from "../errors";
 
 type Primitive = string | number | boolean;
 
+export interface DataType<T> {
+  from(value: unknown): T;
+}
+
 function assertPrimitive(value: unknown, target: string): asserts value is Primitive {
   if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
     throw new ConfigError(`DataTypes.${target}.from: cannot convert ${typeof value} to ${target}`);
   }
 }
 
-const numberType = {
+const numberType: DataType<number> = {
   from(value: unknown): number {
     assertPrimitive(value, "number");
     if (typeof value === "number") return value;
@@ -21,14 +25,14 @@ const numberType = {
   },
 };
 
-const stringType = {
+const stringType: DataType<string> = {
   from(value: unknown): string {
     assertPrimitive(value, "string");
     return String(value);
   },
 };
 
-const booleanType = {
+const booleanType: DataType<boolean> = {
   from(value: unknown): boolean {
     assertPrimitive(value, "boolean");
     if (typeof value === "boolean") return value;
@@ -43,7 +47,7 @@ const booleanType = {
   },
 };
 
-const listType = {
+const listType: DataType<string[]> = {
   /** Comma-separated string becomes a list; an array is coerced element-wise and passed through. */
   from(value: unknown): string[] {
     if (Array.isArray(value)) return value.map((item) => stringType.from(item));

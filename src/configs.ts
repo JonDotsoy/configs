@@ -16,6 +16,7 @@ export type {
   SchemaShape,
   UnderlyingDataSource,
 } from "./types";
+export type { DataType, DataTypeName } from "./utils/data-types";
 export { DataSource } from "./datasources/datasource";
 export { Store } from "./utils/store";
 export { DataTypes } from "./utils/data-types";

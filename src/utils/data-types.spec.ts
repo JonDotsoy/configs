@@ -1,6 +1,15 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, expectTypeOf, test } from "bun:test";
 import { ConfigError } from "../errors";
-import { DataTypes } from "./data-types";
+import { DataTypes, type DataType } from "./data-types";
+
+describe("DataType interface", () => {
+  test("every converter satisfies DataType<T>", () => {
+    expectTypeOf(DataTypes.number).toMatchTypeOf<DataType<number>>();
+    expectTypeOf(DataTypes.string).toMatchTypeOf<DataType<string>>();
+    expectTypeOf(DataTypes.boolean).toMatchTypeOf<DataType<boolean>>();
+    expectTypeOf(DataTypes.list).toMatchTypeOf<DataType<string[]>>();
+  });
+});
 
 describe("DataTypes.number.from", () => {
   test("passes a number through", () => {
