@@ -129,10 +129,11 @@ patches until the resource closes the stream.
 
 Because every field is a live `Store`, `.subscribe()` is the hook point for keeping something
 else in sync with the config — for example, restarting a `setInterval` job whenever its period
-changes:
+changes. This only really happens at runtime with a live datasource like `sseDataSource`; an
+`envDataSource` resolves once and never changes:
 
 ```ts
-import { configs, envDataSource } from "@jondotsoy/configs";
+import { configs, sseDataSource } from "@jondotsoy/configs";
 
 async function cleanupTempFiles() {
   // ...
@@ -144,7 +145,7 @@ const cfg = await configs.create(
       cleanupIntervalMs: { type: "number", summary: "cleanup interval", default: 60_000 },
     }),
   },
-  { datasources: [envDataSource()] },
+  { datasources: [sseDataSource({ url: "https://config-service.internal/app/events" })] },
 );
 
 let timer: ReturnType<typeof setInterval> | undefined;
