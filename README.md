@@ -125,6 +125,40 @@ Opening the datasource waits for the first message (so the `Store` you get back 
 not `null`), then keeps the connection alive in the background, applying further messages as
 patches until the resource closes the stream.
 
+### Reacting to changes — rescheduling a `Bun.cron` job
+
+Because every field is a live `Store`, `.subscribe()` is the hook point for keeping something
+else in sync with the config — for example, restarting a [`Bun.cron`](https://bun.com/docs/runtime/cron)
+job whenever its schedule changes:
+
+```ts
+import { configs, envDataSource } from "@jondotsoy/configs";
+
+async function cleanupTempFiles() {
+  // ...
+}
+
+const cfg = await configs.create(
+  {
+    service: configs.create({
+      cron: { type: "string", summary: "cleanup schedule", default: "@hourly" },
+    }),
+  },
+  { datasources: [envDataSource()] },
+);
+
+let job: Bun.CronJob | undefined;
+
+cfg.service.cron.subscribe((schedule) => {
+  job?.stop();
+  job = Bun.cron(schedule, () => cleanupTempFiles());
+});
+```
+
+`subscribe` fires immediately with the current value (scheduling the first job) and again on every
+subsequent change — `job?.stop()` cancels the previous schedule before `Bun.cron` starts the new
+one, so there's never more than one job running for this field.
+
 ### Closing a config tree
 
 `configs.create(...)` results (and their nested groups) expose `close()`, which closes every
