@@ -24,6 +24,7 @@ src/
     env.ts                   # envDataSource, envKeyToPath
     fetch.ts                 # fetchDataSource
     sse.ts                    # sseDataSource
+    file.ts                    # fileDataSource (.json/.env, live via fs.watch)
     *.spec.ts                 # co-located bun:test specs
   types/                    # shared type-level helpers (schema, datasource, InferShape)
   utils/

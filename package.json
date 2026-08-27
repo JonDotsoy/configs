@@ -1,7 +1,7 @@
 {
   "name": "@jondotsoy/configs",
   "version": "0.1.0",
-  "description": "A reactive, typed configuration library backed by pluggable datasources (env, fetch, sse).",
+  "description": "A reactive, typed configuration library backed by pluggable datasources (env, fetch, sse, file).",
   "keywords": [
     "config",
     "configuration",
@@ -11,7 +11,10 @@
     "typescript",
     "datasource",
     "sse",
-    "fetch"
+    "fetch",
+    "file",
+    "json",
+    "dotenv"
   ],
   "module": "src/configs.ts",
   "type": "module",
@@ -56,6 +59,11 @@
       "_entryPoint": "./src/datasources/sse.ts",
       "types": "./dist/datasources/sse.d.ts",
       "import": "./dist/datasources/sse.js"
+    },
+    "./datasources/file": {
+      "_entryPoint": "./src/datasources/file.ts",
+      "types": "./dist/datasources/file.d.ts",
+      "import": "./dist/datasources/file.js"
     }
   },
   "scripts": {
