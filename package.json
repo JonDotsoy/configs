@@ -37,7 +37,8 @@
   "scripts": {
     "build": "bash scripts/build.sh",
     "build:types": "tsc -p tsconfig.build.json",
-    "test:pack": "bun run scripts/manual-pack-test.ts"
+    "test:pack": "bun run scripts/manual-pack-test.ts",
+    "test:integration": "bun test ./test/integration/runtime-imports.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

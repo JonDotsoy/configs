@@ -60,6 +60,28 @@ and works, and checks that no stray file leaked into the tarball beyond
 `dist/**` and the files npm/bun always include (`package.json`, `README.md`,
 `LICENSE`).
 
+### Cross-runtime integration suite
+
+`test/integration/runtime-imports.ts` verifies the packed tarball actually
+imports and works under Node LTS, Node latest, Bun latest, and Deno latest —
+not just under Bun via source resolution like the unit specs do. It isn't
+part of the default `bun test` sweep (its filename has no `.test`/`.spec`),
+so run it explicitly, pointing each env var at a runtime binary (any of the
+four may be omitted — that runtime is skipped, not failed):
+
+```sh
+NODE_LST_BIN=/path/to/node-lts \
+NODE_LATEST_BIN=/path/to/node-latest \
+BUN_LATEST_BIN=/path/to/bun \
+DENO_LATEST_BIN=/path/to/deno \
+bun run test:integration
+```
+
+It builds and packs the current source on every run, but installs the
+tarball into a temp dir cached across runs (`$TMPDIR/jondotsoy-configs-integration-cache`),
+keyed by the tarball's sha256 — `npm install` only reruns when the packed
+output actually changed.
+
 Default to using Bun instead of Node.js.
 
 - Use `bun <file>` instead of `node <file>` or `ts-node <file>`
