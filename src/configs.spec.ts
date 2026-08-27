@@ -150,6 +150,26 @@ describe("configs.create", () => {
     expect(cfg.get()).toEqual({ retries: 3 });
   });
 
+  describe("field.get() type inference", () => {
+    test("without a default, the type includes null", async () => {
+      const cfg = await configs.create(
+        { port: { type: "number" } },
+        { datasources: [testSource({ port: 3000 })] },
+      );
+
+      expectTypeOf(cfg.port.get()).toEqualTypeOf<number | null>();
+    });
+
+    test("with a default, the type excludes null", async () => {
+      const cfg = await configs.create(
+        { port: { type: "number", default: 3000 } },
+        { datasources: [testSource({})] },
+      );
+
+      expectTypeOf(cfg.port.get()).toEqualTypeOf<number>();
+    });
+  });
+
   test("returns null for optional fields with no value", async () => {
     const cfg = await configs.create(
       { nickname: { type: "string" } },
