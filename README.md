@@ -11,22 +11,17 @@ A tool for all your configurations.
 ## Example
 
 ```ts
-import { configs, DataSource } from "@jondotsoy/configs";
+import { configs, envDataSource, envKeyToPath } from "@jondotsoy/configs";
 
-const envSource = new DataSource<{ port: number; host: string }>({
-  async start(control) {
-    control.set({
-      port: Number(process.env.PORT),
-      host: process.env.HOST!,
-    });
-    control.close();
-  },
-});
+// SERVER_PORT=3000 SERVER_HOST=localhost → { server: { port: "3000", host: "localhost" } }
+const envSource = envDataSource({ mapKey: envKeyToPath });
 
 const serverConfigs = await configs.create(
   {
-    port: { type: "number", summary: "HTTP port", default: 3000 },
-    host: { type: "string", summary: "bind host", default: "localhost" },
+    server: configs.create({
+      port: { type: "number", summary: "HTTP port", default: 3000 },
+      host: { type: "string", summary: "bind host", default: "localhost" },
+    }),
     tls: configs.create({
       key: { type: "string", summary: "TLS key path" },
       cert: { type: "string", summary: "TLS cert path" },
@@ -36,11 +31,11 @@ const serverConfigs = await configs.create(
 );
 
 // React to changes
-serverConfigs.port.subscribe((port) => {
+serverConfigs.server.port.subscribe((port) => {
   console.log(`listening on port ${port}`);
 });
 
-console.log(serverConfigs.port.get());
+console.log(serverConfigs.server.port.get());
 // 3000
 ```
 
