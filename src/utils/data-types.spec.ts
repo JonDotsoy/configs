@@ -25,11 +25,8 @@ describe("DataTypes.number.from", () => {
   });
 
   test("throws on any other type", () => {
-    // @ts-expect-error runtime check for values outside string | number | boolean
     expect(() => DataTypes.number.from({})).toThrow(ConfigError);
-    // @ts-expect-error runtime check for values outside string | number | boolean
     expect(() => DataTypes.number.from(null)).toThrow(ConfigError);
-    // @ts-expect-error runtime check for values outside string | number | boolean
     expect(() => DataTypes.number.from(undefined)).toThrow(ConfigError);
   });
 });
@@ -49,9 +46,7 @@ describe("DataTypes.string.from", () => {
   });
 
   test("throws on any other type", () => {
-    // @ts-expect-error runtime check for values outside string | number | boolean
     expect(() => DataTypes.string.from({})).toThrow(ConfigError);
-    // @ts-expect-error runtime check for values outside string | number | boolean
     expect(() => DataTypes.string.from(null)).toThrow(ConfigError);
   });
 });
@@ -83,9 +78,25 @@ describe("DataTypes.boolean.from", () => {
   });
 
   test("throws on any other type", () => {
-    // @ts-expect-error runtime check for values outside string | number | boolean
     expect(() => DataTypes.boolean.from({})).toThrow(ConfigError);
-    // @ts-expect-error runtime check for values outside string | number | boolean
     expect(() => DataTypes.boolean.from(undefined)).toThrow(ConfigError);
+  });
+});
+
+describe("DataTypes.factory", () => {
+  test("returns the number converter", () => {
+    expect(DataTypes.factory("number").from("42")).toBe(42);
+  });
+
+  test("returns the string converter", () => {
+    expect(DataTypes.factory("string").from(42)).toBe("42");
+  });
+
+  test("returns the boolean converter", () => {
+    expect(DataTypes.factory("boolean").from("true")).toBe(true);
+  });
+
+  test("throws on an unknown type name", () => {
+    expect(() => DataTypes.factory("date")).toThrow(ConfigError);
   });
 });
