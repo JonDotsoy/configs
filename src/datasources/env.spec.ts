@@ -40,6 +40,18 @@ describe("envDataSource", () => {
     expect(store.get()).toEqual({ server: { port: "3000", host: "localhost" } });
   });
 
+  test("maps a specific key while falling back to the identity mapping for the rest", async () => {
+    const mapKey = (key: string) => (key === "PORT" ? ["server", "port"] : [key]);
+
+    const source = envDataSource({
+      env: { PORT: "3000", HOST: "localhost" },
+      mapKey,
+    });
+    const store = await source.open();
+
+    expect(store.get()).toEqual({ server: { port: "3000" }, HOST: "localhost" });
+  });
+
   test("skips keys with an undefined value", async () => {
     const source = envDataSource({ env: { FOO: undefined } });
     const store = await source.open();
