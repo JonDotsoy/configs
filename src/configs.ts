@@ -19,9 +19,11 @@ export type {
 export type { DataType, DataTypeName } from "./utils/data-types";
 export type { EnvDataSourceOptions, EnvKeyMapper } from "./datasources/env";
 export type { FetchDataSourceOptions } from "./datasources/fetch";
+export type { SseDataSourceOptions } from "./datasources/sse";
 export { DataSource } from "./datasources/datasource";
 export { envDataSource, envKeyToPath } from "./datasources/env";
 export { fetchDataSource } from "./datasources/fetch";
+export { sseDataSource } from "./datasources/sse";
 export { Store } from "./utils/store";
 export { DataTypes } from "./utils/data-types";
 export { ConfigError } from "./errors";
