@@ -62,6 +62,8 @@ export interface ConfigGroupApi<S extends SchemaShape> extends SchemaGroup<S> {
   set<K extends keyof S & string>(key: K, value: InferShape<S>[K]): void;
   /** Closes every datasource backing this config tree. A no-op for a nested-form group of its own. */
   close(): Promise<void>;
+  /** Enables `await using s = await configs.create(...)`: disposal closes the config tree. */
+  [Symbol.asyncDispose](): Promise<void>;
 }
 
 type InferAccessor<F extends SchemaNode> = F extends SchemaGroup<infer S>

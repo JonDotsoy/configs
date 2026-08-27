@@ -463,6 +463,55 @@ describe("configs.create(...).close()", () => {
   });
 });
 
+describe("await using configs.create(...)", () => {
+  test("disposal closes the config's datasources", async () => {
+    let closed = false;
+    const source = new DataSource<{ port: number }>({
+      async start(control) {
+        control.set({ port: 3000 });
+      },
+      async close() {
+        closed = true;
+      },
+    });
+
+    {
+      await using cfg = await configs.create(
+        { port: { type: "number" } },
+        { datasources: [source] },
+      );
+      expect(cfg.port.get()).toBe(3000);
+      expect(closed).toBe(false);
+    }
+
+    expect(closed).toBe(true);
+  });
+
+  test("disposal happens on scope exit even when the block throws", async () => {
+    let closed = false;
+    const source = new DataSource<{ port: number }>({
+      async start(control) {
+        control.set({ port: 3000 });
+      },
+      async close() {
+        closed = true;
+      },
+    });
+
+    await expect(
+      (async () => {
+        await using _cfg = await configs.create(
+          { port: { type: "number" } },
+          { datasources: [source] },
+        );
+        throw new Error("boom");
+      })(),
+    ).rejects.toThrow("boom");
+
+    expect(closed).toBe(true);
+  });
+});
+
 describe("DataSource wrapping a Store", () => {
   function testSourceStream<T>(value: Store<T>): DataSource<T> {
     return new DataSource<T>({

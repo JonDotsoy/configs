@@ -140,6 +140,23 @@ const serverConfigs = await configs.create({ port: { type: "number" } }, { datas
 await serverConfigs.close();
 ```
 
+It also implements `Symbol.asyncDispose`, so `await using` closes it automatically at the end of
+the scope — including when the scope throws:
+
+```ts
+import { configs, sseDataSource } from "@jondotsoy/configs";
+
+async function run() {
+  await using serverConfigs = await configs.create(
+    { port: { type: "number" } },
+    { datasources: [sseDataSource({ url: "https://config-service.internal/app/events" })] },
+  );
+
+  console.log(serverConfigs.port.get());
+  // closed automatically here, no explicit serverConfigs.close() needed
+}
+```
+
 ## Install
 
 ```sh

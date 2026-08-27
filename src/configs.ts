@@ -181,6 +181,11 @@ export class ConfigNode<S extends SchemaShape> implements SchemaGroup<S> {
   async close(): Promise<void> {
     await Promise.all(this.dataSources.map((source) => source.close()));
   }
+
+  /** Enables `await using s = await configs.create(...)`: disposal closes the config tree. */
+  async [Symbol.asyncDispose](): Promise<void> {
+    await this.close();
+  }
 }
 
 /** A leaf config field, live as a `Store<T>`: `cfg.port.get()` reads the current value. Values are read-only, so `set()` always throws. */
