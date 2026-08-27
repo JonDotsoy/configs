@@ -43,17 +43,27 @@ const booleanType = {
   },
 };
 
+const arrayType = {
+  /** Comma-separated string becomes an array; an array is coerced element-wise and passed through. */
+  from(value: unknown): string[] {
+    if (Array.isArray(value)) return value.map((item) => stringType.from(item));
+    if (typeof value === "string") return value.split(",").map((item) => item.trim());
+    throw new ConfigError(`DataTypes.array.from: cannot convert ${typeof value} to array`);
+  },
+};
+
 const dataTypesRegistry = {
   number: numberType,
   string: stringType,
   boolean: booleanType,
+  array: arrayType,
 };
 
 export type DataTypeName = keyof typeof dataTypesRegistry;
 
 /** Looks up a converter by name (e.g. from a schema's `field.type`); an unknown name throws. */
 function factory(type: string): (typeof dataTypesRegistry)[DataTypeName] {
-  if (type === "number" || type === "string" || type === "boolean") {
+  if (type === "number" || type === "string" || type === "boolean" || type === "array") {
     return dataTypesRegistry[type];
   }
   throw new ConfigError(`DataTypes.factory: unknown type "${type}"`);

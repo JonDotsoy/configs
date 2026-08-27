@@ -83,16 +83,41 @@ describe("DataTypes.boolean.from", () => {
   });
 });
 
+describe("DataTypes.array.from", () => {
+  test("splits a comma-separated string", () => {
+    expect(DataTypes.array.from("foo,tar,biz")).toEqual(["foo", "tar", "biz"]);
+  });
+
+  test("trims whitespace around items", () => {
+    expect(DataTypes.array.from("foo, tar, biz")).toEqual(["foo", "tar", "biz"]);
+  });
+
+  test("passes an array through", () => {
+    expect(DataTypes.array.from(["foo", "tar", "biz"])).toEqual(["foo", "tar", "biz"]);
+  });
+
+  test("coerces array elements to strings", () => {
+    expect(DataTypes.array.from([1, true])).toEqual(["1", "true"]);
+  });
+
+  test("throws on any other type", () => {
+    expect(() => DataTypes.array.from(42)).toThrow(ConfigError);
+    expect(() => DataTypes.array.from({})).toThrow(ConfigError);
+    expect(() => DataTypes.array.from(null)).toThrow(ConfigError);
+  });
+});
+
 describe("DataTypes.factory", () => {
   test.each([
     ["number", "42", 42],
     ["string", 42, "42"],
     ["boolean", "true", true],
+    ["array", "foo,tar,biz", ["foo", "tar", "biz"]],
   ])("returns the %s converter", (type, input, expected) => {
-    expect(DataTypes.factory(type).from(input)).toBe(expected);
+    expect(DataTypes.factory(type).from(input)).toEqual(expected);
   });
 
-  test.each(["date", "array", ""])("throws on an unknown type name: %s", (type) => {
+  test.each(["date", ""])("throws on an unknown type name: %s", (type) => {
     expect(() => DataTypes.factory(type)).toThrow(ConfigError);
   });
 });
