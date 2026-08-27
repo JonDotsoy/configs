@@ -83,27 +83,27 @@ describe("DataTypes.boolean.from", () => {
   });
 });
 
-describe("DataTypes.array.from", () => {
+describe("DataTypes.list.from", () => {
   test("splits a comma-separated string", () => {
-    expect(DataTypes.array.from("foo,tar,biz")).toEqual(["foo", "tar", "biz"]);
+    expect(DataTypes.list.from("foo,tar,biz")).toEqual(["foo", "tar", "biz"]);
   });
 
   test("trims whitespace around items", () => {
-    expect(DataTypes.array.from("foo, tar, biz")).toEqual(["foo", "tar", "biz"]);
+    expect(DataTypes.list.from("foo, tar, biz")).toEqual(["foo", "tar", "biz"]);
   });
 
   test("passes an array through", () => {
-    expect(DataTypes.array.from(["foo", "tar", "biz"])).toEqual(["foo", "tar", "biz"]);
+    expect(DataTypes.list.from(["foo", "tar", "biz"])).toEqual(["foo", "tar", "biz"]);
   });
 
   test("coerces array elements to strings", () => {
-    expect(DataTypes.array.from([1, true])).toEqual(["1", "true"]);
+    expect(DataTypes.list.from([1, true])).toEqual(["1", "true"]);
   });
 
   test("throws on any other type", () => {
-    expect(() => DataTypes.array.from(42)).toThrow(ConfigError);
-    expect(() => DataTypes.array.from({})).toThrow(ConfigError);
-    expect(() => DataTypes.array.from(null)).toThrow(ConfigError);
+    expect(() => DataTypes.list.from(42)).toThrow(ConfigError);
+    expect(() => DataTypes.list.from({})).toThrow(ConfigError);
+    expect(() => DataTypes.list.from(null)).toThrow(ConfigError);
   });
 });
 
@@ -125,10 +125,10 @@ describe("DataTypes.factory", () => {
     ["boolean", "1", true],
     ["boolean", "false", false],
     ["boolean", "0", false],
-    ["array", "foo,tar,biz", ["foo", "tar", "biz"]],
-    ["array", "foo, tar, biz", ["foo", "tar", "biz"]],
-    ["array", ["foo", "tar", "biz"], ["foo", "tar", "biz"]],
-    ["array", [1, true], ["1", "true"]],
+    ["list", "foo,tar,biz", ["foo", "tar", "biz"]],
+    ["list", "foo, tar, biz", ["foo", "tar", "biz"]],
+    ["list", ["foo", "tar", "biz"], ["foo", "tar", "biz"]],
+    ["list", [1, true], ["1", "true"]],
   ])("returns the %s converter for %p", (type, input, expected) => {
     expect(DataTypes.factory(type).from(input)).toEqual(expected);
   });
