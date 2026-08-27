@@ -41,6 +41,33 @@ console.log(serverConfigs.server.port.get());
 
 ## Guide
 
+### `DataSource` — building a custom datasource
+
+The building block behind `envDataSource`, `fetchDataSource`, and `sseDataSource`. It takes an
+object with `start(control)` and an optional `close()`, mirroring `ReadableStream`'s
+`UnderlyingSource`: `start` runs once and pushes snapshots via `control.set(value)`, while `close`
+— called from within `start` via `control.close()`, or from the outside via the `DataSource`'s own
+`close()` — is where you release whatever `start` set up, like a timer or an in-flight request.
+
+```ts
+import { DataSource } from "@jondotsoy/configs";
+
+function pollingDataSource(url: string, intervalMs: number): DataSource<{ port: number }> {
+  let timer: ReturnType<typeof setInterval>;
+
+  return new DataSource({
+    async start(control) {
+      const poll = async () => control.set((await (await fetch(url)).json()) as { port: number });
+      await poll();
+      timer = setInterval(poll, intervalMs);
+    },
+    close() {
+      clearInterval(timer);
+    },
+  });
+}
+```
+
 ### `envDataSource` — environment variables
 
 Reads `process.env` (or any object you pass as `env`) into the config tree. `mapKey` decides how

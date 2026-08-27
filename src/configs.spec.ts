@@ -292,6 +292,29 @@ describe("DataSource", () => {
     expect(closed).toBe(true);
   });
 
+  test("close() tears down a resource start() set up (e.g. a timer)", async () => {
+    let timer: ReturnType<typeof setInterval> | undefined;
+    let ticks = 0;
+
+    const source = new DataSource<{ tick: number }>({
+      async start(control) {
+        control.set({ tick: ticks });
+        timer = setInterval(() => control.set({ tick: ++ticks }), 5);
+      },
+      close() {
+        clearInterval(timer);
+      },
+    });
+
+    await source.open();
+    await source.close();
+    const ticksAtClose = ticks;
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(ticks).toBe(ticksAtClose); // the timer no longer fires after close()
+  });
+
   test("when start() never calls control.set(), the store's value is null", async () => {
     const source = new DataSource<{ port: number }>({
       async start() {
