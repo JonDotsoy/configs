@@ -30,7 +30,8 @@
   },
   "scripts": {
     "build": "bash scripts/build.sh",
-    "build:types": "tsc -p tsconfig.build.json"
+    "build:types": "tsc -p tsconfig.build.json",
+    "test:pack": "bun run scripts/manual-pack-test.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
