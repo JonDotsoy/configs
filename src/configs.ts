@@ -18,6 +18,7 @@ export type {
 } from "./types";
 export { DataSource } from "./datasources/datasource";
 export { Store } from "./utils/store";
+export { DataTypes } from "./utils/data-types";
 export { ConfigError } from "./errors";
 
 function isConfigNode(node: unknown): node is SchemaGroup {
