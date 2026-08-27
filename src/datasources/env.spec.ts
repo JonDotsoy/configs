@@ -72,6 +72,52 @@ describe("envDataSource", () => {
     }
   });
 
+  test("strips a matching prefix from each key", async () => {
+    const source = envDataSource({ env: { MY_PORT: "3000" }, prefix: "MY_" });
+    const store = await source.open();
+
+    expect(store.get()).toEqual({ PORT: "3000" });
+  });
+
+  test("excludes keys that don't match the prefix", async () => {
+    const source = envDataSource({ env: { MY_PORT: "3000", OTHER_HOST: "localhost" }, prefix: "MY_" });
+    const store = await source.open();
+
+    expect(store.get()).toEqual({ PORT: "3000" });
+  });
+
+  test("strips a matching suffix from each key", async () => {
+    const source = envDataSource({ env: { PORT_MY: "3000" }, suffix: "_MY" });
+    const store = await source.open();
+
+    expect(store.get()).toEqual({ PORT: "3000" });
+  });
+
+  test("excludes keys that don't match the suffix", async () => {
+    const source = envDataSource({ env: { PORT_MY: "3000", HOST_OTHER: "localhost" }, suffix: "_MY" });
+    const store = await source.open();
+
+    expect(store.get()).toEqual({ PORT: "3000" });
+  });
+
+  test("combines prefix and suffix stripping", async () => {
+    const source = envDataSource({ env: { APP_PORT_DEV: "3000", OTHER_PORT_DEV: "x" }, prefix: "APP_", suffix: "_DEV" });
+    const store = await source.open();
+
+    expect(store.get()).toEqual({ PORT: "3000" });
+  });
+
+  test("applies prefix/suffix stripping before mapKey", async () => {
+    const source = envDataSource({
+      env: { MY_SERVER_PORT: "3000" },
+      prefix: "MY_",
+      mapKey: envKeyToPath,
+    });
+    const store = await source.open();
+
+    expect(store.get()).toEqual({ server: { port: "3000" } });
+  });
+
   test("wires into configs.create as a datasource", async () => {
     const cfg = await configs.create(
       {
