@@ -2,6 +2,7 @@ import { ConfigError } from "./errors";
 import { Store } from "./utils/store";
 import type { CreateOptions, FieldSchema, InferAccessors, SchemaGroup, SchemaShape } from "./types";
 import type { InferShape } from "./types";
+import type { DataSource } from "./datasources/datasource";
 
 export type {
   ConfigGroupApi,
@@ -16,8 +17,16 @@ export type {
   SchemaShape,
   UnderlyingDataSource,
 } from "./types";
+export type { DataType, DataTypeName } from "./utils/data-types";
+export type { EnvDataSourceOptions, EnvKeyMapper } from "./datasources/env";
+export type { FetchDataSourceOptions } from "./datasources/fetch";
+export type { SseDataSourceOptions } from "./datasources/sse";
 export { DataSource } from "./datasources/datasource";
+export { envDataSource, envKeyToPath } from "./datasources/env";
+export { fetchDataSource } from "./datasources/fetch";
+export { sseDataSource } from "./datasources/sse";
 export { Store } from "./utils/store";
+export { DataTypes } from "./utils/data-types";
 export { ConfigError } from "./errors";
 
 function isConfigNode(node: unknown): node is SchemaGroup {
@@ -81,6 +90,8 @@ export class ConfigNode<S extends SchemaShape> implements SchemaGroup<S> {
     /** Static, lowest-priority fallback tree — checked after every store, before a field's own `default`. */
     private readonly defaultValues: unknown = null,
     readonly basePath: string[] = [],
+    /** The datasources backing `rootStores`, closed by `close()`. Empty for a nested-form group of its own. */
+    private readonly dataSources: DataSource<any>[] = [],
   ) {
     // Any datasource updating (e.g. a Store-backed source re-firing) recomputes and pushes
     // fresh values into whichever fields have already been accessed.
@@ -134,10 +145,13 @@ export class ConfigNode<S extends SchemaShape> implements SchemaGroup<S> {
     if (!isConfigNode(node)) {
       throw new ConfigError(`"${key}" is not a nested config group`);
     }
-    return new ConfigNode(node.shape, this.rootStores, this.defaultValues, [
-      ...this.basePath,
-      key,
-    ]);
+    return new ConfigNode(
+      node.shape,
+      this.rootStores,
+      this.defaultValues,
+      [...this.basePath, key],
+      this.dataSources,
+    );
   }
 
   get(): InferShape<S> {
@@ -161,6 +175,16 @@ export class ConfigNode<S extends SchemaShape> implements SchemaGroup<S> {
     const path = [...this.basePath, key];
     validate(node, value, path);
     throw new ConfigError(`Cannot set "${path.join(".")}": config values are read-only`);
+  }
+
+  /** Closes every datasource backing this config tree. A no-op for a nested-form group of its own. */
+  async close(): Promise<void> {
+    await Promise.all(this.dataSources.map((source) => source.close()));
+  }
+
+  /** Enables `await using s = await configs.create(...)`: disposal closes the config tree. */
+  async [Symbol.asyncDispose](): Promise<void> {
+    await this.close();
   }
 }
 
@@ -210,7 +234,7 @@ export function create<S extends SchemaShape>(
   }
   const datasources = options.datasources ?? [];
   return Promise.all(datasources.map((source) => source.open())).then((stores) => {
-    return wrap(new ConfigNode(shape, stores, options.defaultValues ?? null));
+    return wrap(new ConfigNode(shape, stores, options.defaultValues ?? null, [], datasources));
   });
 }
 

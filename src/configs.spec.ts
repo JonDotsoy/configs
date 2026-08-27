@@ -150,6 +150,26 @@ describe("configs.create", () => {
     expect(cfg.get()).toEqual({ retries: 3 });
   });
 
+  describe("field.get() type inference", () => {
+    test("without a default, the type includes null", async () => {
+      const cfg = await configs.create(
+        { port: { type: "number" } },
+        { datasources: [testSource({ port: 3000 })] },
+      );
+
+      expectTypeOf(cfg.port.get()).toEqualTypeOf<number | null>();
+    });
+
+    test("with a default, the type excludes null", async () => {
+      const cfg = await configs.create(
+        { port: { type: "number", default: 3000 } },
+        { datasources: [testSource({})] },
+      );
+
+      expectTypeOf(cfg.port.get()).toEqualTypeOf<number>();
+    });
+  });
+
   test("returns null for optional fields with no value", async () => {
     const cfg = await configs.create(
       { nickname: { type: "string" } },
@@ -292,6 +312,29 @@ describe("DataSource", () => {
     expect(closed).toBe(true);
   });
 
+  test("close() tears down a resource start() set up (e.g. a timer)", async () => {
+    let timer: ReturnType<typeof setInterval> | undefined;
+    let ticks = 0;
+
+    const source = new DataSource<{ tick: number }>({
+      async start(control) {
+        control.set({ tick: ticks });
+        timer = setInterval(() => control.set({ tick: ++ticks }), 5);
+      },
+      close() {
+        clearInterval(timer);
+      },
+    });
+
+    await source.open();
+    await source.close();
+    const ticksAtClose = ticks;
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(ticks).toBe(ticksAtClose); // the timer no longer fires after close()
+  });
+
   test("when start() never calls control.set(), the store's value is null", async () => {
     const source = new DataSource<{ port: number }>({
       async start() {
@@ -313,6 +356,179 @@ describe("DataSource", () => {
     await expect(
       configs.create({ port: { type: "number" } }, { datasources: [failing] }),
     ).rejects.toThrow("boom");
+  });
+
+  describe("close()", () => {
+    test("runs the underlying close() hook", async () => {
+      let closed = false;
+      const source = new DataSource<{ port: number }>({
+        async start(control) {
+          control.set({ port: 3000 });
+        },
+        async close() {
+          closed = true;
+        },
+      });
+
+      await source.open();
+      await source.close();
+
+      expect(closed).toBe(true);
+    });
+
+    test("is safe to call multiple times, running the hook only once", async () => {
+      let calls = 0;
+      const source = new DataSource<{ port: number }>({
+        async start(control) {
+          control.set({ port: 3000 });
+        },
+        async close() {
+          calls++;
+        },
+      });
+
+      await source.open();
+      await Promise.all([source.close(), source.close(), source.close()]);
+
+      expect(calls).toBe(1);
+    });
+
+    test("resolves even when there's no close() hook", async () => {
+      const source = new DataSource<{ port: number }>({
+        async start(control) {
+          control.set({ port: 3000 });
+        },
+      });
+
+      await source.open();
+      await expect(source.close()).resolves.toBeUndefined();
+    });
+
+    test("calling close() before open() still lets open() resolve, but drops the pending set()", async () => {
+      let closed = false;
+      const source = new DataSource<{ port: number }>({
+        async start(control) {
+          control.set({ port: 3000 });
+        },
+        async close() {
+          closed = true;
+        },
+      });
+
+      await source.close();
+      const store = await source.open();
+
+      expect(store.get()).toBeNull();
+      expect(closed).toBe(true);
+    });
+  });
+});
+
+describe("configs.create(...).close()", () => {
+  test("closes every configured datasource", async () => {
+    let closedA = false;
+    let closedB = false;
+    const sourceA = new DataSource<{ port: number }>({
+      async start(control) {
+        control.set({ port: 3000 });
+      },
+      async close() {
+        closedA = true;
+      },
+    });
+    const sourceB = new DataSource<{ host: string }>({
+      async start(control) {
+        control.set({ host: "localhost" });
+      },
+      async close() {
+        closedB = true;
+      },
+    });
+
+    const cfg = await configs.create(
+      { port: { type: "number" }, host: { type: "string" } },
+      { datasources: [sourceA, sourceB] },
+    );
+
+    await cfg.close();
+
+    expect(closedA).toBe(true);
+    expect(closedB).toBe(true);
+  });
+
+  test("closes the same datasources from a nested group", async () => {
+    let closed = false;
+    const source = new DataSource<{ server: { port: number } }>({
+      async start(control) {
+        control.set({ server: { port: 3000 } });
+      },
+      async close() {
+        closed = true;
+      },
+    });
+
+    const cfg = await configs.create(
+      { server: configs.create({ port: { type: "number" } }) },
+      { datasources: [source] },
+    );
+
+    await cfg.server.close();
+
+    expect(closed).toBe(true);
+  });
+
+  test("is a no-op for a nested-form group created without its own datasources", async () => {
+    const cfg = configs.create({ port: { type: "number" } });
+    await expect(cfg.close()).resolves.toBeUndefined();
+  });
+});
+
+describe("await using configs.create(...)", () => {
+  test("disposal closes the config's datasources", async () => {
+    let closed = false;
+    const source = new DataSource<{ port: number }>({
+      async start(control) {
+        control.set({ port: 3000 });
+      },
+      async close() {
+        closed = true;
+      },
+    });
+
+    {
+      await using cfg = await configs.create(
+        { port: { type: "number" } },
+        { datasources: [source] },
+      );
+      expect(cfg.port.get()).toBe(3000);
+      expect(closed).toBe(false);
+    }
+
+    expect(closed).toBe(true);
+  });
+
+  test("disposal happens on scope exit even when the block throws", async () => {
+    let closed = false;
+    const source = new DataSource<{ port: number }>({
+      async start(control) {
+        control.set({ port: 3000 });
+      },
+      async close() {
+        closed = true;
+      },
+    });
+
+    await expect(
+      (async () => {
+        await using _cfg = await configs.create(
+          { port: { type: "number" } },
+          { datasources: [source] },
+        );
+        throw new Error("boom");
+      })(),
+    ).rejects.toThrow("boom");
+
+    expect(closed).toBe(true);
   });
 });
 

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "scoped-commits": {
+      "source": "jondotsoy/skills",
+      "sourceType": "github",
+      "skillPath": "scoped-commits/SKILL.md",
+      "computedHash": "c61089669bc60854d01a90eefe1e27cda8161704672e20fd8212f67743083989"
+    }
+  }
+}
