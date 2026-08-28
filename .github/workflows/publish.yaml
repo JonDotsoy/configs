@@ -1,0 +1,59 @@
+name: Publish Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  id-token: write  # Required for npm OIDC trusted publishing
+  contents: write  # Required to push the version bump commit
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: latest
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Bump package.json version to match the tag
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          npm pkg set version="$version"
+          if git diff --quiet -- package.json; then
+            echo "package.json already at $version, nothing to commit"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add package.json
+            git commit -m "chore: bump version to $version"
+            git push origin HEAD:${{ github.event.repository.default_branch }}
+          fi
+
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: bun test
+      - run: bun run test:pack
+
+      - name: Determine npm dist-tag
+        id: dist-tag
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          prerelease="${version#*-}"
+          if [ "$prerelease" = "$version" ]; then
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${prerelease%%.*}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - run: npm publish --access public --tag ${{ steps.dist-tag.outputs.tag }}
