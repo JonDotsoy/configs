@@ -31,13 +31,13 @@ jobs:
       - run: bun test
       - run: bun run test:pack
 
-      - name: Debug OIDC environment
-        run: |
-          echo "ACTIONS_ID_TOKEN_REQUEST_URL is set: $([ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ] && echo yes || echo no)"
-          echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN is set: $([ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ] && echo yes || echo no)"
-          npm --version
-          npm config get registry
-          npm config list
+      - name: Strip the empty authToken setup-node writes to .npmrc
+        # setup-node's registry-url always writes an
+        # //registry.npmjs.org/:_authToken line referencing
+        # NODE_AUTH_TOKEN, even when that env var is unset. npm treats
+        # that (empty) entry as configured credentials and never
+        # attempts the OIDC trusted-publishing exchange, so strip it.
+        run: sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG"
 
       - name: Determine npm dist-tag
         id: dist-tag
