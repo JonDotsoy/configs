@@ -1,4 +1,4 @@
-import { Source } from "./source";
+import { Source } from "./source.js";
 
 /** Maps an env var key to a path into the config tree, e.g. `mapKey("FOO_TAR")`. */
 export type EnvKeyMapper = (key: string) => string[];

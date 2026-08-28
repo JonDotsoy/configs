@@ -1,5 +1,5 @@
-import { Store } from "../utils/store";
-import type { SourceControl, UnderlyingSource } from "../types";
+import { Store } from "../utils/store.js";
+import type { SourceControl, UnderlyingSource } from "../types/index.js";
 
 /**
  * A read-only, async config source modeled after `ReadableStream`: `start(control)` runs once,

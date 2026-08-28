@@ -1,9 +1,9 @@
-import { Source } from "./source";
+import { Source } from "./source.js";
 
 export interface SseSourceOptions {
   url: string | URL;
   method?: string;
-  headers?: Bun.HeadersInit;
+  headers?: RequestInit["headers"];
 }
 
 function isPatch(value: unknown): value is Record<string, unknown> {

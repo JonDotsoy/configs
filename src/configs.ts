@@ -1,5 +1,5 @@
-import { createConfigNode } from "./config.types";
-import type { configs as ConfigsApi } from "./config.types";
+import { createConfigNode } from "./config.types.js";
+import type { configs as ConfigsApi } from "./config.types.js";
 
 export type {
   CreateOptions,
@@ -11,25 +11,25 @@ export type {
   SchemaGroup,
   SchemaNode,
   SchemaShape,
-} from "./config.types";
-export type { SourceControl, UnderlyingSource } from "./types";
-export type { DataType, DataTypeName } from "./utils/data-types";
-export type { EnvSourceOptions, EnvKeyMapper } from "./sources/env";
-export type { FetchSourceOptions } from "./sources/fetch";
-export type { SseSourceOptions } from "./sources/sse";
-export type { FileSourceOptions } from "./sources/file";
+} from "./config.types.js";
+export type { SourceControl, UnderlyingSource } from "./types/index.js";
+export type { DataType, DataTypeName } from "./utils/data-types.js";
+export type { EnvSourceOptions, EnvKeyMapper } from "./sources/env.js";
+export type { FetchSourceOptions } from "./sources/fetch.js";
+export type { SseSourceOptions } from "./sources/sse.js";
+export type { FileSourceOptions } from "./sources/file.js";
 
-export { ConfigNode, ConfigNodeResolved } from "./config.types";
-export { Source } from "./sources/source";
-export { envSource, mapKey } from "./sources/env";
-export { fetchSource } from "./sources/fetch";
-export { sseSource } from "./sources/sse";
-export { fileSource } from "./sources/file";
-export { literalSource } from "./sources/literal";
-export { Store } from "./utils/store";
-export { DataTypes } from "./utils/data-types";
-export { DotEnv } from "./utils/dotenv";
-export { ConfigError } from "./errors";
+export { ConfigNode, ConfigNodeResolved } from "./config.types.js";
+export { Source } from "./sources/source.js";
+export { envSource, mapKey } from "./sources/env.js";
+export { fetchSource } from "./sources/fetch.js";
+export { sseSource } from "./sources/sse.js";
+export { fileSource } from "./sources/file.js";
+export { literalSource } from "./sources/literal.js";
+export { Store } from "./utils/store.js";
+export { DataTypes } from "./utils/data-types.js";
+export { DotEnv } from "./utils/dotenv.js";
+export { ConfigError } from "./errors.js";
 
 export const configs: ConfigsApi = {
   create: createConfigNode,

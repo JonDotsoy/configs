@@ -1,3 +1,3 @@
-export type { SourceControl, UnderlyingSource } from "./source";
+export type { SourceControl, UnderlyingSource } from "./source.js";
 export type {
-} from "./schema";
+} from "./schema.js";
