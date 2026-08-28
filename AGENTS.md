@@ -25,6 +25,7 @@ src/
     fetch.ts                 # fetchSource
     sse.ts                    # sseSource
     file.ts                    # fileSource (.json/.env, live via fs.watch)
+    literal.ts                 # literalSource (static value, publishes once)
     *.spec.ts                 # co-located bun:test specs
   types/                    # shared type-level helpers (schema, source, InferShape)
   utils/

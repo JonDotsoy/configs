@@ -44,6 +44,7 @@ console.log(serverConfigs.server.port.get());
   - [`fetchSource` — a JSON endpoint over HTTP](#fetchsource--a-json-endpoint-over-http)
   - [`sseSource` — live updates over Server-Sent Events](#ssesource--live-updates-over-server-sent-events)
   - [`fileSource` — a local `.json` or `.env` file](#filesource--a-local-json-or-env-file)
+  - [`literalSource` — a static value](#literalsource--a-static-value)
   - [Reacting to changes — restarting a periodic task](#reacting-to-changes--restarting-a-periodic-task)
   - [Closing a config tree](#closing-a-config-tree)
 
@@ -57,8 +58,8 @@ npm install @jondotsoy/configs
 
 ### `Source` — building a custom source
 
-The building block behind `envSource`, `fetchSource`, `sseSource`, and
-`fileSource`. It takes an
+The building block behind `envSource`, `fetchSource`, `sseSource`, `fileSource`, and
+`literalSource`. It takes an
 object with `start(control)` and an optional `close()`, mirroring `ReadableStream`'s
 `UnderlyingSource`: `start` runs once and pushes snapshots via `control.set(value)`, while `close`
 — called from within `start` via `control.close()`, or from the outside via the `Source`'s own
@@ -181,6 +182,30 @@ import { fileSource } from "@jondotsoy/configs";
 
 const source = fileSource<{ port: number; host: string }>("./config.json");
 // config.json: { "port": 3000, "host": "localhost" }
+```
+
+### `literalSource` — a static value
+
+Publishes a plain, already-in-hand value as a snapshot immediately, then closes. No I/O, no
+options — just wraps `value` in a `Source` so it can sit in a `sources` array alongside the rest.
+Handy as a static fallback tree (put it last so real sources win), a hardcoded default for a
+single environment, or a stand-in source in a test.
+
+```ts
+import { configs, envSource, literalSource, mapKey } from "@jondotsoy/configs";
+
+const cfg = await configs.create(
+  {
+    port: { type: "number", required: true },
+    host: { type: "string", required: true },
+  },
+  {
+    sources: [
+      envSource({ mapKey: mapKey.snakeCase() }),
+      literalSource({ port: 3000, host: "localhost" }), // fallback if env vars are unset
+    ],
+  },
+);
 ```
 
 ### Reacting to changes — restarting a periodic task

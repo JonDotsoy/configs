@@ -15,7 +15,7 @@ import { join } from "node:path";
 const repoRoot = new URL("..", import.meta.url).pathname;
 
 const MANUAL_TEST_SOURCE = `
-import { configs, envSource, mapKey, Source, ConfigError } from "@jondotsoy/configs";
+import { configs, envSource, literalSource, mapKey, Source, ConfigError } from "@jondotsoy/configs";
 import { envSource as envSource2 } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
@@ -28,6 +28,7 @@ function assert(cond, message) {
 assert(typeof configs.create === "function", "configs.create is a function");
 assert(typeof envSource === "function", "envSource exported from root");
 assert(typeof mapKey.snakeCase === "function", "mapKey.snakeCase exported from root");
+assert(typeof literalSource === "function", "literalSource exported from root");
 assert(typeof Source === "function", "Source exported from root");
 assert(typeof ConfigError === "function", "ConfigError exported from root");
 assert(typeof envSource2 === "function", "envSource exported from /sources/env");

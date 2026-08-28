@@ -1,7 +1,7 @@
 {
   "name": "@jondotsoy/configs",
   "version": "0.1.0",
-  "description": "A reactive, typed configuration library backed by pluggable sources (env, fetch, sse, file).",
+  "description": "A reactive, typed configuration library backed by pluggable sources (env, fetch, sse, file, literal).",
   "keywords": [
     "config",
     "configuration",
@@ -64,6 +64,11 @@
       "_entryPoint": "./src/sources/file.ts",
       "types": "./dist/sources/file.d.ts",
       "import": "./dist/sources/file.js"
+    },
+    "./sources/literal": {
+      "_entryPoint": "./src/sources/literal.ts",
+      "types": "./dist/sources/literal.d.ts",
+      "import": "./dist/sources/literal.js"
     }
   },
   "scripts": {

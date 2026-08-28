@@ -25,6 +25,7 @@ export { envSource, mapKey } from "./sources/env";
 export { fetchSource } from "./sources/fetch";
 export { sseSource } from "./sources/sse";
 export { fileSource } from "./sources/file";
+export { literalSource } from "./sources/literal";
 export { Store } from "./utils/store";
 export { DataTypes } from "./utils/data-types";
 export { DotEnv } from "./utils/dotenv";
