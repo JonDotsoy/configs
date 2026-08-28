@@ -26,6 +26,14 @@ jobs:
           node-version: latest
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Set package.json version from ref name
+        # tag push -> ref_name is "v1.2.3"; branch push -> "release/v1.2.3-demo.1"
+        run: |
+          version="${{ github.ref_name }}"
+          version="${version#release/}"
+          version="${version#v}"
+          npm pkg set version="$version"
+
       - run: bun install --frozen-lockfile
       - run: bun run build
       - run: bun test
