@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1]
+
+### Fixed
+
+- Internal relative imports/exports in `src/*.ts` now carry an explicit `.js` extension,
+  so `tsc`'s declaration emit preserves it into `dist/**/*.d.ts` — the published types now
+  resolve correctly under `moduleResolution: node16`/`nodenext`, the setting TypeScript
+  recommends for consuming a published ESM package from Node. Previously, a bare relative
+  specifier in the source came out just as bare in the `.d.ts`, which that resolution mode
+  can't resolve, breaking type-checking for Node and Deno consumers.
+- `FetchSourceOptions`/`SseSourceOptions.headers` is now typed as `RequestInit["headers"]`
+  instead of `Bun.HeadersInit`. The Bun-specific type was leaking into published
+  declarations, breaking type-checking for any Node/Deno consumer without `bun-types`
+  installed, even when `headers` was never used.
+
 ## [1.0.0]
 
 ### Added
@@ -36,4 +51,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ConfigError` for schema/config-level errors, and `DataTypes`/`DataTypeName` for the field type
   and coercion helpers backing schema fields.
 
+[1.0.1]: https://github.com/JonDotsoy/configs/releases/tag/v1.0.1
 [1.0.0]: https://github.com/JonDotsoy/configs/releases/tag/v1.0.0
