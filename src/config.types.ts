@@ -1,6 +1,6 @@
-import { Source } from "./sources/source";
-import { Store, type Subscriber, type Unsubscribe } from "./utils/store";
-import { ConfigError } from "./errors";
+import { Source } from "./sources/source.js";
+import { Store, type Subscriber, type Unsubscribe } from "./utils/store.js";
+import { ConfigError } from "./errors.js";
 
 export type FieldType = "string" | "number" | "boolean";
 

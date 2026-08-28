@@ -7,7 +7,8 @@ A tool for all your configurations.
 - **Typed with TS check** — schemas are statically checked, so `cfg.port.get()` is inferred as `number | null` (or `number` when a `default` is set), not `any`.
 
 ```ts
-import { configs, envSource, mapKey } from "@jondotsoy/configs";
+import { configs } from "@jondotsoy/configs";
+import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
 
 // SERVER_PORT=3000 SERVER_HOST=localhost → { server: { port: "3000", host: "localhost" } }
 const source = envSource({ mapKey: mapKey.snakeCase() });
@@ -91,6 +92,8 @@ hands `control.set` one SSE message at a time) can publish the merged result wit
 own accumulator variable around:
 
 ```ts
+import { Source } from "@jondotsoy/configs";
+
 const source = new Source<{ port?: number; host?: string }>({
   start(control) {
     control.set({ port: 3000 });   // -> reduce({ port: 3000 }, null)
@@ -123,7 +126,7 @@ Built-in strategies live under the `mapKey` namespace, each a factory returning 
   exception to whatever strategy the rest use.
 
 ```ts
-import { envSource, mapKey } from "@jondotsoy/configs";
+import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
 
 // SERVER_PORT=3000 SERVER_HOST=localhost → { server: { port: "3000", host: "localhost" } }
 const source = envSource({ mapKey: mapKey.snakeCase() });
@@ -136,6 +139,8 @@ You can also pass your own `EnvKeyMapper` instead of a built-in strategy — it'
 `(key: string) => string[]` function:
 
 ```ts
+import { envSource } from "@jondotsoy/configs/sources/env";
+
 const source = envSource({
   mapKey: (key) => (key === "PORT" ? ["server", "port"] : [key]),
 });
@@ -150,7 +155,7 @@ succeeds, or the body isn't valid JSON, it logs a `console.error` and leaves the
 instead of throwing.
 
 ```ts
-import { fetchSource } from "@jondotsoy/configs";
+import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 
 const source = fetchSource<{ port: number }>({
   url: "https://config-service.internal/app",
@@ -167,7 +172,7 @@ if it's a plain object, is applied as a **patch** on top of what was already rec
 up and overwrite, the tree is never replaced wholesale:
 
 ```ts
-import { sseSource } from "@jondotsoy/configs";
+import { sseSource } from "@jondotsoy/configs/sources/sse";
 
 const source = sseSource<{ port?: number; host?: string }>({
   url: "https://config-service.internal/app/events",
@@ -195,7 +200,7 @@ is logged via `console.error` and leaves the store empty instead of throwing —
 later change keeps the last good value instead.
 
 ```ts
-import { fileSource } from "@jondotsoy/configs";
+import { fileSource } from "@jondotsoy/configs/sources/file";
 
 const source = fileSource<{ port: number; host: string }>("./config.json");
 // config.json: { "port": 3000, "host": "localhost" }
@@ -209,7 +214,9 @@ Handy as a static fallback tree (put it last so real sources win), a hardcoded d
 single environment, or a stand-in source in a test.
 
 ```ts
-import { configs, envSource, literalSource, mapKey } from "@jondotsoy/configs";
+import { configs } from "@jondotsoy/configs";
+import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
+import { literalSource } from "@jondotsoy/configs/sources/literal";
 
 const cfg = await configs.create(
   {
@@ -233,7 +240,8 @@ changes. This only really happens at runtime with a live source like `sseSource`
 `envSource` resolves once and never changes:
 
 ```ts
-import { configs, sseSource } from "@jondotsoy/configs";
+import { configs } from "@jondotsoy/configs";
+import { sseSource } from "@jondotsoy/configs/sources/sse";
 
 async function cleanupTempFiles() {
   // ...
@@ -270,7 +278,8 @@ source backing them — for `sseSource`, this aborts the live connection instead
 it open in the background:
 
 ```ts
-import { configs, sseSource } from "@jondotsoy/configs";
+import { configs } from "@jondotsoy/configs";
+import { sseSource } from "@jondotsoy/configs/sources/sse";
 
 const source = sseSource({ url: "https://config-service.internal/app/events" });
 const serverConfigs = await configs.create({ port: { type: "number" } }, { sources: [source] });
@@ -282,7 +291,8 @@ It also implements `Symbol.asyncDispose`, so `await using` closes it automatical
 the scope — including when the scope throws:
 
 ```ts
-import { configs, sseSource } from "@jondotsoy/configs";
+import { configs } from "@jondotsoy/configs";
+import { sseSource } from "@jondotsoy/configs/sources/sse";
 
 async function run() {
   await using serverConfigs = await configs.create(

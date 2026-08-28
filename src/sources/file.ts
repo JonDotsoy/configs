@@ -1,7 +1,7 @@
 import { watch, type FSWatcher } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { Source } from "./source";
-import { DotEnv } from "../utils/dotenv";
+import { Source } from "./source.js";
+import { DotEnv } from "../utils/dotenv.js";
 
 export interface FileSourceOptions {
   /** Republishes the config tree whenever the file changes on disk. Defaults to `true`. */

@@ -1,4 +1,4 @@
-import { ConfigError } from "../errors";
+import { ConfigError } from "../errors.js";
 
 type Primitive = string | number | boolean;
 

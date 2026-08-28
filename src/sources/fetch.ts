@@ -1,9 +1,9 @@
-import { Source } from "./source";
+import { Source } from "./source.js";
 
 export interface FetchSourceOptions {
   url: string | URL;
   method?: string;
-  headers?: Bun.HeadersInit;
+  headers?: RequestInit["headers"];
   /** Attempts to download the data before giving up. Defaults to 1 (no retry). */
   attempts?: number;
 }
