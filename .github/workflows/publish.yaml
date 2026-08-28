@@ -31,6 +31,14 @@ jobs:
       - run: bun test
       - run: bun run test:pack
 
+      - name: Debug OIDC environment
+        run: |
+          echo "ACTIONS_ID_TOKEN_REQUEST_URL is set: $([ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ] && echo yes || echo no)"
+          echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN is set: $([ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ] && echo yes || echo no)"
+          npm --version
+          npm config get registry
+          npm config list
+
       - name: Determine npm dist-tag
         id: dist-tag
         run: |
