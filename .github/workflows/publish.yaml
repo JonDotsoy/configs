@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - claude/publish-npm-0-1-0-3xo4fr
 
 permissions:
   id-token: write  # Required for OIDC
@@ -23,4 +25,4 @@ jobs:
       - run: bun run build
       - run: bun test
       - run: bun run test:pack
-      - run: bun publish --access public
+      # - run: bun publish --access public
