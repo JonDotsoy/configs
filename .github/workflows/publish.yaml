@@ -31,4 +31,16 @@ jobs:
       - run: bun test
       - run: bun run test:pack
       - run: npm install -g npm@latest  # ensure OIDC trusted publishing support (npm >=11.5.1)
-      - run: npm publish --access public
+
+      - name: Determine npm dist-tag
+        id: dist-tag
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          prerelease="${version#*-}"
+          if [ "$prerelease" = "$version" ]; then
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${prerelease%%.*}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - run: npm publish --access public --tag ${{ steps.dist-tag.outputs.tag }}
