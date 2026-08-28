@@ -47,9 +47,10 @@ async function readEvents(
 
 /**
  * A `Source` that connects to a Server-Sent Events endpoint. Every message tries to parse as
- * JSON; a successful parse of a plain object is applied as a shallow patch onto the config tree
- * accumulated so far (new fields are added, existing ones overwritten, everything else kept) —
- * e.g. `{"port":3000}` then `{"host":"10.0.0.1"}` end up as `{ port: 3000, host: "10.0.0.1" }`.
+ * JSON; a successful parse of a plain object is published via `control.set`, which — through this
+ * source's `reduce` — is applied as a shallow patch onto the config tree accumulated so far (new
+ * fields are added, existing ones overwritten, everything else kept) — e.g. `{"port":3000}` then
+ * `{"host":"10.0.0.1"}` end up as `{ port: 3000, host: "10.0.0.1" }`.
  * A message that isn't valid JSON, or doesn't parse to a plain object, is logged via
  * `console.error` and skipped, without disturbing the accumulated state or the connection.
  *
@@ -82,8 +83,6 @@ export function sseSource<T = unknown>(options: SseSourceOptions): Source<T> {
         return;
       }
 
-      let state: Record<string, unknown> = {};
-
       await new Promise<void>((resolveFirstMessage) => {
         let settled = false;
         const settle = () => {
@@ -109,8 +108,7 @@ export function sseSource<T = unknown>(options: SseSourceOptions): Source<T> {
             return;
           }
 
-          state = { ...state, ...parsed };
-          control.set(state as T);
+          control.set(parsed as T);
           settle();
         })
           .catch((error) => {
@@ -124,6 +122,11 @@ export function sseSource<T = unknown>(options: SseSourceOptions): Source<T> {
           });
       });
     },
+    reduce: (patch, previous) =>
+      ({
+        ...((previous as Record<string, unknown> | null) ?? {}),
+        ...(patch as Record<string, unknown>),
+      }) as T,
     close() {
       abortController.abort();
     },

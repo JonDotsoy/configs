@@ -84,6 +84,23 @@ function pollingSource(url: string, intervalMs: number): Source<{ port: number }
 }
 ```
 
+An optional `reduce(incoming, previous)` runs every `control.set(incoming)` call through it (along
+with the last published value, `null` before the first `set()`) instead of publishing `incoming`
+as-is — so a source whose `start()` only ever produces a partial patch (like `sseSource`, which
+hands `control.set` one SSE message at a time) can publish the merged result without keeping its
+own accumulator variable around:
+
+```ts
+const source = new Source<{ port?: number; host?: string }>({
+  start(control) {
+    control.set({ port: 3000 });   // -> reduce({ port: 3000 }, null)
+    control.set({ host: "x" });    // -> reduce({ host: "x" }, { port: 3000 })
+  },
+  reduce: (patch, previous) => ({ ...(previous ?? {}), ...patch }),
+});
+// published: { port: 3000, host: "x" }
+```
+
 ### `envSource` — environment variables
 
 Reads `process.env` (or any object you pass as `env`) into the config tree. `mapKey` decides how

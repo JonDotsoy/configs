@@ -55,13 +55,18 @@ folder `src/sources/`, and the `CreateOptions.sources` array passed to
 
 When adding a new source, follow the existing shape:
 
-- Factory function named `<name>Source()`, camelCase, returning `new Source<T>({ start, close? })`.
+- Factory function named `<name>Source()`, camelCase, returning `new Source<T>({ start, close?, reduce? })`.
 - Its options type named `<Name>SourceOptions`.
 - File lives at `src/sources/<name>.ts`, with a co-located `<name>.spec.ts`.
 - `start(control)` pushes snapshots via `control.set(value)` (repeatable — a
   live source like `sseSource`/`fileSource` calls it more than once) and
   calls `control.close()` when done; an optional `close()` releases whatever
   `start` set up (timers, connections, watchers).
+- If `start` only ever produces partial patches instead of whole-tree
+  snapshots (like `sseSource`'s SSE messages), give it a `reduce(incoming,
+  previous)` instead of accumulating manually — every `control.set(incoming)`
+  runs through it (with `previous` `null` before the first call) and its
+  return value is what actually gets published.
 - Export both the factory and its options type from `src/configs.ts`, and add
   a matching `./sources/<name>` entry (with `_entryPoint`) to `package.json`'s
   `exports` map so it's a public subpath.
