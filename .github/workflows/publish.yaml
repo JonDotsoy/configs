@@ -50,4 +50,4 @@ jobs:
             echo "tag=${prerelease%%.*}" >> "$GITHUB_OUTPUT"
           fi
 
-      - run: npm publish --access public --tag ${{ steps.dist-tag.outputs.tag }}
+      - run: npm publish --access public --tag ${{ steps.dist-tag.outputs.tag }} --loglevel silly
