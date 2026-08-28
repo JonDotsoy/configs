@@ -54,6 +54,12 @@ describe("DataTypes.string.from", () => {
     expect(DataTypes.string.from(false)).toBe("false");
   });
 
+  test("stringifies a URL", () => {
+    expect(DataTypes.string.from(new URL("https://example.com/path"))).toBe(
+      "https://example.com/path",
+    );
+  });
+
   test("throws on any other type", () => {
     expect(() => DataTypes.string.from({})).toThrow(ConfigError);
     expect(() => DataTypes.string.from(null)).toThrow(ConfigError);

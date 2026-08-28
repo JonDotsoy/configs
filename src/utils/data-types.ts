@@ -27,6 +27,7 @@ const numberType: DataType<number> = {
 
 const stringType: DataType<string> = {
   from(value: unknown): string {
+    if (value instanceof URL) return value.toString();
     assertPrimitive(value, "string");
     return String(value);
   },
