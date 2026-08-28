@@ -154,14 +154,24 @@ download on a network error or a non-`ok` response (default `1`, no retry). If t
 succeeds, or the body isn't valid JSON, it logs a `console.error` and leaves the store empty
 instead of throwing.
 
+`pollingInterval` controls whether `fetchSource` keeps re-fetching `url` over time. **It's off by
+default** (`false`): `fetchSource` fetches `url` exactly once and closes, same as if the option
+were never set. Pass a number of milliseconds to turn polling on — `fetchSource` then keeps
+fetching `url` on that interval (each round still retried up to `attempts` times), updating the
+store on every successful fetch, until the `Source` is closed. A failed round after the first one
+is logged and skipped, without closing the source or stopping the polling.
+
 ```ts
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+import { Temporal } from "temporal-polyfill";
 
 const source = fetchSource<{ port: number }>({
   url: "https://config-service.internal/app",
   method: "GET",
   headers: { authorization: `Bearer ${process.env.CONFIG_TOKEN}` },
   attempts: 3,
+  // Off by default — pass a number of milliseconds to poll instead of fetching once.
+  pollingInterval: Temporal.Duration.from({ seconds: 30 }).total("milliseconds"),
 });
 ```
 
