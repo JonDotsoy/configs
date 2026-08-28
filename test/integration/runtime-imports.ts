@@ -102,7 +102,7 @@ describe("runtime import checks", () => {
         if (exitCode !== 0) console.error(stderr);
         expect(exitCode).toBe(0);
         expect(stdout).toContain("ALL_CHECKS_PASSED");
-        expect(stdout.match(/^ok - /gm)?.length).toBe(9);
+        expect(stdout.match(/^ok - /gm)?.length).toBe(10);
       },
     );
   }
