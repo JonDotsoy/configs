@@ -1,3 +1,3 @@
-export type { DataSourceControl, UnderlyingDataSource } from "./datasource";
+export type { SourceControl, UnderlyingSource } from "./source";
 export type {
 } from "./schema";

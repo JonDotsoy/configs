@@ -1,6 +1,6 @@
-import { DataSource } from "./datasource";
+import { Source } from "./source";
 
-export interface SseDataSourceOptions {
+export interface SseSourceOptions {
   url: string | URL;
   method?: string;
   headers?: Bun.HeadersInit;
@@ -46,10 +46,11 @@ async function readEvents(
 }
 
 /**
- * A `DataSource` that connects to a Server-Sent Events endpoint. Every message tries to parse as
- * JSON; a successful parse of a plain object is applied as a shallow patch onto the config tree
- * accumulated so far (new fields are added, existing ones overwritten, everything else kept) —
- * e.g. `{"port":3000}` then `{"host":"10.0.0.1"}` end up as `{ port: 3000, host: "10.0.0.1" }`.
+ * A `Source` that connects to a Server-Sent Events endpoint. Every message tries to parse as
+ * JSON; a successful parse of a plain object is published via `control.set`, which — through this
+ * source's `reduce` — is applied as a shallow patch onto the config tree accumulated so far (new
+ * fields are added, existing ones overwritten, everything else kept) — e.g. `{"port":3000}` then
+ * `{"host":"10.0.0.1"}` end up as `{ port: 3000, host: "10.0.0.1" }`.
  * A message that isn't valid JSON, or doesn't parse to a plain object, is logged via
  * `console.error` and skipped, without disturbing the accumulated state or the connection.
  *
@@ -57,32 +58,30 @@ async function readEvents(
  * without ever receiving one) — so `open()` always hands back a `Store` with data already in it,
  * not one waiting on a race. The connection then stays open in the background, applying further
  * messages as patches, until the resource closes the stream — or `close()` is called on the
- * returned `DataSource` (or via a config tree's own `close()`), which aborts the connection.
+ * returned `Source` (or via a config tree's own `close()`), which aborts the connection.
  */
-export function sseDataSource<T = unknown>(options: SseDataSourceOptions): DataSource<T> {
+export function sseSource<T = unknown>(options: SseSourceOptions): Source<T> {
   const { url, method = "GET", headers } = options;
   const abortController = new AbortController();
 
-  return new DataSource<T>({
+  return new Source<T>({
     async start(control) {
       let response: Response;
       try {
         response = await fetch(url, { method, headers, signal: abortController.signal });
       } catch (error) {
         if (!abortController.signal.aborted) {
-          console.error(`sseDataSource: failed to connect to "${url}"`, error);
+          console.error(`sseSource: failed to connect to "${url}"`, error);
         }
         control.close();
         return;
       }
 
       if (!response.ok || !response.body) {
-        console.error(`sseDataSource: received ${response.status} ${response.statusText} from "${url}"`);
+        console.error(`sseSource: received ${response.status} ${response.statusText} from "${url}"`);
         control.close();
         return;
       }
-
-      let state: Record<string, unknown> = {};
 
       await new Promise<void>((resolveFirstMessage) => {
         let settled = false;
@@ -100,22 +99,21 @@ export function sseDataSource<T = unknown>(options: SseDataSourceOptions): DataS
           try {
             parsed = JSON.parse(raw);
           } catch (error) {
-            console.error(`sseDataSource: message from "${url}" is not valid JSON`, error);
+            console.error(`sseSource: message from "${url}" is not valid JSON`, error);
             return;
           }
 
           if (!isPatch(parsed)) {
-            console.error(`sseDataSource: message from "${url}" did not parse to a JSON object`, parsed);
+            console.error(`sseSource: message from "${url}" did not parse to a JSON object`, parsed);
             return;
           }
 
-          state = { ...state, ...parsed };
-          control.set(state as T);
+          control.set(parsed as T);
           settle();
         })
           .catch((error) => {
             if (!abortController.signal.aborted) {
-              console.error(`sseDataSource: connection to "${url}" ended with an error`, error);
+              console.error(`sseSource: connection to "${url}" ended with an error`, error);
             }
           })
           .finally(() => {
@@ -124,6 +122,11 @@ export function sseDataSource<T = unknown>(options: SseDataSourceOptions): DataS
           });
       });
     },
+    reduce: (patch, previous) =>
+      ({
+        ...((previous as Record<string, unknown> | null) ?? {}),
+        ...(patch as Record<string, unknown>),
+      }) as T,
     close() {
       abortController.abort();
     },

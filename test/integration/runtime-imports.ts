@@ -35,7 +35,7 @@ const runtimes: { name: string; bin: string | undefined; args: string[] }[] = [
   { name: "Node LTS", bin: process.env.NODE_LST_BIN, args: [fixtureScript] },
   { name: "Node latest", bin: process.env.NODE_LATEST_BIN, args: [fixtureScript] },
   { name: "Bun latest", bin: process.env.BUN_LATEST_BIN, args: [fixtureScript] },
-  // envDataSource() with no explicit `env` reads all of process.env, so Deno
+  // envSource() with no explicit `env` reads all of process.env, so Deno
   // needs unscoped --allow-env (a per-key scope isn't enough).
   { name: "Deno latest", bin: process.env.DENO_LATEST_BIN, args: ["run", "--allow-env", "--allow-read", fixtureScript] },
 ];
@@ -96,13 +96,13 @@ afterAll(async () => {
 describe("runtime import checks", () => {
   for (const runtime of runtimes) {
     test.skipIf(!runtime.bin)(
-      `${runtime.name} imports @jondotsoy/configs and every datasources/* subpath`,
+      `${runtime.name} imports @jondotsoy/configs and every sources/* subpath`,
       async () => {
         const { stdout, stderr, exitCode } = await runScript(runtime.bin!, runtime.args);
         if (exitCode !== 0) console.error(stderr);
         expect(exitCode).toBe(0);
         expect(stdout).toContain("ALL_CHECKS_PASSED");
-        expect(stdout.match(/^ok - /gm)?.length).toBe(9);
+        expect(stdout.match(/^ok - /gm)?.length).toBe(10);
       },
     );
   }

@@ -1,29 +1,71 @@
 import { describe, expect, test } from "bun:test";
 import { configs } from "../configs";
-import { envDataSource, envKeyToPath } from "./env";
+import { envSource, mapKey } from "./env";
 
-describe("envKeyToPath", () => {
+describe("mapKey.snakeCase", () => {
   test("splits a SCREAMING_SNAKE_CASE key into a lowercase path", () => {
-    expect(envKeyToPath("FOO_TAR")).toEqual(["foo", "tar"]);
+    expect(mapKey.snakeCase()("FOO_TAR")).toEqual(["foo", "tar"]);
   });
 
   test("passes a key without underscores through as a single segment", () => {
-    expect(envKeyToPath("PORT")).toEqual(["port"]);
+    expect(mapKey.snakeCase()("PORT")).toEqual(["port"]);
+  });
+
+  test("splits on a custom separator instead of a single underscore", () => {
+    expect(mapKey.snakeCase({ separator: "__" })("API_KEY_V2__ENABLED")).toEqual([
+      "api_key_v2",
+      "enabled",
+    ]);
   });
 });
 
-describe("envDataSource", () => {
+describe("mapKey.identity", () => {
+  test("passes a key through unchanged as a single-segment path", () => {
+    expect(mapKey.identity()("FOO_TAR")).toEqual(["FOO_TAR"]);
+  });
+});
+
+describe("mapKey.camelCase", () => {
+  test("maps a SCREAMING_SNAKE_CASE key to a single camelCase segment", () => {
+    expect(mapKey.camelCase()("FOO_TAR")).toEqual(["fooTar"]);
+  });
+
+  test("passes a key without underscores through lowercased", () => {
+    expect(mapKey.camelCase()("PORT")).toEqual(["port"]);
+  });
+
+  test("camelCases every underscore-separated word", () => {
+    expect(mapKey.camelCase()("SERVER_HTTP_PORT")).toEqual(["serverHttpPort"]);
+  });
+});
+
+describe("mapKey.lookup", () => {
+  test("maps a key found in the table", () => {
+    expect(mapKey.lookup({ PORT: ["server", "port"] })("PORT")).toEqual(["server", "port"]);
+  });
+
+  test("falls back to the identity mapping for a key not in the table", () => {
+    expect(mapKey.lookup({ PORT: ["server", "port"] })("HOST")).toEqual(["HOST"]);
+  });
+
+  test("falls back to a custom mapper for a key not in the table", () => {
+    const mapped = mapKey.lookup({ PORT: ["server", "port"] }, mapKey.snakeCase())("SERVER_HOST");
+    expect(mapped).toEqual(["server", "host"]);
+  });
+});
+
+describe("envSource", () => {
   test("defaults to the identity mapping: FOO_TAR => ['FOO_TAR']", async () => {
-    const source = envDataSource({ env: { FOO_TAR: "1" } });
+    const source = envSource({ env: { FOO_TAR: "1" } });
     const store = await source.open();
 
     expect(store.get()).toEqual({ FOO_TAR: "1" });
   });
 
   test("uses a custom mapKey to build nested paths", async () => {
-    const source = envDataSource({
+    const source = envSource({
       env: { FOO_TAR: "baz" },
-      mapKey: envKeyToPath,
+      mapKey: mapKey.snakeCase(),
     });
     const store = await source.open();
 
@@ -31,22 +73,19 @@ describe("envDataSource", () => {
   });
 
   test("merges multiple keys mapped under the same parent", async () => {
-    const source = envDataSource({
+    const source = envSource({
       env: { SERVER_PORT: "3000", SERVER_HOST: "localhost" },
-      mapKey: envKeyToPath,
+      mapKey: mapKey.snakeCase(),
     });
     const store = await source.open();
 
     expect(store.get()).toEqual({ server: { port: "3000", host: "localhost" } });
   });
 
-  test("maps a specific key while falling back to the identity mapping for the rest", async () => {
-    const mapKey = (key: string) =>
-      ({ PORT: ["server", "port"] } as Record<string, string[]>)[key] ?? [key];
-
-    const source = envDataSource({
+  test("maps a specific key via mapKey.lookup while falling back to the identity mapping for the rest", async () => {
+    const source = envSource({
       env: { PORT: "3000", HOST: "localhost" },
-      mapKey,
+      mapKey: mapKey.lookup({ PORT: ["server", "port"] }),
     });
     const store = await source.open();
 
@@ -54,7 +93,7 @@ describe("envDataSource", () => {
   });
 
   test("skips keys with an undefined value", async () => {
-    const source = envDataSource({ env: { FOO: undefined } });
+    const source = envSource({ env: { FOO: undefined } });
     const store = await source.open();
 
     expect(store.get()).toEqual({});
@@ -63,7 +102,7 @@ describe("envDataSource", () => {
   test("defaults to reading from process.env", async () => {
     process.env.CONFIGS_TEST_VAR = "hello";
     try {
-      const source = envDataSource();
+      const source = envSource();
       const store = await source.open();
 
       expect((store.get() as Record<string, unknown>).CONFIGS_TEST_VAR).toBe("hello");
@@ -73,52 +112,52 @@ describe("envDataSource", () => {
   });
 
   test("strips a matching prefix from each key", async () => {
-    const source = envDataSource({ env: { MY_PORT: "3000" }, prefix: "MY_" });
+    const source = envSource({ env: { MY_PORT: "3000" }, prefix: "MY_" });
     const store = await source.open();
 
     expect(store.get()).toEqual({ PORT: "3000" });
   });
 
   test("excludes keys that don't match the prefix", async () => {
-    const source = envDataSource({ env: { MY_PORT: "3000", OTHER_HOST: "localhost" }, prefix: "MY_" });
+    const source = envSource({ env: { MY_PORT: "3000", OTHER_HOST: "localhost" }, prefix: "MY_" });
     const store = await source.open();
 
     expect(store.get()).toEqual({ PORT: "3000" });
   });
 
   test("strips a matching suffix from each key", async () => {
-    const source = envDataSource({ env: { PORT_MY: "3000" }, suffix: "_MY" });
+    const source = envSource({ env: { PORT_MY: "3000" }, suffix: "_MY" });
     const store = await source.open();
 
     expect(store.get()).toEqual({ PORT: "3000" });
   });
 
   test("excludes keys that don't match the suffix", async () => {
-    const source = envDataSource({ env: { PORT_MY: "3000", HOST_OTHER: "localhost" }, suffix: "_MY" });
+    const source = envSource({ env: { PORT_MY: "3000", HOST_OTHER: "localhost" }, suffix: "_MY" });
     const store = await source.open();
 
     expect(store.get()).toEqual({ PORT: "3000" });
   });
 
   test("combines prefix and suffix stripping", async () => {
-    const source = envDataSource({ env: { APP_PORT_DEV: "3000", OTHER_PORT_DEV: "x" }, prefix: "APP_", suffix: "_DEV" });
+    const source = envSource({ env: { APP_PORT_DEV: "3000", OTHER_PORT_DEV: "x" }, prefix: "APP_", suffix: "_DEV" });
     const store = await source.open();
 
     expect(store.get()).toEqual({ PORT: "3000" });
   });
 
   test("applies prefix/suffix stripping before mapKey", async () => {
-    const source = envDataSource({
+    const source = envSource({
       env: { MY_SERVER_PORT: "3000" },
       prefix: "MY_",
-      mapKey: envKeyToPath,
+      mapKey: mapKey.snakeCase(),
     });
     const store = await source.open();
 
     expect(store.get()).toEqual({ server: { port: "3000" } });
   });
 
-  test("wires into configs.create as a datasource", async () => {
+  test("wires into configs.create as a source", async () => {
     const cfg = await configs.create(
       {
         server: configs.create({
@@ -127,10 +166,10 @@ describe("envDataSource", () => {
         }),
       },
       {
-        datasources: [
-          envDataSource({
+        sources: [
+          envSource({
             env: { SERVER_PORT: "3000", SERVER_HOST: "localhost" },
-            mapKey: envKeyToPath,
+            mapKey: mapKey.snakeCase(),
           }),
         ],
       },

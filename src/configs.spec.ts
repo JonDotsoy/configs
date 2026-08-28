@@ -1,16 +1,16 @@
 import { describe, expect, expectTypeOf, test } from "bun:test";
 import { Store, store } from "./utils/store";
-import { DataSource } from "./datasources/datasource";
-import { envDataSource, envKeyToPath } from "./datasources/env";
+import { Source } from "./sources/source";
+import { envSource, mapKey } from "./sources/env";
 import { ConfigError } from "./errors";
 import { ConfigNode, ConfigNodeResolved } from "./config.types.ts";
 import type { configs, InferReadOnlyAccessors, ReadOnlyStore, SchemaGroup } from "./config.types.ts";
 
 declare const configs: configs;
 
-/** Builds a `DataSource` that immediately publishes `value` and closes, since `datasources` now requires actual `DataSource` instances. */
-function testSource<T>(value: T): DataSource<T> {
-  return new DataSource<T>({
+/** Builds a `Source` that immediately publishes `value` and closes, since `sources` now requires actual `Source` instances. */
+function testSource<T>(value: T): Source<T> {
+  return new Source<T>({
     async start(control) {
       control.set(value);
       control.close();
@@ -19,7 +19,7 @@ function testSource<T>(value: T): DataSource<T> {
 }
 
 describe("configs.create", () => {
-  test("earlier datasources win per field; a field missing there falls through to the next one", async () => {
+  test("earlier sources win per field; a field missing there falls through to the next one", async () => {
     const serverConfigs = await configs.create(
       {
         port: { type: "number", summary: "HTTP port", required: true },
@@ -30,7 +30,7 @@ describe("configs.create", () => {
         }),
       },
       {
-        datasources: [
+        sources: [
           // only port and tls.key
           testSource({ port: 8080, tls: { key: "key.pem" } }),
           // host and tls.cert fall through to here
@@ -56,8 +56,8 @@ describe("configs.create", () => {
     expectTypeOf(serverConfigs.tls.cert).toEqualTypeOf<ReadOnlyStore<string | null>>();
   });
 
-  test("falls back to the next datasource when the first store's value is null", async () => {
-    const neverSets = new DataSource<{ port: number }>({
+  test("falls back to the next source when the first store's value is null", async () => {
+    const neverSets = new Source<{ port: number }>({
       async start(control) {
         control.close();
       },
@@ -65,44 +65,44 @@ describe("configs.create", () => {
 
     const cfg = await configs.create(
       { port: { type: "number", required: true } },
-      { datasources: [neverSets, testSource({ port: 3000 })] },
+      { sources: [neverSets, testSource({ port: 3000 })] },
     );
 
     expect(cfg.port.get()).toBe(3000);
   });
 
   describe("port priority resolution", () => {
-    test("first datasource's value wins when both have it", async () => {
+    test("first source's value wins when both have it", async () => {
       const cfg = await configs.create(
         { port: { type: "number", summary: "HTTP port", required: true } },
-        { datasources: [testSource({ port: 8080 }), testSource({ port: 3000 })] },
+        { sources: [testSource({ port: 8080 }), testSource({ port: 3000 })] },
       );
 
       expect(cfg.port.get()).toBe(8080);
     });
 
-    test("falls through to the second datasource when the first doesn't have the field", async () => {
+    test("falls through to the second source when the first doesn't have the field", async () => {
       const cfg = await configs.create(
         { port: { type: "number", summary: "HTTP port", required: true } },
-        { datasources: [testSource({}), testSource({ port: 3000 })] },
+        { sources: [testSource({}), testSource({ port: 3000 })] },
       );
 
       expect(cfg.port.get()).toBe(3000);
     });
 
-    test("resolves to null when no datasource has the field", async () => {
+    test("resolves to null when no source has the field", async () => {
       const cfg = await configs.create(
         { port: { type: "number", summary: "HTTP port", required: true } },
-        { datasources: [testSource({}), testSource({})] },
+        { sources: [testSource({}), testSource({})] },
       );
 
       expect(cfg.port.get()).toBeNull();
     });
 
-    test("coerces a numeric string from the winning datasource", async () => {
+    test("coerces a numeric string from the winning source", async () => {
       const cfg = await configs.create(
         { port: { type: "number", summary: "HTTP port", required: true } },
-        { datasources: [testSource({ port: "3000" }), testSource({})] },
+        { sources: [testSource({ port: "3000" }), testSource({})] },
       );
 
       expect(cfg.port.get()).toBe(3000);
@@ -117,7 +117,7 @@ describe("configs.create", () => {
           key: { type: "string" },
         }),
       },
-      { datasources: [testSource({ port: 80, tls: { key: "k" } })] },
+      { sources: [testSource({ port: 80, tls: { key: "k" } })] },
     );
 
     expect(serverConfigs.port.get()).toBe(80);
@@ -130,7 +130,7 @@ describe("configs.create", () => {
         port: { type: "number" },
         tls: configs.create({ key: { type: "string" } }),
       },
-      { datasources: [testSource({ port: 80, tls: { key: "k" } })] },
+      { sources: [testSource({ port: 80, tls: { key: "k" } })] },
     );
 
     expectTypeOf(serverConfigs.port).not.toHaveProperty("set");
@@ -143,17 +143,17 @@ describe("configs.create", () => {
   test("the field's Store is the same instance across accesses", async () => {
     const serverConfigs = await configs.create(
       { port: { type: "number", required: true } },
-      { datasources: [testSource({ port: 80 })] },
+      { sources: [testSource({ port: 80 })] },
     );
 
     expect(serverConfigs.port).toBe(serverConfigs.port);
     expect(serverConfigs.port.get()).toBe(80);
   });
 
-  test("falls back to default when no datasource has a value", async () => {
+  test("falls back to default when no source has a value", async () => {
     const cfg = await configs.create(
       { retries: { type: "number", default: 3 } },
-      { datasources: [testSource({})] },
+      { sources: [testSource({})] },
     );
 
     expect(cfg.get()).toEqual({ retries: 3 });
@@ -163,7 +163,7 @@ describe("configs.create", () => {
     test("without a default, the type includes null", async () => {
       const cfg = await configs.create(
         { port: { type: "number" } },
-        { datasources: [testSource({ port: 3000 })] },
+        { sources: [testSource({ port: 3000 })] },
       );
 
       expectTypeOf(cfg.port.get()).toEqualTypeOf<number | null>();
@@ -172,7 +172,7 @@ describe("configs.create", () => {
     test("with a default, the type excludes null", async () => {
       const cfg = await configs.create(
         { port: { type: "number", default: 3000 } },
-        { datasources: [testSource({})] },
+        { sources: [testSource({})] },
       );
 
       expectTypeOf(cfg.port.get()).toEqualTypeOf<number>();
@@ -182,7 +182,7 @@ describe("configs.create", () => {
   test("returns null for optional fields with no value", async () => {
     const cfg = await configs.create(
       { nickname: { type: "string" } },
-      { datasources: [testSource({})] },
+      { sources: [testSource({})] },
     );
 
     expect(cfg.get()).toEqual({ nickname: null });
@@ -191,7 +191,7 @@ describe("configs.create", () => {
   test("resolves required fields with no value anywhere to null instead of throwing", async () => {
     const cfg = await configs.create(
       { apiKey: { type: "string", required: true } },
-      { datasources: [testSource({})] },
+      { sources: [testSource({})] },
     );
 
     expect(cfg.get()).toEqual({ apiKey: null });
@@ -200,7 +200,7 @@ describe("configs.create", () => {
   test("validates string values against a pattern", async () => {
     const cfg = await configs.create(
       { host: { type: "string", pattern: /^[a-z]+$/ } },
-      { datasources: [testSource({ host: "not valid!" })] },
+      { sources: [testSource({ host: "not valid!" })] },
     );
 
     expect(() => cfg.get()).toThrow(ConfigError);
@@ -209,13 +209,13 @@ describe("configs.create", () => {
   test("coerces numeric strings but rejects non-numeric ones", async () => {
     const cfg = await configs.create(
       { port: { type: "number" } },
-      { datasources: [testSource({ port: "1234" })] },
+      { sources: [testSource({ port: "1234" })] },
     );
     expect(cfg.get()).toEqual({ port: 1234 });
 
     const bad = await configs.create(
       { port: { type: "number" } },
-      { datasources: [testSource({ port: "not-a-number" })] },
+      { sources: [testSource({ port: "not-a-number" })] },
     );
     expect(() => bad.get()).toThrow(ConfigError);
   });
@@ -223,15 +223,15 @@ describe("configs.create", () => {
   test("coerces boolean-ish strings", async () => {
     const cfg = await configs.create(
       { debug: { type: "boolean" } },
-      { datasources: [testSource({ debug: "true" })] },
+      { sources: [testSource({ debug: "true" })] },
     );
     expect(cfg.get()).toEqual({ debug: true });
   });
 
-  test("set throws when no datasource is writable", async () => {
+  test("set throws when no source is writable", async () => {
     const cfg = await configs.create(
       { port: { type: "number" } },
-      { datasources: [testSource({ port: 3000 })] },
+      { sources: [testSource({ port: 3000 })] },
     );
     expect(() => cfg.set("port", 4000)).toThrow(ConfigError);
   });
@@ -243,28 +243,28 @@ describe("configs.create", () => {
   });
 });
 
-describe("nested groups with their own datasources", () => {
-  test("a nested group resolves its own datasource independently of the parent", async () => {
+describe("nested groups with their own sources", () => {
+  test("a nested group resolves its own source independently of the parent", async () => {
     const cfg = await configs.create({
       server: configs.create(
         { port: { type: "number" } },
-        { datasources: [envDataSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+        { sources: [envSource({ env: { PORT: "3000" }, mapKey: mapKey.snakeCase() })] },
       ),
     });
 
     expect(cfg.server.port.get()).toBe(3000);
   });
 
-  test("a nested group's own datasource does not leak into the parent's fields", async () => {
+  test("a nested group's own source does not leak into the parent's fields", async () => {
     const cfg = await configs.create(
       {
         name: { type: "string" },
         server: configs.create(
           { port: { type: "number" } },
-          { datasources: [envDataSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+          { sources: [envSource({ env: { PORT: "3000" }, mapKey: mapKey.snakeCase() })] },
         ),
       },
-      { datasources: [testSource({ name: "svc" })] },
+      { sources: [testSource({ name: "svc" })] },
     );
 
     expect(cfg.name.get()).toBe("svc");
@@ -272,29 +272,29 @@ describe("nested groups with their own datasources", () => {
     expect((cfg.get() as Record<string, unknown>).port).toBeUndefined();
   });
 
-  test("the parent's datasources do not leak into a nested group with its own datasource", async () => {
+  test("the parent's sources do not leak into a nested group with its own source", async () => {
     const cfg = await configs.create(
       {
         server: configs.create(
           { port: { type: "number" } },
-          { datasources: [envDataSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+          { sources: [envSource({ env: { PORT: "3000" }, mapKey: mapKey.snakeCase() })] },
         ),
       },
-      { datasources: [testSource({ server: { port: 9999 } })] },
+      { sources: [testSource({ server: { port: 9999 } })] },
     );
 
     expect(cfg.server.port.get()).toBe(3000);
   });
 
-  test("multiple independent nested groups each resolve from their own datasource", async () => {
+  test("multiple independent nested groups each resolve from their own source", async () => {
     const cfg = await configs.create({
       primary: configs.create(
         { port: { type: "number" } },
-        { datasources: [envDataSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+        { sources: [envSource({ env: { PORT: "3000" }, mapKey: mapKey.snakeCase() })] },
       ),
       secondary: configs.create(
         { port: { type: "number" } },
-        { datasources: [envDataSource({ env: { PORT: "4000" }, mapKey: envKeyToPath })] },
+        { sources: [envSource({ env: { PORT: "4000" }, mapKey: mapKey.snakeCase() })] },
       ),
     });
 
@@ -302,9 +302,9 @@ describe("nested groups with their own datasources", () => {
     expect(cfg.secondary.port.get()).toBe(4000);
   });
 
-  test("closing the parent also closes a nested group's own datasources", async () => {
+  test("closing the parent also closes a nested group's own sources", async () => {
     let closed = false;
-    const nestedSource = new DataSource<{ port: number }>({
+    const nestedSource = new Source<{ port: number }>({
       start(control) {
         control.set({ port: 3000 });
         control.close();
@@ -315,7 +315,7 @@ describe("nested groups with their own datasources", () => {
     });
 
     const cfg = await configs.create({
-      server: configs.create({ port: { type: "number" } }, { datasources: [nestedSource] }),
+      server: configs.create({ port: { type: "number" } }, { sources: [nestedSource] }),
     });
 
     expect(cfg.server.port.get()).toBe(3000);
@@ -323,11 +323,11 @@ describe("nested groups with their own datasources", () => {
     expect(closed).toBe(true);
   });
 
-  test("stays a synchronous, thenable ConfigNode even once a nested group carries its own datasources", () => {
+  test("stays a synchronous, thenable ConfigNode even once a nested group carries its own sources", () => {
     const pending = configs.create({
       server: configs.create(
         { port: { type: "number" } },
-        { datasources: [envDataSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+        { sources: [envSource({ env: { PORT: "3000" }, mapKey: mapKey.snakeCase() })] },
       ),
     });
 
@@ -337,11 +337,11 @@ describe("nested groups with their own datasources", () => {
     >();
   });
 
-  test("infers a nested group's field the same whether it shares or owns its datasources", async () => {
+  test("infers a nested group's field the same whether it shares or owns its sources", async () => {
     const cfg = await configs.create({
       server: configs.create(
         { port: { type: "number" } },
-        { datasources: [envDataSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+        { sources: [envSource({ env: { PORT: "3000" }, mapKey: mapKey.snakeCase() })] },
       ),
     });
 
@@ -355,7 +355,7 @@ describe("configs.create() as a ConfigNode", () => {
   test("root form returns a ConfigNode instance synchronously, before it resolves", () => {
     const cfg = configs.create(
       { port: { type: "number" } },
-      { datasources: [testSource({ port: 3000 })] },
+      { sources: [testSource({ port: 3000 })] },
     );
 
     expect(cfg).toBeInstanceOf(ConfigNode);
@@ -365,7 +365,7 @@ describe("configs.create() as a ConfigNode", () => {
   test("ConfigNode.then() resolves to a ConfigNodeResolved instance", async () => {
     const cfg = configs.create(
       { port: { type: "number" } },
-      { datasources: [testSource({ port: 3000 })] },
+      { sources: [testSource({ port: 3000 })] },
     );
 
     const resolved = await cfg;
@@ -376,7 +376,7 @@ describe("configs.create() as a ConfigNode", () => {
   test("a ConfigNodeResolved is still a ConfigNode", async () => {
     const cfg = configs.create(
       { port: { type: "number" } },
-      { datasources: [testSource({ port: 3000 })] },
+      { sources: [testSource({ port: 3000 })] },
     );
 
     const resolved = await cfg;
@@ -387,14 +387,14 @@ describe("configs.create() as a ConfigNode", () => {
   test("awaiting still exposes live field access on the resolved node", async () => {
     const cfg = await configs.create(
       { port: { type: "number" } },
-      { datasources: [testSource({ port: 3000 })] },
+      { sources: [testSource({ port: 3000 })] },
     );
 
     expect(cfg.port.get()).toBe(3000);
   });
 });
 
-describe("DataSource", () => {
+describe("Source", () => {
   test("resolves the config once control.set() then control.close() are called", async () => {
     const serverConfigs = await configs.create(
       {
@@ -406,8 +406,8 @@ describe("DataSource", () => {
         }),
       },
       {
-        datasources: [
-          new DataSource<{
+        sources: [
+          new Source<{
             port: number;
             host: string;
             tls: { key: string; cert: string };
@@ -433,7 +433,7 @@ describe("DataSource", () => {
   });
 
   test("open() resolves once start() itself finishes, with a Store populated via control.set()", async () => {
-    const source = new DataSource<{ port: number }>({
+    const source = new Source<{ port: number }>({
       async start(control) {
         control.set({ port: 3000 });
       },
@@ -444,7 +444,7 @@ describe("DataSource", () => {
   });
 
   test("open() returns the same live Store on every call", async () => {
-    const source = new DataSource<{ port: number }>({
+    const source = new Source<{ port: number }>({
       async start(control) {
         control.set({ port: 3000 });
       },
@@ -456,7 +456,7 @@ describe("DataSource", () => {
 
   test("the underlying close() runs once control.close() is called from within start()", async () => {
     let closed = false;
-    const source = new DataSource<{ value: number }>({
+    const source = new Source<{ value: number }>({
       async start(control) {
         control.set({ value: 1 });
         control.close();
@@ -476,7 +476,7 @@ describe("DataSource", () => {
     let timer: ReturnType<typeof setInterval> | undefined;
     let ticks = 0;
 
-    const source = new DataSource<{ tick: number }>({
+    const source = new Source<{ tick: number }>({
       async start(control) {
         control.set({ tick: ticks });
         timer = setInterval(() => control.set({ tick: ++ticks }), 5);
@@ -496,7 +496,7 @@ describe("DataSource", () => {
   });
 
   test("when start() never calls control.set(), the store's value is null", async () => {
-    const source = new DataSource<{ port: number }>({
+    const source = new Source<{ port: number }>({
       async start() {
         // never sets a value
       },
@@ -507,21 +507,21 @@ describe("DataSource", () => {
   });
 
   test("a rejected start() rejects configs.create()", async () => {
-    const failing = new DataSource<{ port: number }>({
+    const failing = new Source<{ port: number }>({
       async start() {
         throw new Error("boom");
       },
     });
 
     await expect(
-      Promise.resolve(configs.create({ port: { type: "number" } }, { datasources: [failing] })),
+      Promise.resolve(configs.create({ port: { type: "number" } }, { sources: [failing] })),
     ).rejects.toThrow("boom");
   });
 
   describe("close()", () => {
     test("runs the underlying close() hook", async () => {
       let closed = false;
-      const source = new DataSource<{ port: number }>({
+      const source = new Source<{ port: number }>({
         async start(control) {
           control.set({ port: 3000 });
         },
@@ -538,7 +538,7 @@ describe("DataSource", () => {
 
     test("is safe to call multiple times, running the hook only once", async () => {
       let calls = 0;
-      const source = new DataSource<{ port: number }>({
+      const source = new Source<{ port: number }>({
         async start(control) {
           control.set({ port: 3000 });
         },
@@ -554,7 +554,7 @@ describe("DataSource", () => {
     });
 
     test("resolves even when there's no close() hook", async () => {
-      const source = new DataSource<{ port: number }>({
+      const source = new Source<{ port: number }>({
         async start(control) {
           control.set({ port: 3000 });
         },
@@ -566,7 +566,7 @@ describe("DataSource", () => {
 
     test("calling close() before open() still lets open() resolve, but drops the pending set()", async () => {
       let closed = false;
-      const source = new DataSource<{ port: number }>({
+      const source = new Source<{ port: number }>({
         async start(control) {
           control.set({ port: 3000 });
         },
@@ -585,10 +585,10 @@ describe("DataSource", () => {
 });
 
 describe("configs.create(...).close()", () => {
-  test("closes every configured datasource", async () => {
+  test("closes every configured source", async () => {
     let closedA = false;
     let closedB = false;
-    const sourceA = new DataSource<{ port: number }>({
+    const sourceA = new Source<{ port: number }>({
       async start(control) {
         control.set({ port: 3000 });
       },
@@ -596,7 +596,7 @@ describe("configs.create(...).close()", () => {
         closedA = true;
       },
     });
-    const sourceB = new DataSource<{ host: string }>({
+    const sourceB = new Source<{ host: string }>({
       async start(control) {
         control.set({ host: "localhost" });
       },
@@ -607,7 +607,7 @@ describe("configs.create(...).close()", () => {
 
     const cfg = await configs.create(
       { port: { type: "number" }, host: { type: "string" } },
-      { datasources: [sourceA, sourceB] },
+      { sources: [sourceA, sourceB] },
     );
 
     await cfg.close();
@@ -616,9 +616,9 @@ describe("configs.create(...).close()", () => {
     expect(closedB).toBe(true);
   });
 
-  test("closes the same datasources from a nested group", async () => {
+  test("closes the same sources from a nested group", async () => {
     let closed = false;
-    const source = new DataSource<{ server: { port: number } }>({
+    const source = new Source<{ server: { port: number } }>({
       async start(control) {
         control.set({ server: { port: 3000 } });
       },
@@ -629,7 +629,7 @@ describe("configs.create(...).close()", () => {
 
     const cfg = await configs.create(
       { server: configs.create({ port: { type: "number" } }) },
-      { datasources: [source] },
+      { sources: [source] },
     );
 
     await cfg.server.close();
@@ -637,16 +637,16 @@ describe("configs.create(...).close()", () => {
     expect(closed).toBe(true);
   });
 
-  test("is a no-op for a nested-form group created without its own datasources", async () => {
+  test("is a no-op for a nested-form group created without its own sources", async () => {
     const cfg = configs.create({ port: { type: "number" } });
     await expect(cfg.close()).resolves.toBeUndefined();
   });
 });
 
 describe("await using configs.create(...)", () => {
-  test("disposal closes the config's datasources", async () => {
+  test("disposal closes the config's sources", async () => {
     let closed = false;
-    const source = new DataSource<{ port: number }>({
+    const source = new Source<{ port: number }>({
       async start(control) {
         control.set({ port: 3000 });
       },
@@ -658,7 +658,7 @@ describe("await using configs.create(...)", () => {
     {
       await using cfg = await configs.create(
         { port: { type: "number" } },
-        { datasources: [source] },
+        { sources: [source] },
       );
       expect(cfg.port.get()).toBe(3000);
       expect(closed).toBe(false);
@@ -669,7 +669,7 @@ describe("await using configs.create(...)", () => {
 
   test("disposal happens on scope exit even when the block throws", async () => {
     let closed = false;
-    const source = new DataSource<{ port: number }>({
+    const source = new Source<{ port: number }>({
       async start(control) {
         control.set({ port: 3000 });
       },
@@ -682,7 +682,7 @@ describe("await using configs.create(...)", () => {
       (async () => {
         await using _cfg = await configs.create(
           { port: { type: "number" } },
-          { datasources: [source] },
+          { sources: [source] },
         );
         throw new Error("boom");
       })(),
@@ -692,9 +692,9 @@ describe("await using configs.create(...)", () => {
   });
 });
 
-describe("DataSource wrapping a Store", () => {
-  function testSourceStream<T>(value: Store<T>): DataSource<T> {
-    return new DataSource<T>({
+describe("Source wrapping a Store", () => {
+  function testSourceStream<T>(value: Store<T>): Source<T> {
+    return new Source<T>({
       async start(control) {
         control.set(value.get());
         value.subscribe((v) => control.set(v));
@@ -710,7 +710,7 @@ describe("DataSource wrapping a Store", () => {
 
     const serverConfigs = await configs.create(
       { port: { type: "number", summary: "HTTP port", required: true } },
-      { datasources: [testSourceStream(store1), testSourceStream(store2)] },
+      { sources: [testSourceStream(store1), testSourceStream(store2)] },
     );
 
     expect(serverConfigs.port.get()).toBe(3000);
@@ -724,7 +724,7 @@ describe("DataSource wrapping a Store", () => {
 
     const serverConfigs = await configs.create(
       { port: { type: "number", summary: "HTTP port", required: true } },
-      { datasources: [testSourceStream(store1), testSourceStream(store2)] },
+      { sources: [testSourceStream(store1), testSourceStream(store2)] },
     );
 
     expect(serverConfigs.port.get()).toBeNull();
@@ -738,7 +738,7 @@ describe("DataSource wrapping a Store", () => {
 
     const serverConfigs = await configs.create(
       { port: { type: "number", summary: "HTTP port", required: true } },
-      { datasources: [testSourceStream(store1), testSourceStream(store2)] },
+      { sources: [testSourceStream(store1), testSourceStream(store2)] },
     );
 
     expect(serverConfigs.port.get()).toBe(8989);
@@ -752,7 +752,7 @@ describe("DataSource wrapping a Store", () => {
 
     const serverConfigs = await configs.create(
       { port: { type: "number", summary: "HTTP port", required: true } },
-      { datasources: [testSourceStream(store1), testSourceStream(store2)] },
+      { sources: [testSourceStream(store1), testSourceStream(store2)] },
     );
 
     expect(serverConfigs.port.get()).toBe(3000);
@@ -770,7 +770,7 @@ describe("DataSource wrapping a Store", () => {
 
     const serverConfigs = await configs.create(
       { port: { type: "number", summary: "HTTP port", required: true } },
-      { datasources: [testSourceStream(store1), testSourceStream(store2)] },
+      { sources: [testSourceStream(store1), testSourceStream(store2)] },
     );
 
     const seen: (number | null)[] = [];
@@ -793,7 +793,7 @@ describe("DataSource wrapping a Store", () => {
 
     const serverConfigs = await configs.create(
       { port: { type: "number", summary: "HTTP port", required: true } },
-      { datasources: [testSourceStream(store1), testSourceStream(store2)] },
+      { sources: [testSourceStream(store1), testSourceStream(store2)] },
     );
 
     const seen: (number | null)[] = [];
@@ -824,7 +824,7 @@ describe("DataSource wrapping a Store", () => {
           port: { type: "number", summary: "HTTP port", required: true },
         }),
       },
-      { datasources: [testSourceStream(store1), testSourceStream(store2)] },
+      { sources: [testSourceStream(store1), testSourceStream(store2)] },
     );
 
     const seen: (number | null)[] = [];
@@ -843,13 +843,13 @@ describe("DataSource wrapping a Store", () => {
     unsub();
   });
 
-  test("a readonly field freezes at its first resolved value, ignoring later datasource updates", async () => {
+  test("a readonly field freezes at its first resolved value, ignoring later source updates", async () => {
     const store1 = store.create<Record<string, unknown>>({});
     store1.set({ port: 3000 });
 
     const cfg = await configs.create(
       { port: { type: "number", readonly: true } },
-      { datasources: [testSourceStream(store1)] },
+      { sources: [testSourceStream(store1)] },
     );
 
     expect(cfg.port.get()).toBe(3000);
@@ -865,7 +865,7 @@ describe("DataSource wrapping a Store", () => {
 
     const cfg = await configs.create(
       { port: { type: "number", readonly: true } },
-      { datasources: [testSourceStream(store1)] },
+      { sources: [testSourceStream(store1)] },
     );
 
     expect(cfg.get()).toEqual({ port: 3000 });
@@ -881,7 +881,7 @@ describe("DataSource wrapping a Store", () => {
 
     const cfg = await configs.create(
       { port: { type: "number", readonly: true } },
-      { datasources: [testSourceStream(store1)] },
+      { sources: [testSourceStream(store1)] },
     );
 
     const seen: { port: number | null }[] = [];
@@ -905,7 +905,7 @@ describe("DataSource wrapping a Store", () => {
 
     const cfg = await configs.create(
       { port: { type: "number", readonly: true } },
-      { datasources: [testSourceStream(store1)] },
+      { sources: [testSourceStream(store1)] },
     );
 
     const seen: { port: number | null }[] = [];

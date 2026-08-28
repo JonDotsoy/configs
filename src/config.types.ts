@@ -1,4 +1,4 @@
-import { DataSource } from "./datasources/datasource";
+import { Source } from "./sources/source";
 import { Store, type Subscriber, type Unsubscribe } from "./utils/store";
 import { ConfigError } from "./errors";
 
@@ -7,7 +7,7 @@ export type FieldType = "string" | "number" | "boolean";
 interface BaseFieldSchema {
   summary?: string;
   required?: boolean;
-  /** Freezes the field at its first resolved value: later datasource updates no longer reach `.get()`. */
+  /** Freezes the field at its first resolved value: later source updates no longer reach `.get()`. */
   readonly?: boolean;
 }
 
@@ -17,9 +17,9 @@ export type FieldSchema =
   | (BaseFieldSchema & { type: "boolean"; default?: boolean });
 
 export interface CreateOptions {
-  datasources?: DataSource<any>[];
+  sources?: Source<any>[];
   /**
-   * Static, lowest-priority fallback tree — checked after every datasource, before a field's own `default`.
+   * Static, lowest-priority fallback tree — checked after every source, before a field's own `default`.
    * @deprecated No longer read by `configs.create()`.
    */
   defaultValues?: unknown;
@@ -48,7 +48,7 @@ type PrimitiveOfField<F extends FieldSchema> = F extends { type: "number" }
       : never;
 
 /**
- * A field only ever resolves to `null` when no datasource has it and it has no `default` — data comes
+ * A field only ever resolves to `null` when no source has it and it has no `default` — data comes
  * from async sources that may simply have nothing, so `required` documents intent but can't be enforced
  * at runtime and doesn't affect this type.
  */
@@ -154,7 +154,7 @@ class ConfigField<T> extends Store<T> {
     throw new ConfigError("Cannot set a config field: config values are read-only");
   }
 
-  /** Pushes a recomputed value when an upstream datasource changes, bypassing the public read-only `set()`. */
+  /** Pushes a recomputed value when an upstream source changes, bypassing the public read-only `set()`. */
   _update(value: T): void {
     super.set(value);
   }
@@ -180,7 +180,7 @@ function collectEmbeddedStates(shape: SchemaShape): ConfigNodeState<any>[] {
  * The engine behind a `ConfigNode`/`ConfigNodeResolved`: resolves fields from `rootStores` (in
  * priority order), caches field/child-group instances, and recomputes them live as `rootStores`
  * change. A nested group embedded in a parent (via `configs.create(shape)` with no `options`)
- * shares its parent's `rootStores`; one created with its own `datasources` (root form) resolves
+ * shares its parent's `rootStores`; one created with its own `sources` (root form) resolves
  * independently, tracked via `ownsResolution`.
  */
 class ConfigNodeState<S extends SchemaShape> {
@@ -194,17 +194,17 @@ class ConfigNodeState<S extends SchemaShape> {
     readonly shape: S,
     rootStores: Store<any>[],
     private readonly basePath: string[],
-    private readonly ownDataSources: DataSource<any>[],
+    private readonly ownSources: Source<any>[],
     readonly ownsResolution: boolean,
-    /** The datasources this node's (or an ancestor's) `close()` actually closes. */
-    private readonly closableDataSources: DataSource<any>[],
+    /** The sources this node's (or an ancestor's) `close()` actually closes. */
+    private readonly closableSources: Source<any>[],
   ) {
     this.rootStores = rootStores;
 
     const embeddedReady = collectEmbeddedStates(shape).map((state) => state.readyPromise);
 
     if (ownsResolution) {
-      const opened = Promise.all(ownDataSources.map((source) => source.open())).then((stores) => {
+      const opened = Promise.all(ownSources.map((source) => source.open())).then((stores) => {
         this.rootStores = stores;
         this.wireLiveUpdates();
       });
@@ -271,7 +271,7 @@ class ConfigNodeState<S extends SchemaShape> {
 
     let result: object;
     if (embeddedState.ownsResolution) {
-      // Owns its own datasources: resolves independently, unaffected by this node's rootStores.
+      // Owns its own sources: resolves independently, unaffected by this node's rootStores.
       result = node as object;
     } else {
       // Shares this node's already-live rootStores, at the sub-path for `key`.
@@ -281,7 +281,7 @@ class ConfigNodeState<S extends SchemaShape> {
         [...this.basePath, key],
         [],
         false,
-        this.closableDataSources,
+        this.closableSources,
       );
       result = wrapNode(new ConfigNode(childState));
     }
@@ -323,7 +323,7 @@ class ConfigNodeState<S extends SchemaShape> {
 
   async close(): Promise<void> {
     await Promise.all([
-      ...this.closableDataSources.map((source) => source.close()),
+      ...this.closableSources.map((source) => source.close()),
       ...collectEmbeddedStates(this.shape).map((state) => state.close()),
     ]);
   }
@@ -380,7 +380,7 @@ class ConfigNodeCore<S extends SchemaShape> {
     return this._state.listen(subscriber);
   }
 
-  /** Closes every datasource backing this config tree, including nested groups' own. A no-op for a nested-form group of its own. */
+  /** Closes every source backing this config tree, including nested groups' own. A no-op for a nested-form group of its own. */
   close(): Promise<void> {
     return this._state.close();
   }
@@ -391,14 +391,14 @@ class ConfigNodeCore<S extends SchemaShape> {
   }
 }
 
-/** A `ConfigNode` once every datasource behind it has published its first snapshot. Synchronous only — no longer thenable. */
+/** A `ConfigNode` once every source behind it has published its first snapshot. Synchronous only — no longer thenable. */
 export class ConfigNodeResolved<S extends SchemaShape> extends ConfigNodeCore<S> {}
 
 /**
  * `configs.create()`'s return value: synchronous and read-only, but also a `PromiseLike` —
- * awaiting it resolves once every datasource has published its first snapshot, yielding a
+ * awaiting it resolves once every source has published its first snapshot, yielding a
  * `ConfigNodeResolved`. A nested group (`configs.create(shape)` with no `options`) never needs
- * awaiting: it shares its parent's already-resolved values unless given datasources of its own.
+ * awaiting: it shares its parent's already-resolved values unless given sources of its own.
  */
 export class ConfigNode<S extends SchemaShape>
   extends ConfigNodeCore<S>
@@ -431,25 +431,25 @@ export class ConfigNode<S extends SchemaShape>
 
 /**
  * A nested config group embedded in a parent shape: either shares the parent's resolved values,
- * or — when created with its own `datasources` — resolves independently of it.
+ * or — when created with its own `sources` — resolves independently of it.
  */
 export type SchemaGroup<S extends SchemaShape = SchemaShape> = ConfigNode<S> & InferReadOnlyAccessors<S>;
 
 /**
- * Nested-group form (no `options`): synchronous, no datasources of its own — inherits the
+ * Nested-group form (no `options`): synchronous, no sources of its own — inherits the
  * parent's resolved values when embedded, unless `options` gives it its own.
  *
- * Root form (`options` given): opens every datasource. Returns synchronously as a `ConfigNode`
- * and is awaitable — for each field, the first datasource (in array order) whose snapshot has
+ * Root form (`options` given): opens every source. Returns synchronously as a `ConfigNode`
+ * and is awaitable — for each field, the first source (in array order) whose snapshot has
  * that field wins; a field missing everywhere falls back to the field's own `default`, else `null`.
  */
 export function createConfigNode<S extends SchemaShape>(
   shape: S,
   options?: CreateOptions,
 ): ConfigNode<S> & InferReadOnlyAccessors<S> {
-  const ownDataSources = options?.datasources ?? [];
+  const ownSources = options?.sources ?? [];
   const ownsResolution = options !== undefined;
-  const state = new ConfigNodeState<S>(shape, [], [], ownDataSources, ownsResolution, ownDataSources);
+  const state = new ConfigNodeState<S>(shape, [], [], ownSources, ownsResolution, ownSources);
   return wrapNode(new ConfigNode(state)) as ConfigNode<S> & InferReadOnlyAccessors<S>;
 }
 

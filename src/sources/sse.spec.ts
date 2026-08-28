@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import type { Store } from "../utils/store";
-import { sseDataSource } from "./sse";
+import { sseSource } from "./sse";
 
 const originalFetch = globalThis.fetch;
 
@@ -69,12 +69,12 @@ function waitForValue<T>(store: Store<T>, predicate: (value: T) => boolean): Pro
   });
 }
 
-describe("sseDataSource", () => {
+describe("sseSource", () => {
   test("open() resolves only after the first message, already applied", async () => {
     const { response, release } = controlledSseResponse([JSON.stringify({ port: 3000 })]);
     globalThis.fetch = (async () => response) as unknown as typeof fetch;
 
-    const source = sseDataSource<{ port?: number }>({ url: "https://example.com/events" });
+    const source = sseSource<{ port?: number }>({ url: "https://example.com/events" });
 
     let opened = false;
     const openPromise = source.open().then((store) => {
@@ -100,7 +100,7 @@ describe("sseDataSource", () => {
     ]);
     globalThis.fetch = (async () => response) as unknown as typeof fetch;
 
-    const source = sseDataSource<{ port?: number; host?: string }>({ url: "https://example.com/events" });
+    const source = sseSource<{ port?: number; host?: string }>({ url: "https://example.com/events" });
 
     release(); // let the first message through so open() can resolve
     const store = await source.open();
@@ -121,7 +121,7 @@ describe("sseDataSource", () => {
       return sseResponse([JSON.stringify({ ok: true })]);
     }) as unknown as typeof fetch;
 
-    const source = sseDataSource({
+    const source = sseSource({
       url: "https://example.com/events",
       method: "POST",
       headers: { authorization: "Bearer token" },
@@ -137,7 +137,7 @@ describe("sseDataSource", () => {
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});
     globalThis.fetch = (async () => sseResponse(["{not json", JSON.stringify({ port: 3000 })])) as unknown as typeof fetch;
 
-    const source = sseDataSource({ url: "https://example.com/events" });
+    const source = sseSource({ url: "https://example.com/events" });
     const store = await source.open();
 
     expect(store.get()).toEqual({ port: 3000 });
@@ -149,7 +149,7 @@ describe("sseDataSource", () => {
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});
     globalThis.fetch = (async () => sseResponse(["42", JSON.stringify({ port: 3000 })])) as unknown as typeof fetch;
 
-    const source = sseDataSource({ url: "https://example.com/events" });
+    const source = sseSource({ url: "https://example.com/events" });
     const store = await source.open();
 
     expect(store.get()).toEqual({ port: 3000 });
@@ -161,7 +161,7 @@ describe("sseDataSource", () => {
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});
     globalThis.fetch = (async () => sseResponse(["{not json"])) as unknown as typeof fetch;
 
-    const source = sseDataSource({ url: "https://example.com/events" });
+    const source = sseSource({ url: "https://example.com/events" });
     const store = await source.open();
 
     expect(store.get()).toBeNull();
@@ -175,7 +175,7 @@ describe("sseDataSource", () => {
       throw new Error("network down");
     }) as unknown as typeof fetch;
 
-    const source = sseDataSource({ url: "https://example.com/events" });
+    const source = sseSource({ url: "https://example.com/events" });
     const store = await source.open();
 
     expect(store.get()).toBeNull();
@@ -187,7 +187,7 @@ describe("sseDataSource", () => {
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});
     globalThis.fetch = (async () => new Response(null, { status: 500 })) as unknown as typeof fetch;
 
-    const source = sseDataSource({ url: "https://example.com/events" });
+    const source = sseSource({ url: "https://example.com/events" });
     const store = await source.open();
 
     expect(store.get()).toBeNull();
@@ -203,7 +203,7 @@ describe("sseDataSource", () => {
       return hangingSseResponse(JSON.stringify({ port: 3000 }), receivedSignal);
     }) as unknown as typeof fetch;
 
-    const source = sseDataSource<{ port?: number }>({ url: "https://example.com/events" });
+    const source = sseSource<{ port?: number }>({ url: "https://example.com/events" });
     const store = await source.open();
 
     expect(store.get()).toEqual({ port: 3000 });

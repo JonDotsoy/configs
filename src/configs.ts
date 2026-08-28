@@ -12,19 +12,20 @@ export type {
   SchemaNode,
   SchemaShape,
 } from "./config.types";
-export type { DataSourceControl, UnderlyingDataSource } from "./types";
+export type { SourceControl, UnderlyingSource } from "./types";
 export type { DataType, DataTypeName } from "./utils/data-types";
-export type { EnvDataSourceOptions, EnvKeyMapper } from "./datasources/env";
-export type { FetchDataSourceOptions } from "./datasources/fetch";
-export type { SseDataSourceOptions } from "./datasources/sse";
-export type { FileDataSourceOptions } from "./datasources/file";
+export type { EnvSourceOptions, EnvKeyMapper } from "./sources/env";
+export type { FetchSourceOptions } from "./sources/fetch";
+export type { SseSourceOptions } from "./sources/sse";
+export type { FileSourceOptions } from "./sources/file";
 
 export { ConfigNode, ConfigNodeResolved } from "./config.types";
-export { DataSource } from "./datasources/datasource";
-export { envDataSource, envKeyToPath } from "./datasources/env";
-export { fetchDataSource } from "./datasources/fetch";
-export { sseDataSource } from "./datasources/sse";
-export { fileDataSource } from "./datasources/file";
+export { Source } from "./sources/source";
+export { envSource, mapKey } from "./sources/env";
+export { fetchSource } from "./sources/fetch";
+export { sseSource } from "./sources/sse";
+export { fileSource } from "./sources/file";
+export { literalSource } from "./sources/literal";
 export { Store } from "./utils/store";
 export { DataTypes } from "./utils/data-types";
 export { DotEnv } from "./utils/dotenv";

@@ -2,7 +2,7 @@
 /**
  * Manual test: builds the package, runs `bun pm pack`, installs the resulting
  * tarball into a scratch temp dir, and verifies that both the root entry
- * point and every `datasources/*` subpath actually resolve and work when
+ * point and every `sources/*` subpath actually resolve and work when
  * consumed like a real npm package (not via workspace/source resolution).
  *
  * Usage: bun run scripts/manual-pack-test.ts
@@ -15,10 +15,10 @@ import { join } from "node:path";
 const repoRoot = new URL("..", import.meta.url).pathname;
 
 const MANUAL_TEST_SOURCE = `
-import { configs, envDataSource, envKeyToPath, DataSource, ConfigError } from "@jondotsoy/configs";
-import { envDataSource as envDataSource2 } from "@jondotsoy/configs/datasources/env";
-import { fetchDataSource } from "@jondotsoy/configs/datasources/fetch";
-import { sseDataSource } from "@jondotsoy/configs/datasources/sse";
+import { configs, envSource, literalSource, mapKey, Source, ConfigError } from "@jondotsoy/configs";
+import { envSource as envSource2 } from "@jondotsoy/configs/sources/env";
+import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+import { sseSource } from "@jondotsoy/configs/sources/sse";
 
 function assert(cond, message) {
   if (!cond) throw new Error("FAIL: " + message);
@@ -26,21 +26,22 @@ function assert(cond, message) {
 }
 
 assert(typeof configs.create === "function", "configs.create is a function");
-assert(typeof envDataSource === "function", "envDataSource exported from root");
-assert(typeof envKeyToPath === "function", "envKeyToPath exported from root");
-assert(typeof DataSource === "function", "DataSource exported from root");
+assert(typeof envSource === "function", "envSource exported from root");
+assert(typeof mapKey.snakeCase === "function", "mapKey.snakeCase exported from root");
+assert(typeof literalSource === "function", "literalSource exported from root");
+assert(typeof Source === "function", "Source exported from root");
 assert(typeof ConfigError === "function", "ConfigError exported from root");
-assert(typeof envDataSource2 === "function", "envDataSource exported from /datasources/env");
-assert(typeof fetchDataSource === "function", "fetchDataSource exported from /datasources/fetch");
-assert(typeof sseDataSource === "function", "sseDataSource exported from /datasources/sse");
+assert(typeof envSource2 === "function", "envSource exported from /sources/env");
+assert(typeof fetchSource === "function", "fetchSource exported from /sources/fetch");
+assert(typeof sseSource === "function", "sseSource exported from /sources/sse");
 
-const source = envDataSource({ mapKey: envKeyToPath });
+const source = envSource({ mapKey: mapKey.snakeCase() });
 const cfg = await configs.create(
   { server: configs.create({ port: { type: "number", summary: "HTTP port", default: 3000 } }) },
-  { datasources: [source] },
+  { sources: [source] },
 );
 
-assert(cfg.server.port.get() === 4000, "cfg.server.port.get() reads SERVER_PORT=4000 via envDataSource");
+assert(cfg.server.port.get() === 4000, "cfg.server.port.get() reads SERVER_PORT=4000 via envSource");
 
 await cfg.close();
 console.log("\\nAll manual import checks passed.");

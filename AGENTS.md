@@ -8,7 +8,7 @@ alwaysApply: false
 
 `@jondotsoy/configs` — a reactive, typed configuration library. No runtime
 dependencies; every field is a live `Store` backed by pluggable
-`DataSource`s (`env`, `fetch`, `sse`).
+`Source`s (`env`, `fetch`, `sse`).
 
 **Technology**: TypeScript, runs on and is built with Bun (no Node.js APIs,
 no bundler other than `bun build`). Distributed as ESM only.
@@ -19,14 +19,15 @@ no bundler other than `bun build`). Distributed as ESM only.
 src/
   configs.ts              # public API: configs.create(), ConfigNode, ConfigField
   errors.ts                # ConfigError
-  datasources/
-    datasource.ts           # DataSource base class (start/close contract)
-    env.ts                   # envDataSource, envKeyToPath
-    fetch.ts                 # fetchDataSource
-    sse.ts                    # sseDataSource
-    file.ts                    # fileDataSource (.json/.env, live via fs.watch)
+  sources/
+    source.ts           # Source base class (start/close contract)
+    env.ts                   # envSource, mapKey (snakeCase/identity/camelCase/lookup strategies)
+    fetch.ts                 # fetchSource
+    sse.ts                    # sseSource
+    file.ts                    # fileSource (.json/.env, live via fs.watch)
+    literal.ts                 # literalSource (static value, publishes once)
     *.spec.ts                 # co-located bun:test specs
-  types/                    # shared type-level helpers (schema, datasource, InferShape)
+  types/                    # shared type-level helpers (schema, source, InferShape)
   utils/
     store.ts                 # Store<T> — the reactive primitive every field is built on
     data-types.ts             # field type/coercion helpers
@@ -39,10 +40,36 @@ dist/                      # build output, gitignored, published via "files"/"ex
 ```
 
 Public entry points live in `package.json`'s `exports` map (`.` and
-`./datasources/{env,fetch,sse}`); each condition carries an `_entryPoint`
+`./sources/{env,fetch,sse}`); each condition carries an `_entryPoint`
 pointing at its `src/*.ts` source, which `scripts/build.sh` reads to drive
 `bun build`. Add a new public module by adding both its `src/` file and its
 `exports` entry (with `_entryPoint`), not just one.
+
+### Naming pattern: `Source`
+
+The pluggable-input concept is named `Source`: base class `Source`, factory
+functions `envSource()`/`fetchSource()`/`sseSource()`/`fileSource()`, options
+types `EnvSourceOptions`/`FetchSourceOptions`/`SseSourceOptions`/`FileSourceOptions`,
+folder `src/sources/`, and the `CreateOptions.sources` array passed to
+`configs.create()`.
+
+When adding a new source, follow the existing shape:
+
+- Factory function named `<name>Source()`, camelCase, returning `new Source<T>({ start, close?, reduce? })`.
+- Its options type named `<Name>SourceOptions`.
+- File lives at `src/sources/<name>.ts`, with a co-located `<name>.spec.ts`.
+- `start(control)` pushes snapshots via `control.set(value)` (repeatable — a
+  live source like `sseSource`/`fileSource` calls it more than once) and
+  calls `control.close()` when done; an optional `close()` releases whatever
+  `start` set up (timers, connections, watchers).
+- If `start` only ever produces partial patches instead of whole-tree
+  snapshots (like `sseSource`'s SSE messages), give it a `reduce(incoming,
+  previous)` instead of accumulating manually — every `control.set(incoming)`
+  runs through it (with `previous` `null` before the first call) and its
+  return value is what actually gets published.
+- Export both the factory and its options type from `src/configs.ts`, and add
+  a matching `./sources/<name>` entry (with `_entryPoint`) to `package.json`'s
+  `exports` map so it's a public subpath.
 
 ### Before opening a PR
 
@@ -56,7 +83,7 @@ bun run test:pack
 `bun test` runs the unit specs. `bun run test:pack` builds the package,
 packs it with `bun pm pack`, installs the tarball into a scratch temp
 directory like a real consumer would, verifies every import path
-(`@jondotsoy/configs` and each `datasources/*` subpath) actually resolves
+(`@jondotsoy/configs` and each `sources/*` subpath) actually resolves
 and works, and checks that no stray file leaked into the tarball beyond
 `dist/**` and the files npm/bun always include (`package.json`, `README.md`,
 `LICENSE`).

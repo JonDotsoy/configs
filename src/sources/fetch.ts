@@ -1,6 +1,6 @@
-import { DataSource } from "./datasource";
+import { Source } from "./source";
 
-export interface FetchDataSourceOptions {
+export interface FetchSourceOptions {
   url: string | URL;
   method?: string;
   headers?: Bun.HeadersInit;
@@ -11,21 +11,21 @@ export interface FetchDataSourceOptions {
 async function download(url: string | URL, init: RequestInit): Promise<Response> {
   const response = await fetch(url, init);
   if (!response.ok) {
-    throw new Error(`fetchDataSource: received ${response.status} ${response.statusText} from "${url}"`);
+    throw new Error(`fetchSource: received ${response.status} ${response.statusText} from "${url}"`);
   }
   return response;
 }
 
 /**
- * A `DataSource` that fetches a JSON snapshot from `url`. Only JSON is supported: the response is
+ * A `Source` that fetches a JSON snapshot from `url`. Only JSON is supported: the response is
  * parsed as JSON regardless of what `Content-Type` reports (a non-JSON content type is a fallback
  * attempt, not a hard failure). If the download never succeeds, or the body isn't valid JSON, this
  * logs a `console.error` and leaves the store empty (`null`) instead of throwing.
  */
-export function fetchDataSource<T = unknown>(options: FetchDataSourceOptions): DataSource<T> {
+export function fetchSource<T = unknown>(options: FetchSourceOptions): Source<T> {
   const { url, method = "GET", headers, attempts = 1 } = options;
 
-  return new DataSource<T>({
+  return new Source<T>({
     async start(control) {
       let response: Response | undefined;
       let lastError: unknown;
@@ -40,7 +40,7 @@ export function fetchDataSource<T = unknown>(options: FetchDataSourceOptions): D
       }
 
       if (!response) {
-        console.error(`fetchDataSource: failed to fetch "${url}" after ${attempts} attempt(s)`, lastError);
+        console.error(`fetchSource: failed to fetch "${url}" after ${attempts} attempt(s)`, lastError);
         control.close();
         return;
       }
@@ -53,7 +53,7 @@ export function fetchDataSource<T = unknown>(options: FetchDataSourceOptions): D
         data = JSON.parse(text);
       } catch (error) {
         console.error(
-          `fetchDataSource: response body from "${url}" is not valid JSON (content-type: "${contentType}")`,
+          `fetchSource: response body from "${url}" is not valid JSON (content-type: "${contentType}")`,
           error,
         );
         control.close();
