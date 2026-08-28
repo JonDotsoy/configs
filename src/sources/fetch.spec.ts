@@ -107,4 +107,85 @@ describe("fetchSource", () => {
     expect(errorSpy).toHaveBeenCalledTimes(1);
     errorSpy.mockRestore();
   });
+
+  describe("pollingInterval", () => {
+    test("defaults to off: fetches once and never polls again", async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        return jsonResponse(JSON.stringify({ port: 3000 }));
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource({ url: "https://example.com/config" });
+      await source.open();
+      await Bun.sleep(20);
+
+      expect(calls).toBe(1);
+    });
+
+    test("keeps fetching on the given interval, updating the store each time", async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        return jsonResponse(JSON.stringify({ port: calls }));
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<{ port: number }>({
+        url: "https://example.com/config",
+        pollingInterval: 5,
+      });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 1 });
+
+      await Bun.sleep(30);
+
+      expect(calls).toBeGreaterThan(1);
+      expect(store.get()).toEqual({ port: calls });
+
+      await source.close();
+    });
+
+    test("close() stops the polling", async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        return jsonResponse(JSON.stringify({ port: calls }));
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource({ url: "https://example.com/config", pollingInterval: 5 });
+      await source.open();
+      await source.close();
+      const callsAfterClose = calls;
+
+      await Bun.sleep(30);
+
+      expect(calls).toBe(callsAfterClose);
+    });
+
+    test("a failed round after the first keeps polling instead of closing", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        if (calls === 2) return jsonResponse("not json");
+        return jsonResponse(JSON.stringify({ port: calls }));
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<{ port: number }>({
+        url: "https://example.com/config",
+        pollingInterval: 5,
+      });
+      const store = await source.open();
+
+      await Bun.sleep(35);
+
+      expect(calls).toBeGreaterThan(2);
+      expect(store.get()).not.toBeNull();
+      expect(errorSpy).toHaveBeenCalled();
+
+      await source.close();
+      errorSpy.mockRestore();
+    });
+  });
 });
