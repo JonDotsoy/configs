@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { configs } from "../configs";
 import { fileSource } from "./file";
 
@@ -31,6 +32,16 @@ describe("fileSource", () => {
       await Bun.write(path, JSON.stringify({ port: 3000, host: "localhost" }));
 
       const source = fileSource(path, { watch: false });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000, host: "localhost" });
+    });
+
+    test("accepts a file: URL for the path", async () => {
+      const path = join(dir, "config.json");
+      await Bun.write(path, JSON.stringify({ port: 3000, host: "localhost" }));
+
+      const source = fileSource(pathToFileURL(path), { watch: false });
       const store = await source.open();
 
       expect(store.get()).toEqual({ port: 3000, host: "localhost" });

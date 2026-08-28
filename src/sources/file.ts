@@ -17,9 +17,10 @@ export interface FileSourceOptions {
 type FileFormat = "json" | "env";
 
 /** Picks a parser from the path's extension; a bare `.env` (no basename) counts as `.env` too. */
-function detectFormat(path: string): FileFormat | undefined {
-  if (path.endsWith(".json")) return "json";
-  if (path.endsWith(".env")) return "env";
+function detectFormat(path: string | URL): FileFormat | undefined {
+  const pathname = path instanceof URL ? path.pathname : path;
+  if (pathname.endsWith(".json")) return "json";
+  if (pathname.endsWith(".env")) return "env";
   return undefined;
 }
 
@@ -44,9 +45,10 @@ function selectTreePath(data: unknown, treePath: string[]): unknown {
 
 /**
  * A `Source` that reads a config tree from a local file — `.json` or `.env` (matched by
- * `path`'s extension, or by the bare `.env` filename itself). Like `fetchSource`
- * and `sseSource`, a read or parse failure is logged via `console.error` and leaves the store
- * empty (`null`) instead of throwing.
+ * `path`'s extension, or by the bare `.env` filename itself). `path` may be a plain string or a
+ * `file:` `URL` (e.g. `import.meta.resolve(...)` or `new URL("./config.json", import.meta.url)`).
+ * Like `fetchSource` and `sseSource`, a read or parse failure is logged via `console.error` and
+ * leaves the store empty (`null`) instead of throwing.
  *
  * `treePath` selects a subtree of the parsed file to use, instead of the whole thing. A missing
  * or non-object segment along the way is logged via `console.error`, same as a parse failure —
@@ -58,7 +60,7 @@ function selectTreePath(data: unknown, treePath: string[]): unknown {
  * `sseSource` does for a bad SSE message. `watch: false` reads the file once and closes.
  */
 export function fileSource<T = unknown>(
-  path: string,
+  path: string | URL,
   options: FileSourceOptions = {},
 ): Source<T> {
   const shouldWatch = options.watch ?? true;
