@@ -21,7 +21,7 @@ src/
   errors.ts                # ConfigError
   sources/
     source.ts           # Source base class (start/close contract)
-    env.ts                   # envSource, envKeyToPath
+    env.ts                   # envSource, mapKey (snakeCase/identity/camelCase/lookup strategies)
     fetch.ts                 # fetchSource
     sse.ts                    # sseSource
     file.ts                    # fileSource (.json/.env, live via fs.watch)

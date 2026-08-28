@@ -7,10 +7,10 @@ A tool for all your configurations.
 - **Typed with TS check** — schemas are statically checked, so `cfg.port.get()` is inferred as `number | null` (or `number` when a `default` is set), not `any`.
 
 ```ts
-import { configs, envSource, envKeyToPath } from "@jondotsoy/configs";
+import { configs, envSource, mapKey } from "@jondotsoy/configs";
 
 // SERVER_PORT=3000 SERVER_HOST=localhost → { server: { port: "3000", host: "localhost" } }
-const source = envSource({ mapKey: envKeyToPath });
+const source = envSource({ mapKey: mapKey.snakeCase() });
 
 const serverConfigs = await configs.create(
   {
@@ -86,15 +86,41 @@ function pollingSource(url: string, intervalMs: number): Source<{ port: number }
 ### `envSource` — environment variables
 
 Reads `process.env` (or any object you pass as `env`) into the config tree. `mapKey` decides how
-each key maps to a path; the default is the identity mapping, `"FOO_TAR" => ["FOO_TAR"]`. The
-`envKeyToPath` helper turns a `SCREAMING_SNAKE_CASE` key into a lowercase nested path instead:
-`"FOO_TAR" => ["foo", "tar"]`.
+each key maps to a path; the default is the identity mapping, `"FOO_TAR" => ["FOO_TAR"]`.
+
+Built-in strategies live under the `mapKey` namespace, each a factory returning an `EnvKeyMapper`:
+
+- **`mapKey.snakeCase(options?)`** — splits a `SCREAMING_SNAKE_CASE` key into a lowercase nested
+  path on `separator` (default `"_"`): `"FOO_TAR" => ["foo", "tar"]`. Pass a different `separator`
+  (e.g. `"__"`) to keep a single underscore inside a segment from splitting it:
+  `mapKey.snakeCase({ separator: "__" })` maps `"API_KEY_V2__ENABLED"` to
+  `["api_key_v2", "enabled"]` instead of splitting on every `_`.
+- **`mapKey.identity()`** — passes each key through unchanged, as a single-segment path:
+  `"FOO_TAR" => ["FOO_TAR"]`. Same as omitting `mapKey`, spelled out explicitly.
+- **`mapKey.camelCase()`** — maps a key to a single camelCase segment instead of nesting it:
+  `"FOO_TAR" => ["fooTar"]`.
+- **`mapKey.lookup(table, fallback?)`** — maps specific keys to explicit paths via a
+  `Record<string, string[]>` lookup table; a key not in `table` falls back to `fallback` (default:
+  the identity mapping). Handy when most keys follow no consistent naming, or when a few need an
+  exception to whatever strategy the rest use.
 
 ```ts
-import { envSource, envKeyToPath } from "@jondotsoy/configs";
+import { envSource, mapKey } from "@jondotsoy/configs";
 
 // SERVER_PORT=3000 SERVER_HOST=localhost → { server: { port: "3000", host: "localhost" } }
-const source = envSource({ mapKey: envKeyToPath });
+const source = envSource({ mapKey: mapKey.snakeCase() });
+
+// PORT=3000 HOST=localhost → { server: { port: "3000" }, HOST: "localhost" }
+const source2 = envSource({ mapKey: mapKey.lookup({ PORT: ["server", "port"] }) });
+```
+
+You can also pass your own `EnvKeyMapper` instead of a built-in strategy — it's just a
+`(key: string) => string[]` function:
+
+```ts
+const source = envSource({
+  mapKey: (key) => (key === "PORT" ? ["server", "port"] : [key]),
+});
 ```
 
 ### `fetchSource` — a JSON endpoint over HTTP

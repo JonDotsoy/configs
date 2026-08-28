@@ -14,10 +14,37 @@ export interface EnvSourceOptions {
   mapKey?: EnvKeyMapper;
 }
 
-/** Splits a `SCREAMING_SNAKE_CASE` env key into a lowercase nested path: `"FOO_TAR" => ["foo", "tar"]`. */
-export function envKeyToPath(key: string): string[] {
-  return key.toLowerCase().split("_");
-}
+/** Built-in `mapKey` strategies for `EnvSourceOptions.mapKey`, each a factory returning an `EnvKeyMapper`. */
+export const mapKey = {
+  /**
+   * Splits an env key into a lowercase nested path on `separator` (default `"_"`):
+   * `"FOO_TAR" => ["foo", "tar"]`. Pass a different `separator` (e.g. `"__"`) to keep a single
+   * underscore inside a segment from splitting it, e.g. `"API_KEY_V2"` with `separator: "__"`.
+   */
+  snakeCase(options: { separator?: string } = {}): EnvKeyMapper {
+    const separator = options.separator ?? "_";
+    return (key: string) => key.toLowerCase().split(separator);
+  },
+
+  /** Passes each key through unchanged, as a single-segment path: `"FOO_TAR" => ["FOO_TAR"]`. Equivalent to the default when `mapKey` is omitted — spells it out explicitly. */
+  identity(): EnvKeyMapper {
+    return (key: string) => [key];
+  },
+
+  /** Maps an env key to a single camelCase segment: `"FOO_TAR" => ["fooTar"]`. */
+  camelCase(): EnvKeyMapper {
+    return (key: string) => [key.toLowerCase().replace(/_([a-z0-9])/g, (_, char) => char.toUpperCase())];
+  },
+
+  /**
+   * Maps specific env keys to explicit paths via a `table` lookup, e.g.
+   * `mapKey.lookup({ PORT: ["server", "port"] })` maps `"PORT" => ["server", "port"]`. A key not
+   * found in `table` falls back to `fallback` (default: the identity mapping, `key => [key]`).
+   */
+  lookup(table: Record<string, string[]>, fallback: EnvKeyMapper = (key: string) => [key]): EnvKeyMapper {
+    return (key: string) => table[key] ?? fallback(key);
+  },
+};
 
 function setPath(target: Record<string, unknown>, path: string[], value: string): void {
   let node = target;

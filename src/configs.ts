@@ -21,7 +21,7 @@ export type { FileSourceOptions } from "./sources/file";
 
 export { ConfigNode, ConfigNodeResolved } from "./config.types";
 export { Source } from "./sources/source";
-export { envSource, envKeyToPath } from "./sources/env";
+export { envSource, mapKey } from "./sources/env";
 export { fetchSource } from "./sources/fetch";
 export { sseSource } from "./sources/sse";
 export { fileSource } from "./sources/file";

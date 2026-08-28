@@ -15,7 +15,7 @@ import { join } from "node:path";
 const repoRoot = new URL("..", import.meta.url).pathname;
 
 const MANUAL_TEST_SOURCE = `
-import { configs, envSource, envKeyToPath, Source, ConfigError } from "@jondotsoy/configs";
+import { configs, envSource, mapKey, Source, ConfigError } from "@jondotsoy/configs";
 import { envSource as envSource2 } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
@@ -27,14 +27,14 @@ function assert(cond, message) {
 
 assert(typeof configs.create === "function", "configs.create is a function");
 assert(typeof envSource === "function", "envSource exported from root");
-assert(typeof envKeyToPath === "function", "envKeyToPath exported from root");
+assert(typeof mapKey.snakeCase === "function", "mapKey.snakeCase exported from root");
 assert(typeof Source === "function", "Source exported from root");
 assert(typeof ConfigError === "function", "ConfigError exported from root");
 assert(typeof envSource2 === "function", "envSource exported from /sources/env");
 assert(typeof fetchSource === "function", "fetchSource exported from /sources/fetch");
 assert(typeof sseSource === "function", "sseSource exported from /sources/sse");
 
-const source = envSource({ mapKey: envKeyToPath });
+const source = envSource({ mapKey: mapKey.snakeCase() });
 const cfg = await configs.create(
   { server: configs.create({ port: { type: "number", summary: "HTTP port", default: 3000 } }) },
   { sources: [source] },

@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, test } from "bun:test";
 import { Store, store } from "./utils/store";
 import { Source } from "./sources/source";
-import { envSource, envKeyToPath } from "./sources/env";
+import { envSource, mapKey } from "./sources/env";
 import { ConfigError } from "./errors";
 import { ConfigNode, ConfigNodeResolved } from "./config.types.ts";
 import type { configs, InferReadOnlyAccessors, ReadOnlyStore, SchemaGroup } from "./config.types.ts";
@@ -248,7 +248,7 @@ describe("nested groups with their own sources", () => {
     const cfg = await configs.create({
       server: configs.create(
         { port: { type: "number" } },
-        { sources: [envSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+        { sources: [envSource({ env: { PORT: "3000" }, mapKey: mapKey.snakeCase() })] },
       ),
     });
 
@@ -261,7 +261,7 @@ describe("nested groups with their own sources", () => {
         name: { type: "string" },
         server: configs.create(
           { port: { type: "number" } },
-          { sources: [envSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+          { sources: [envSource({ env: { PORT: "3000" }, mapKey: mapKey.snakeCase() })] },
         ),
       },
       { sources: [testSource({ name: "svc" })] },
@@ -277,7 +277,7 @@ describe("nested groups with their own sources", () => {
       {
         server: configs.create(
           { port: { type: "number" } },
-          { sources: [envSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+          { sources: [envSource({ env: { PORT: "3000" }, mapKey: mapKey.snakeCase() })] },
         ),
       },
       { sources: [testSource({ server: { port: 9999 } })] },
@@ -290,11 +290,11 @@ describe("nested groups with their own sources", () => {
     const cfg = await configs.create({
       primary: configs.create(
         { port: { type: "number" } },
-        { sources: [envSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+        { sources: [envSource({ env: { PORT: "3000" }, mapKey: mapKey.snakeCase() })] },
       ),
       secondary: configs.create(
         { port: { type: "number" } },
-        { sources: [envSource({ env: { PORT: "4000" }, mapKey: envKeyToPath })] },
+        { sources: [envSource({ env: { PORT: "4000" }, mapKey: mapKey.snakeCase() })] },
       ),
     });
 
@@ -327,7 +327,7 @@ describe("nested groups with their own sources", () => {
     const pending = configs.create({
       server: configs.create(
         { port: { type: "number" } },
-        { sources: [envSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+        { sources: [envSource({ env: { PORT: "3000" }, mapKey: mapKey.snakeCase() })] },
       ),
     });
 
@@ -341,7 +341,7 @@ describe("nested groups with their own sources", () => {
     const cfg = await configs.create({
       server: configs.create(
         { port: { type: "number" } },
-        { sources: [envSource({ env: { PORT: "3000" }, mapKey: envKeyToPath })] },
+        { sources: [envSource({ env: { PORT: "3000" }, mapKey: mapKey.snakeCase() })] },
       ),
     });
 

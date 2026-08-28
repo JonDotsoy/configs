@@ -1,14 +1,56 @@
 import { describe, expect, test } from "bun:test";
 import { configs } from "../configs";
-import { envSource, envKeyToPath } from "./env";
+import { envSource, mapKey } from "./env";
 
-describe("envKeyToPath", () => {
+describe("mapKey.snakeCase", () => {
   test("splits a SCREAMING_SNAKE_CASE key into a lowercase path", () => {
-    expect(envKeyToPath("FOO_TAR")).toEqual(["foo", "tar"]);
+    expect(mapKey.snakeCase()("FOO_TAR")).toEqual(["foo", "tar"]);
   });
 
   test("passes a key without underscores through as a single segment", () => {
-    expect(envKeyToPath("PORT")).toEqual(["port"]);
+    expect(mapKey.snakeCase()("PORT")).toEqual(["port"]);
+  });
+
+  test("splits on a custom separator instead of a single underscore", () => {
+    expect(mapKey.snakeCase({ separator: "__" })("API_KEY_V2__ENABLED")).toEqual([
+      "api_key_v2",
+      "enabled",
+    ]);
+  });
+});
+
+describe("mapKey.identity", () => {
+  test("passes a key through unchanged as a single-segment path", () => {
+    expect(mapKey.identity()("FOO_TAR")).toEqual(["FOO_TAR"]);
+  });
+});
+
+describe("mapKey.camelCase", () => {
+  test("maps a SCREAMING_SNAKE_CASE key to a single camelCase segment", () => {
+    expect(mapKey.camelCase()("FOO_TAR")).toEqual(["fooTar"]);
+  });
+
+  test("passes a key without underscores through lowercased", () => {
+    expect(mapKey.camelCase()("PORT")).toEqual(["port"]);
+  });
+
+  test("camelCases every underscore-separated word", () => {
+    expect(mapKey.camelCase()("SERVER_HTTP_PORT")).toEqual(["serverHttpPort"]);
+  });
+});
+
+describe("mapKey.lookup", () => {
+  test("maps a key found in the table", () => {
+    expect(mapKey.lookup({ PORT: ["server", "port"] })("PORT")).toEqual(["server", "port"]);
+  });
+
+  test("falls back to the identity mapping for a key not in the table", () => {
+    expect(mapKey.lookup({ PORT: ["server", "port"] })("HOST")).toEqual(["HOST"]);
+  });
+
+  test("falls back to a custom mapper for a key not in the table", () => {
+    const mapped = mapKey.lookup({ PORT: ["server", "port"] }, mapKey.snakeCase())("SERVER_HOST");
+    expect(mapped).toEqual(["server", "host"]);
   });
 });
 
@@ -23,7 +65,7 @@ describe("envSource", () => {
   test("uses a custom mapKey to build nested paths", async () => {
     const source = envSource({
       env: { FOO_TAR: "baz" },
-      mapKey: envKeyToPath,
+      mapKey: mapKey.snakeCase(),
     });
     const store = await source.open();
 
@@ -33,20 +75,17 @@ describe("envSource", () => {
   test("merges multiple keys mapped under the same parent", async () => {
     const source = envSource({
       env: { SERVER_PORT: "3000", SERVER_HOST: "localhost" },
-      mapKey: envKeyToPath,
+      mapKey: mapKey.snakeCase(),
     });
     const store = await source.open();
 
     expect(store.get()).toEqual({ server: { port: "3000", host: "localhost" } });
   });
 
-  test("maps a specific key while falling back to the identity mapping for the rest", async () => {
-    const mapKey = (key: string) =>
-      ({ PORT: ["server", "port"] } as Record<string, string[]>)[key] ?? [key];
-
+  test("maps a specific key via mapKey.lookup while falling back to the identity mapping for the rest", async () => {
     const source = envSource({
       env: { PORT: "3000", HOST: "localhost" },
-      mapKey,
+      mapKey: mapKey.lookup({ PORT: ["server", "port"] }),
     });
     const store = await source.open();
 
@@ -111,7 +150,7 @@ describe("envSource", () => {
     const source = envSource({
       env: { MY_SERVER_PORT: "3000" },
       prefix: "MY_",
-      mapKey: envKeyToPath,
+      mapKey: mapKey.snakeCase(),
     });
     const store = await source.open();
 
@@ -130,7 +169,7 @@ describe("envSource", () => {
         sources: [
           envSource({
             env: { SERVER_PORT: "3000", SERVER_HOST: "localhost" },
-            mapKey: envKeyToPath,
+            mapKey: mapKey.snakeCase(),
           }),
         ],
       },
