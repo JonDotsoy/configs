@@ -45,6 +45,23 @@ pointing at its `src/*.ts` source, which `scripts/build.sh` reads to drive
 `bun build`. Add a new public module by adding both its `src/` file and its
 `exports` entry (with `_entryPoint`), not just one.
 
+### Internal imports use explicit `.js` extensions
+
+Every relative import/export in `src/*.ts` (not the `.spec.ts` files) must
+carry an explicit `.js` extension — e.g. `import { Source } from
+"./sources/source.js"`, `from "../types/index.js"` for a directory import —
+even though the file on disk is `.ts`. Both `bun build` and `tsc` in
+`moduleResolution: bundler` (this repo's `tsconfig.json`) resolve that `.js`
+specifier against the real `.ts` file, so nothing breaks locally. The reason
+is `build:types`: `tsc -p tsconfig.build.json` emits `dist/**/*.d.ts` with
+the same relative specifiers written in the source, verbatim. A bare
+specifier (`from "./source"`) comes out just as bare in the `.d.ts` — which
+`moduleResolution: node16`/`nodenext` (what TypeScript recommends for
+consuming a published ESM package from Node) cannot resolve. Writing the
+`.js` extension in `src/*.ts` is what makes the published declarations
+resolve correctly, with no post-build rewrite step needed. `.spec.ts` files
+aren't built into `dist/`, so they're exempt.
+
 ### Naming pattern: `Source`
 
 The pluggable-input concept is named `Source`: base class `Source`, factory
