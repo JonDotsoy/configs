@@ -8,7 +8,6 @@ on:
       - 'release/v*'
 
 permissions:
-  id-token: write  # Required for OIDC
   contents: read
 
 jobs:
@@ -26,3 +25,7 @@ jobs:
       - run: bun test
       - run: bun run test:pack
       - run: bun publish --access public
+        env:
+          # bun publish doesn't yet support npm's OIDC trusted publishing,
+          # so it needs an npm Automation token in this secret.
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
