@@ -3,12 +3,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { configs } from "../configs";
-import { fileDataSource } from "./file";
+import { fileSource } from "./file";
 
 let dir: string;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "configs-file-datasource-"));
+  dir = await mkdtemp(join(tmpdir(), "configs-file-source-"));
 });
 
 afterEach(async () => {
@@ -24,13 +24,13 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5000): Promise<void
   }
 }
 
-describe("fileDataSource", () => {
+describe("fileSource", () => {
   describe("format detection", () => {
     test("parses a .json file", async () => {
       const path = join(dir, "config.json");
       await Bun.write(path, JSON.stringify({ port: 3000, host: "localhost" }));
 
-      const source = fileDataSource(path, { watch: false });
+      const source = fileSource(path, { watch: false });
       const store = await source.open();
 
       expect(store.get()).toEqual({ port: 3000, host: "localhost" });
@@ -40,7 +40,7 @@ describe("fileDataSource", () => {
       const path = join(dir, "config.json");
       await Bun.write(path, JSON.stringify({ server: { port: 3000 } }));
 
-      const source = fileDataSource(path, { watch: false });
+      const source = fileSource(path, { watch: false });
       const store = await source.open();
 
       expect(store.get()).toEqual({ server: { port: 3000 } });
@@ -50,7 +50,7 @@ describe("fileDataSource", () => {
       const path = join(dir, "file.env");
       await Bun.write(path, "PORT=3000\nHOST=localhost\n");
 
-      const source = fileDataSource(path, { watch: false });
+      const source = fileSource(path, { watch: false });
       const store = await source.open();
 
       expect(store.get()).toEqual({ PORT: "3000", HOST: "localhost" });
@@ -60,7 +60,7 @@ describe("fileDataSource", () => {
       const path = join(dir, ".env");
       await Bun.write(path, "PORT=3000\n");
 
-      const source = fileDataSource(path, { watch: false });
+      const source = fileSource(path, { watch: false });
       const store = await source.open();
 
       expect(store.get()).toEqual({ PORT: "3000" });
@@ -70,7 +70,7 @@ describe("fileDataSource", () => {
       const path = join(dir, ".env");
       await Bun.write(path, "\n# a comment\nPORT=3000\n\n# another\nHOST=localhost\n");
 
-      const source = fileDataSource(path, { watch: false });
+      const source = fileSource(path, { watch: false });
       const store = await source.open();
 
       expect(store.get()).toEqual({ PORT: "3000", HOST: "localhost" });
@@ -80,7 +80,7 @@ describe("fileDataSource", () => {
       const path = join(dir, ".env");
       await Bun.write(path, `NAME="my app"\nOTHER='it\\'s fine'\n`);
 
-      const source = fileDataSource(path, { watch: false });
+      const source = fileSource(path, { watch: false });
       const store = await source.open();
 
       // The backslash isn't stripped by DotEnv.parse — see src/utils/dotenv.md.
@@ -99,7 +99,7 @@ describe("fileDataSource", () => {
         }),
       );
 
-      const source = fileDataSource(path, { watch: false, treePath: ["containers", "settings"] });
+      const source = fileSource(path, { watch: false, treePath: ["containers", "settings"] });
       const store = await source.open();
 
       expect(store.get()).toEqual({ port: 3000, host: "localhost" });
@@ -109,7 +109,7 @@ describe("fileDataSource", () => {
       const path = join(dir, "config.json");
       await Bun.write(path, JSON.stringify({ server: { port: 3000 }, other: 1 }));
 
-      const source = fileDataSource(path, { watch: false, treePath: ["server"] });
+      const source = fileSource(path, { watch: false, treePath: ["server"] });
       const store = await source.open();
 
       expect(store.get()).toEqual({ port: 3000 });
@@ -119,7 +119,7 @@ describe("fileDataSource", () => {
       const path = join(dir, "config.json");
       await Bun.write(path, JSON.stringify({ port: 3000 }));
 
-      const source = fileDataSource(path, { watch: false, treePath: [] });
+      const source = fileSource(path, { watch: false, treePath: [] });
       const store = await source.open();
 
       expect(store.get()).toEqual({ port: 3000 });
@@ -129,7 +129,7 @@ describe("fileDataSource", () => {
       const path = join(dir, "config.json");
       await Bun.write(path, JSON.stringify({ server: { port: 3000 } }));
 
-      const source = fileDataSource(path, { watch: false, treePath: ["server", "port"] });
+      const source = fileSource(path, { watch: false, treePath: ["server", "port"] });
       const store = await source.open();
 
       expect(store.get()).toBe(3000);
@@ -140,7 +140,7 @@ describe("fileDataSource", () => {
       const path = join(dir, "config.json");
       await Bun.write(path, JSON.stringify({ containers: {} }));
 
-      const source = fileDataSource(path, { watch: false, treePath: ["containers", "settings"] });
+      const source = fileSource(path, { watch: false, treePath: ["containers", "settings"] });
       const store = await source.open();
 
       expect(store.get()).toEqual({});
@@ -153,7 +153,7 @@ describe("fileDataSource", () => {
       const path = join(dir, "config.json");
       await Bun.write(path, JSON.stringify({ containers: "not an object" }));
 
-      const source = fileDataSource(path, { watch: false, treePath: ["containers", "settings"] });
+      const source = fileSource(path, { watch: false, treePath: ["containers", "settings"] });
       const store = await source.open();
 
       expect(store.get()).toEqual({});
@@ -169,7 +169,7 @@ describe("fileDataSource", () => {
         JSON.stringify({ containers: { settings: { port: 3000 } }, metadata: {} }),
       );
 
-      const source = fileDataSource(path, { treePath: ["containers", "settings"] });
+      const source = fileSource(path, { treePath: ["containers", "settings"] });
       const store = await source.open();
 
       expect(store.get()).toEqual({ port: 3000 });
@@ -190,7 +190,7 @@ describe("fileDataSource", () => {
         JSON.stringify({ containers: { settings: { port: 3000 } }, metadata: {} }),
       );
 
-      const source = fileDataSource<{ port: number }>(path, {
+      const source = fileSource<{ port: number }>(path, {
         treePath: ["containers", "settings"],
       });
       const store = await source.open();
@@ -215,7 +215,7 @@ describe("fileDataSource", () => {
       const path = join(dir, "config.toml");
       await Bun.write(path, "port = 3000");
 
-      const source = fileDataSource(path, { watch: false });
+      const source = fileSource(path, { watch: false });
       const store = await source.open();
 
       expect(store.get()).toBeNull();
@@ -227,7 +227,7 @@ describe("fileDataSource", () => {
       const errorSpy = spyOn(console, "error").mockImplementation(() => {});
       const path = join(dir, "missing.json");
 
-      const source = fileDataSource(path, { watch: false });
+      const source = fileSource(path, { watch: false });
       const store = await source.open();
 
       expect(store.get()).toBeNull();
@@ -240,7 +240,7 @@ describe("fileDataSource", () => {
       const path = join(dir, "config.json");
       await Bun.write(path, "{not valid json");
 
-      const source = fileDataSource(path, { watch: false });
+      const source = fileSource(path, { watch: false });
       const store = await source.open();
 
       expect(store.get()).toBeNull();
@@ -253,7 +253,7 @@ describe("fileDataSource", () => {
       const path = join(dir, "config.json");
       await Bun.write(path, "{not valid json");
 
-      const source = fileDataSource(path);
+      const source = fileSource(path);
       const store = await source.open();
 
       expect(store.get()).toBeNull();
@@ -269,7 +269,7 @@ describe("fileDataSource", () => {
       const path = join(dir, "config.json");
       await Bun.write(path, JSON.stringify({ port: 3000 }));
 
-      const source = fileDataSource<{ port: number }>(path);
+      const source = fileSource<{ port: number }>(path);
       const store = await source.open();
 
       expect(store.get()).toEqual({ port: 3000 });
@@ -286,7 +286,7 @@ describe("fileDataSource", () => {
       const path = join(dir, "config.json");
       await Bun.write(path, JSON.stringify({ port: 3000 }));
 
-      const source = fileDataSource<{ port: number }>(path, { watch: false });
+      const source = fileSource<{ port: number }>(path, { watch: false });
       const store = await source.open();
 
       expect(store.get()).toEqual({ port: 3000 });
@@ -301,7 +301,7 @@ describe("fileDataSource", () => {
       const path = join(dir, "config.json");
       await Bun.write(path, JSON.stringify({ port: 3000 }));
 
-      const source = fileDataSource<{ port: number }>(path);
+      const source = fileSource<{ port: number }>(path);
       const store = await source.open();
 
       await source.close();
@@ -317,7 +317,7 @@ describe("fileDataSource", () => {
       const path = join(dir, "config.json");
       await Bun.write(path, JSON.stringify({ port: 3000 }));
 
-      const source = fileDataSource<{ port: number }>(path);
+      const source = fileSource<{ port: number }>(path);
       const store = await source.open();
 
       await Bun.write(path, "{not valid json");
@@ -334,7 +334,7 @@ describe("fileDataSource", () => {
       const path = join(dir, "config.json");
       await Bun.write(path, JSON.stringify({ port: 3000 }));
 
-      const source = fileDataSource<{ port: number }>(path);
+      const source = fileSource<{ port: number }>(path);
       const store = await source.open();
 
       expect(store.get()).toEqual({ port: 3000 });
@@ -354,7 +354,7 @@ describe("fileDataSource", () => {
       const path = join(dir, "config.json");
       await Bun.write(path, JSON.stringify({ port: 3000 }));
 
-      const source = fileDataSource<{ port: number }>(path);
+      const source = fileSource<{ port: number }>(path);
       const store = await source.open();
 
       expect(store.get()).toEqual({ port: 3000 });
@@ -369,13 +369,13 @@ describe("fileDataSource", () => {
     });
   });
 
-  test("wires into configs.create as a datasource", async () => {
+  test("wires into configs.create as a source", async () => {
     const path = join(dir, "config.json");
     await Bun.write(path, JSON.stringify({ port: 3000, host: "localhost" }));
 
     const cfg = await configs.create(
       { port: { type: "number", required: true }, host: { type: "string", required: true } },
-      { datasources: [fileDataSource(path, { watch: false })] },
+      { sources: [fileSource(path, { watch: false })] },
     );
 
     expect(cfg.port.get()).toBe(3000);

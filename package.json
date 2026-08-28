@@ -1,7 +1,7 @@
 {
   "name": "@jondotsoy/configs",
   "version": "0.1.0",
-  "description": "A reactive, typed configuration library backed by pluggable datasources (env, fetch, sse, file).",
+  "description": "A reactive, typed configuration library backed by pluggable sources (env, fetch, sse, file).",
   "keywords": [
     "config",
     "configuration",
@@ -9,7 +9,7 @@
     "environment-variables",
     "reactive",
     "typescript",
-    "datasource",
+    "source",
     "sse",
     "fetch",
     "file",
@@ -45,25 +45,25 @@
       "types": "./dist/configs.d.ts",
       "import": "./dist/configs.js"
     },
-    "./datasources/env": {
-      "_entryPoint": "./src/datasources/env.ts",
-      "types": "./dist/datasources/env.d.ts",
-      "import": "./dist/datasources/env.js"
+    "./sources/env": {
+      "_entryPoint": "./src/sources/env.ts",
+      "types": "./dist/sources/env.d.ts",
+      "import": "./dist/sources/env.js"
     },
-    "./datasources/fetch": {
-      "_entryPoint": "./src/datasources/fetch.ts",
-      "types": "./dist/datasources/fetch.d.ts",
-      "import": "./dist/datasources/fetch.js"
+    "./sources/fetch": {
+      "_entryPoint": "./src/sources/fetch.ts",
+      "types": "./dist/sources/fetch.d.ts",
+      "import": "./dist/sources/fetch.js"
     },
-    "./datasources/sse": {
-      "_entryPoint": "./src/datasources/sse.ts",
-      "types": "./dist/datasources/sse.d.ts",
-      "import": "./dist/datasources/sse.js"
+    "./sources/sse": {
+      "_entryPoint": "./src/sources/sse.ts",
+      "types": "./dist/sources/sse.d.ts",
+      "import": "./dist/sources/sse.js"
     },
-    "./datasources/file": {
-      "_entryPoint": "./src/datasources/file.ts",
-      "types": "./dist/datasources/file.d.ts",
-      "import": "./dist/datasources/file.js"
+    "./sources/file": {
+      "_entryPoint": "./src/sources/file.ts",
+      "types": "./dist/sources/file.d.ts",
+      "import": "./dist/sources/file.js"
     }
   },
   "scripts": {

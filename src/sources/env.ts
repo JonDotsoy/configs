@@ -1,9 +1,9 @@
-import { DataSource } from "./datasource";
+import { Source } from "./source";
 
 /** Maps an env var key to a path into the config tree, e.g. `mapKey("FOO_TAR")`. */
 export type EnvKeyMapper = (key: string) => string[];
 
-export interface EnvDataSourceOptions {
+export interface EnvSourceOptions {
   /** The env vars to read. Defaults to `process.env`. */
   env?: Record<string, string | undefined>;
   /** Only keys starting with `prefix` are included; the prefix is stripped before `mapKey` runs. */
@@ -31,13 +31,13 @@ function setPath(target: Record<string, unknown>, path: string[], value: string)
   node[path[path.length - 1]!] = value;
 }
 
-/** A `DataSource` that snapshots `env` into a config tree, one field per key (as mapped by `mapKey`). */
-export function envDataSource(options: EnvDataSourceOptions = {}): DataSource<Record<string, unknown>> {
+/** A `Source` that snapshots `env` into a config tree, one field per key (as mapped by `mapKey`). */
+export function envSource(options: EnvSourceOptions = {}): Source<Record<string, unknown>> {
   const env = options.env ?? process.env;
   const { prefix, suffix } = options;
   const mapKey = options.mapKey ?? ((key: string) => [key]);
 
-  return new DataSource<Record<string, unknown>>({
+  return new Source<Record<string, unknown>>({
     start(control) {
       const tree: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(env)) {

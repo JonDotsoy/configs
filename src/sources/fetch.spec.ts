@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { fetchDataSource } from "./fetch";
+import { fetchSource } from "./fetch";
 
 const originalFetch = globalThis.fetch;
 
@@ -14,7 +14,7 @@ function jsonResponse(body: string, init: { status?: number; contentType?: strin
   });
 }
 
-describe("fetchDataSource", () => {
+describe("fetchSource", () => {
   test("fetches and parses a JSON response", async () => {
     let receivedUrl: string | URL | undefined;
     let receivedInit: RequestInit | undefined;
@@ -24,7 +24,7 @@ describe("fetchDataSource", () => {
       return jsonResponse(JSON.stringify({ port: 3000 }));
     }) as unknown as typeof fetch;
 
-    const source = fetchDataSource<{ port: number }>({
+    const source = fetchSource<{ port: number }>({
       url: "https://example.com/config",
       method: "POST",
       headers: { authorization: "Bearer token" },
@@ -41,7 +41,7 @@ describe("fetchDataSource", () => {
     globalThis.fetch = (async () =>
       jsonResponse(JSON.stringify({ port: 3000 }), { contentType: "text/plain" })) as unknown as typeof fetch;
 
-    const source = fetchDataSource({ url: "https://example.com/config" });
+    const source = fetchSource({ url: "https://example.com/config" });
     const store = await source.open();
 
     expect(store.get()).toEqual({ port: 3000 });
@@ -51,7 +51,7 @@ describe("fetchDataSource", () => {
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});
     globalThis.fetch = (async () => jsonResponse("not json")) as unknown as typeof fetch;
 
-    const source = fetchDataSource({ url: "https://example.com/config" });
+    const source = fetchSource({ url: "https://example.com/config" });
     const store = await source.open();
 
     expect(store.get()).toBeNull();
@@ -67,7 +67,7 @@ describe("fetchDataSource", () => {
       throw new Error("network down");
     }) as unknown as typeof fetch;
 
-    const source = fetchDataSource({ url: "https://example.com/config" });
+    const source = fetchSource({ url: "https://example.com/config" });
     const store = await source.open();
 
     expect(calls).toBe(1);
@@ -84,7 +84,7 @@ describe("fetchDataSource", () => {
       return jsonResponse(JSON.stringify({ ok: true }));
     }) as unknown as typeof fetch;
 
-    const source = fetchDataSource({ url: "https://example.com/config", attempts: 3 });
+    const source = fetchSource({ url: "https://example.com/config", attempts: 3 });
     const store = await source.open();
 
     expect(calls).toBe(3);
@@ -99,7 +99,7 @@ describe("fetchDataSource", () => {
       return jsonResponse("", { status: 500 });
     }) as unknown as typeof fetch;
 
-    const source = fetchDataSource({ url: "https://example.com/config", attempts: 2 });
+    const source = fetchSource({ url: "https://example.com/config", attempts: 2 });
     const store = await source.open();
 
     expect(calls).toBe(2);
