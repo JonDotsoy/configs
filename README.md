@@ -250,15 +250,18 @@ const cfg = await configs.create(
 
 let timer: ReturnType<typeof setInterval> | undefined;
 
-cfg.service.cleanupIntervalMs.subscribe((intervalMs) => {
+const unsubscribe = cfg.service.cleanupIntervalMs.subscribe((intervalMs) => {
   clearInterval(timer);
   timer = setInterval(cleanupTempFiles, intervalMs);
+  return () => clearInterval(timer); // runs when `unsubscribe()` is called, not on the next change
 });
 ```
 
 `subscribe` fires immediately with the current value (starting the first timer) and again on every
 subsequent change — `clearInterval(timer)` cancels the previous one before `setInterval` starts the
-new one, so there's never more than one timer running for this field.
+new one, so there's never more than one timer running for this field. The callback's returned
+cleanup only fires once, when `unsubscribe()` itself is called, so it's the right place to stop the
+last timer for good — it's not a substitute for the `clearInterval` at the top of the callback.
 
 ### Closing a config tree
 
