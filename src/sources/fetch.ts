@@ -1,10 +1,31 @@
-import { httpFetch, type HttpFetchRequest } from "../utils/http-fetch.js";
+import { httpFetch, type HttpFetchCredentials, type HttpFetchRequest } from "../utils/http-fetch.js";
 import { Source } from "./source.js";
+
+export type { HttpFetchCredentials };
 
 export interface FetchSourceOptions<T = unknown> {
   url: string | URL;
   method?: string;
   headers?: RequestInit["headers"];
+  /** Request body, passed through to `fetch` as-is (e.g. a JSON string, `FormData`, `Blob`). */
+  body?: RequestInit["body"];
+  /**
+   * Aborts the in-flight fetch (and stops retrying it) when the signal fires. Note this only
+   * covers a single round — with `pollingInterval` set, later rounds still run; close the
+   * `Source` itself to stop polling entirely.
+   */
+  signal?: AbortSignal;
+  /** Passed through to `fetch` as-is. See `RequestInit["mode"]`. */
+  mode?: RequestInit["mode"];
+  /** Passed through to `fetch` as-is. See `RequestInit["cache"]`. */
+  cache?: RequestInit["cache"];
+  /** Passed through to `fetch` as-is. See `RequestInit["redirect"]`. */
+  redirect?: RequestInit["redirect"];
+  /**
+   * Sets the `Authorization` header for the request. `{ basic: { username, password } }` sends
+   * `Basic <base64>`; `{ bearer: { token } }` sends `Bearer <token>`. See `HttpFetchCredentials`.
+   */
+  credentials?: HttpFetchCredentials;
   /** Attempts to download the data before giving up. Defaults to 1 (no retry). */
   attempts?: number;
   /** Turns the fetched `Response` into `T`. Defaults to `(res) => res.json()`. */
@@ -49,8 +70,35 @@ async function fetchRound<T>(req: HttpFetchRequest<T>): Promise<{ data: T } | un
  * the source or stopping the polling.
  */
 export function fetchSource<T = unknown>(options: FetchSourceOptions<T>): Source<T> {
-  const { url, method = "GET", headers, attempts = 1, bodyParser, acceptStatus, pollingInterval = false } = options;
-  const req = { url, method, headers, attempts, bodyParser, acceptStatus };
+  const {
+    url,
+    method = "GET",
+    headers,
+    body,
+    signal,
+    mode,
+    cache,
+    redirect,
+    credentials,
+    attempts = 1,
+    bodyParser,
+    acceptStatus,
+    pollingInterval = false,
+  } = options;
+  const req = {
+    url,
+    method,
+    headers,
+    body,
+    signal,
+    mode,
+    cache,
+    redirect,
+    credentials,
+    attempts,
+    bodyParser,
+    acceptStatus,
+  };
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   return new Source<T>({
