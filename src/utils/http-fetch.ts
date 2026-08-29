@@ -1,7 +1,35 @@
+/**
+ * Authenticates the request by setting the `Authorization` header up front.
+ * `{ basic: { username, password } }` sends `Basic <base64>`; `{ bearer: { token } }` sends
+ * `Bearer <token>`.
+ */
+export type HttpFetchCredentials =
+  | { basic: { username: string; password: string } }
+  | { bearer: { token: string } };
+
 export interface HttpFetchRequest<T = unknown> {
   url: string | URL;
   method?: string;
   headers?: RequestInit["headers"];
+  /** Request body, passed through to `fetch` as-is (e.g. a JSON string, `FormData`, `Blob`). */
+  body?: RequestInit["body"];
+  /**
+   * Aborts the request (and stops retrying) when the signal fires. An abort is treated as
+   * definitive, not a transient network failure, so it is never retried.
+   */
+  signal?: AbortSignal;
+  /** Passed through to `fetch` as-is. See `RequestInit["mode"]`. */
+  mode?: RequestInit["mode"];
+  /** Passed through to `fetch` as-is. See `RequestInit["cache"]`. */
+  cache?: RequestInit["cache"];
+  /** Passed through to `fetch` as-is. See `RequestInit["redirect"]`. */
+  redirect?: RequestInit["redirect"];
+  /**
+   * Sets the `Authorization` header for the request. `{ basic: { username, password } }` sends
+   * `Basic <base64>`; `{ bearer: { token } }` sends `Bearer <token>`. Overrides any
+   * `authorization` set in `headers`.
+   */
+  credentials?: HttpFetchCredentials;
   /** Attempts to download the data before giving up. Defaults to 1 (no retry). */
   attempts?: number;
   /** Turns the fetched `Response` into `T`. Defaults to `(res) => res.json()`. */
@@ -41,6 +69,24 @@ class AttemptsExhaustedError extends Error {
   }
 }
 
+function withAuthorizationHeader(headers: RequestInit["headers"] | undefined, value: string): Headers {
+  const result = new Headers(headers);
+  result.set("authorization", value);
+  return result;
+}
+
+function applyCredentials(
+  headers: RequestInit["headers"] | undefined,
+  credentials: HttpFetchCredentials | undefined,
+): RequestInit["headers"] | undefined {
+  if (!credentials) return headers;
+  if ("basic" in credentials) {
+    const { username, password } = credentials.basic;
+    return withAuthorizationHeader(headers, `Basic ${btoa(`${username}:${password}`)}`);
+  }
+  return withAuthorizationHeader(headers, `Bearer ${credentials.bearer.token}`);
+}
+
 async function download(
   url: string | URL,
   init: RequestInit,
@@ -55,11 +101,16 @@ async function download(
   return response;
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 /**
  * Retries `download` up to `attempts` times, returning as soon as one succeeds. Only network
- * errors are retried — a rejected status (`UnacceptedStatusError`) throws immediately, since it's
- * a definitive response from the server rather than a transient failure. If every attempt fails
- * with a network error, throws an `AttemptsExhaustedError` wrapping the last one.
+ * errors are retried — a rejected status (`UnacceptedStatusError`) or an abort (`init.signal`
+ * firing) throws immediately, since both are definitive outcomes rather than transient failures.
+ * If every attempt fails with a network error, throws an `AttemptsExhaustedError` wrapping the
+ * last one.
  */
 async function downloadWithRetry(
   url: string | URL,
@@ -76,6 +127,7 @@ async function downloadWithRetry(
       return await download(url, init, acceptStatus);
     } catch (error) {
       if (error instanceof UnacceptedStatusError) throw error;
+      if (isAbortError(error)) throw error;
       lastError = error;
     }
     attempt++;
@@ -93,9 +145,29 @@ async function downloadWithRetry(
  * failure is not retried and is thrown as-is.
  */
 export async function httpFetch<T = unknown>(req: HttpFetchRequest<T>): Promise<HttpFetchResponse<T>> {
-  const { url, method = "GET", headers, attempts = 1, acceptStatus = defaultAcceptStatus } = req;
+  const {
+    url,
+    method = "GET",
+    headers,
+    body: reqBody,
+    signal,
+    mode,
+    cache,
+    redirect,
+    credentials,
+    attempts = 1,
+    acceptStatus = defaultAcceptStatus,
+  } = req;
   const bodyParser = req.bodyParser ?? defaultBodyParser<T>;
-  const init: RequestInit = { method, headers };
+  const init: RequestInit = {
+    method,
+    headers: applyCredentials(headers, credentials),
+    body: reqBody,
+    signal,
+    mode,
+    cache,
+    redirect,
+  };
 
   const response = await downloadWithRetry(url, init, attempts, acceptStatus);
   const body = await bodyParser(response);

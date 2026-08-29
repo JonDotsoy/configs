@@ -120,6 +120,100 @@ describe("httpFetch", () => {
     await expect(httpFetch({ url: "https://example.com/config" })).rejects.toThrow(/404/);
   });
 
+  test("passes `body` through to fetch as-is", async () => {
+    let receivedInit: RequestInit | undefined;
+    globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+      receivedInit = init;
+      return jsonResponse(JSON.stringify({ ok: true }));
+    }) as unknown as typeof fetch;
+
+    await httpFetch({
+      url: "https://example.com/config",
+      method: "POST",
+      body: JSON.stringify({ name: "port" }),
+    });
+
+    expect(receivedInit?.body).toBe(JSON.stringify({ name: "port" }));
+  });
+
+  test("passes `signal` through to fetch", async () => {
+    let receivedInit: RequestInit | undefined;
+    globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+      receivedInit = init;
+      return jsonResponse(JSON.stringify({ ok: true }));
+    }) as unknown as typeof fetch;
+
+    const controller = new AbortController();
+    await httpFetch({ url: "https://example.com/config", signal: controller.signal });
+
+    expect(receivedInit?.signal).toBe(controller.signal);
+  });
+
+  test("an abort error is not retried, even with `attempts` set", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }) as unknown as typeof fetch;
+
+    const controller = new AbortController();
+    await expect(
+      httpFetch({ url: "https://example.com/config", attempts: 3, signal: controller.signal }),
+    ).rejects.toThrow(/aborted/);
+    expect(calls).toBe(1);
+  });
+
+  test("passes `mode`, `cache`, and `redirect` through to fetch as-is", async () => {
+    let receivedInit: RequestInit | undefined;
+    globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+      receivedInit = init;
+      return jsonResponse(JSON.stringify({ ok: true }));
+    }) as unknown as typeof fetch;
+
+    await httpFetch({
+      url: "https://example.com/config",
+      mode: "cors",
+      cache: "no-store",
+      redirect: "manual",
+    });
+
+    expect(receivedInit?.mode).toBe("cors");
+    expect(receivedInit?.cache).toBe("no-store");
+    expect(receivedInit?.redirect).toBe("manual");
+  });
+
+  test("`credentials.basic` sends a Basic Authorization header up front", async () => {
+    let receivedInit: RequestInit | undefined;
+    globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+      receivedInit = init;
+      return jsonResponse(JSON.stringify({ ok: true }));
+    }) as unknown as typeof fetch;
+
+    await httpFetch({
+      url: "https://example.com/config",
+      credentials: { basic: { username: "alice", password: "wonderland" } },
+    });
+
+    const headers = new Headers(receivedInit?.headers);
+    expect(headers.get("authorization")).toBe(`Basic ${btoa("alice:wonderland")}`);
+  });
+
+  test("`credentials.bearer` sends a Bearer Authorization header up front", async () => {
+    let receivedInit: RequestInit | undefined;
+    globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+      receivedInit = init;
+      return jsonResponse(JSON.stringify({ ok: true }));
+    }) as unknown as typeof fetch;
+
+    await httpFetch({
+      url: "https://example.com/config",
+      credentials: { bearer: { token: "abc123" } },
+    });
+
+    const headers = new Headers(receivedInit?.headers);
+    expect(headers.get("authorization")).toBe("Bearer abc123");
+  });
+
   test("a custom acceptStatus can accept a status the default would reject, without retrying", async () => {
     let calls = 0;
     globalThis.fetch = (async () => {
