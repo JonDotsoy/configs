@@ -105,6 +105,16 @@ and works, and checks that no stray file leaked into the tarball beyond
 `dist/**` and the files npm/bun always include (`package.json`, `README.md`,
 `LICENSE`).
 
+When opening the PR itself, use the matching template under
+`.github/PULL_REQUEST_TEMPLATE/` — `bug_fix.md` for a fix,
+`feature.md` for new functionality (pick via GitHub's `?template=`
+query param, or `gh pr create --template`). Both share a `## Summary`
+of what changed and a `## Test plan` checklist covering `bun test`,
+`bunx tsc --noEmit -p tsconfig.json`, `bun run test:pack`, and
+`bun run test:integration` — check off what you ran, and note anything
+skipped (e.g. a runtime binary unavailable in the environment) instead
+of silently omitting it.
+
 ### Cross-runtime integration suite
 
 `test/integration/runtime-imports.ts` verifies the packed tarball actually
