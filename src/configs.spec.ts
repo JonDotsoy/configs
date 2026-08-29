@@ -1,7 +1,8 @@
-import { describe, expect, expectTypeOf, test } from "bun:test";
+import { afterEach, describe, expect, expectTypeOf, test } from "bun:test";
 import { Store, store } from "./utils/store";
 import { Source } from "./sources/source";
 import { envSource, mapKey } from "./sources/env";
+import { fetchSource } from "./sources/fetch";
 import { ConfigError } from "./errors";
 import { ConfigNode, ConfigNodeResolved } from "./config.types.ts";
 import type { configs, InferReadOnlyAccessors, ReadOnlyStore, SchemaGroup } from "./config.types.ts";
@@ -348,6 +349,93 @@ describe("nested groups with their own sources", () => {
     expectTypeOf(cfg.server.port.get()).toEqualTypeOf<number | null>();
     expectTypeOf(cfg.server).toHaveProperty("close");
     expectTypeOf(cfg.server.close()).toEqualTypeOf<Promise<void>>();
+  });
+
+  describe("multiple sibling groups, each with a different source kind", () => {
+    const originalFetch = globalThis.fetch;
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+
+    test("an envSource-backed group and a fetchSource-backed group resolve independently", async () => {
+      globalThis.fetch = (async () =>
+        new Response(JSON.stringify({ promoService: true }), {
+          headers: { "content-type": "application/json" },
+        })) as unknown as typeof fetch;
+
+      const serverConfigs = await configs.create({
+        server: configs.create(
+          {
+            port: { type: "number", summary: "HTTP port", default: 3000 },
+            host: { type: "string", summary: "bind host", default: "localhost" },
+          },
+          { sources: [envSource({ env: {}, mapKey: mapKey.snakeCase() })] },
+        ),
+        features: configs.create(
+          {
+            promoService: { type: "boolean", summary: "enable the promo service", default: false },
+          },
+          { sources: [fetchSource({ url: "https://example.com/features" })] },
+        ),
+      });
+
+      expect(serverConfigs.server.port.get()).toBe(3000);
+      expect(serverConfigs.server.host.get()).toBe("localhost");
+      expect(serverConfigs.features.promoService.get()).toBe(true);
+    });
+
+    test("a doubly-nested group reads from its ancestor's fetchSource at the right sub-path", async () => {
+      globalThis.fetch = (async () =>
+        new Response(JSON.stringify({ home: { showSummaryActivity: true } }), {
+          headers: { "content-type": "application/json" },
+        })) as unknown as typeof fetch;
+
+      const serverConfigs = await configs.create({
+        features: configs.create(
+          {
+            home: configs.create({
+              showSummaryActivity: { type: "boolean" },
+            }),
+          },
+          { sources: [fetchSource({ url: "https://example.com/features" })] },
+        ),
+      });
+
+      expect(serverConfigs.features.home.showSummaryActivity.get()).toBe(true);
+      expectTypeOf(serverConfigs.features.home.showSummaryActivity.get()).toEqualTypeOf<boolean | null>();
+    });
+
+    test("infers a default-free null-excluding type for each sibling group's own fields", async () => {
+      globalThis.fetch = (async () =>
+        new Response(JSON.stringify({ promoService: true }), {
+          headers: { "content-type": "application/json" },
+        })) as unknown as typeof fetch;
+
+      const serverConfigs = await configs.create({
+        server: configs.create(
+          {
+            port: { type: "number", summary: "HTTP port", default: 3000 },
+            host: { type: "string", summary: "bind host", default: "localhost" },
+          },
+          { sources: [envSource({ env: {}, mapKey: mapKey.snakeCase() })] },
+        ),
+        features: configs.create(
+          {
+            promoService: { type: "boolean", summary: "enable the promo service", default: false },
+          },
+          { sources: [fetchSource({ url: "https://example.com/features" })] },
+        ),
+      });
+
+      expectTypeOf(serverConfigs.server.port.get()).toEqualTypeOf<number>();
+      expectTypeOf(serverConfigs.server.host.get()).toEqualTypeOf<string>();
+      expectTypeOf(serverConfigs.features.promoService.get()).toEqualTypeOf<boolean>();
+
+      expectTypeOf(serverConfigs.server.port).toEqualTypeOf<ReadOnlyStore<number>>();
+      expectTypeOf(serverConfigs.server.host).toEqualTypeOf<ReadOnlyStore<string>>();
+      expectTypeOf(serverConfigs.features.promoService).toEqualTypeOf<ReadOnlyStore<boolean>>();
+    });
   });
 });
 
