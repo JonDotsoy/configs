@@ -69,6 +69,11 @@
       "_entryPoint": "./src/sources/literal.ts",
       "types": "./dist/sources/literal.d.ts",
       "import": "./dist/sources/literal.js"
+    },
+    "./sources/pull": {
+      "_entryPoint": "./src/sources/pull.ts",
+      "types": "./dist/sources/pull.d.ts",
+      "import": "./dist/sources/pull.js"
     }
   },
   "scripts": {
