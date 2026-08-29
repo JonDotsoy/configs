@@ -1,6 +1,11 @@
 # @jondotsoy/configs
 
-A tool for all your configurations.
+Ship your config to your apps, fast. Configuration isn't just static values
+read once at boot anymore — feature flags, remote toggles, and settings
+served over HTTP or SSE change at runtime to turn features on and off or
+adjust app behavior without a redeploy. `@jondotsoy/configs` is built for
+that: every field is a live `Store` you subscribe to, so your app reacts
+the moment a source pushes a new value.
 
 - **Reactive configs** — every field is a live `Store`; subscribe to it and get notified whenever an upstream source changes.
 - **Lightweight** — no dependencies, just a thin layer over plain objects and stores.
@@ -9,30 +14,36 @@ A tool for all your configurations.
 ```ts
 import { configs } from "@jondotsoy/configs";
 import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
+import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 
 // SERVER_PORT=3000 SERVER_HOST=localhost → { server: { port: "3000", host: "localhost" } }
-const source = envSource({ mapKey: mapKey.snakeCase() });
-
-const serverConfigs = await configs.create(
-  {
-    server: configs.create({
+// GET https://example.com/features → { promoService: true } (polled every 30s)
+const cfg = await configs.create({
+  server: configs.create(
+    {
       port: { type: "number", summary: "HTTP port", default: 3000 },
       host: { type: "string", summary: "bind host", default: "localhost" },
-    }),
-    tls: configs.create({
-      key: { type: "string", summary: "TLS key path" },
-      cert: { type: "string", summary: "TLS cert path" },
-    }),
-  },
-  { sources: [source] },
-);
+    },
+    { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
+  ),
+  features: configs.create(
+    {
+      promoService: { type: "boolean", summary: "enable the promo service", default: false },
+    },
+    { sources: [fetchSource({ url: "https://example.com/features", pollingInterval: 30_000 })] },
+  ),
+});
 
 // React to changes
-serverConfigs.server.port.subscribe((port) => {
+cfg.server.port.subscribe((port) => {
   console.log(`listening on port ${port}`);
 });
 
-console.log(serverConfigs.server.port.get());
+cfg.features.promoService.subscribe((enabled) => {
+  console.log(`promo service ${enabled ? "enabled" : "disabled"}`);
+});
+
+console.log(cfg.server.port.get());
 // 3000
 ```
 
