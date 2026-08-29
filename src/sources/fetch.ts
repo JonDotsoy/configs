@@ -1,11 +1,19 @@
+import { httpFetch, type HttpFetchRequest } from "../utils/http-fetch.js";
 import { Source } from "./source.js";
 
-export interface FetchSourceOptions {
+export interface FetchSourceOptions<T = unknown> {
   url: string | URL;
   method?: string;
   headers?: RequestInit["headers"];
   /** Attempts to download the data before giving up. Defaults to 1 (no retry). */
   attempts?: number;
+  /** Turns the fetched `Response` into `T`. Defaults to `(res) => res.json()`. */
+  bodyParser?: (response: Response) => Promise<T>;
+  /**
+   * Decides whether a response's status code counts as accepted. Defaults
+   * to 2xx: `(statusCode) => statusCode >= 200 && statusCode < 300`.
+   */
+  acceptStatus?: (statusCode: number) => boolean;
   /**
    * Milliseconds between fetches. Defaults to `false`: polling is off, so `fetchSource` fetches
    * `url` exactly once and closes. Set it to a number to keep fetching `url` on that interval
@@ -14,56 +22,25 @@ export interface FetchSourceOptions {
   pollingInterval?: number | false;
 }
 
-async function download(url: string | URL, init: RequestInit): Promise<Response> {
-  const response = await fetch(url, init);
-  if (!response.ok) {
-    throw new Error(`fetchSource: received ${response.status} ${response.statusText} from "${url}"`);
-  }
-  return response;
-}
-
-/** Downloads and parses `url` as JSON, retrying up to `attempts` times. Logs and returns `undefined` on failure. */
-async function fetchOnce<T>(
-  url: string | URL,
-  init: RequestInit,
-  attempts: number,
-): Promise<{ data: T } | undefined> {
-  let response: Response | undefined;
-  let lastError: unknown;
-
-  for (let attempt = 0; attempt < Math.max(1, attempts); attempt++) {
-    try {
-      response = await download(url, init);
-      break;
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  if (!response) {
-    console.error(`fetchSource: failed to fetch "${url}" after ${attempts} attempt(s)`, lastError);
-    return undefined;
-  }
-
-  const contentType = response.headers.get("content-type") ?? "";
-  const text = await response.text();
-
+/** Runs one `httpFetch` round, logging and swallowing any failure into `undefined`. */
+async function fetchRound<T>(req: HttpFetchRequest<T>): Promise<{ data: T } | undefined> {
   try {
-    return { data: JSON.parse(text) as T };
+    const result = await httpFetch<T>(req);
+    return { data: result.body };
   } catch (error) {
-    console.error(
-      `fetchSource: response body from "${url}" is not valid JSON (content-type: "${contentType}")`,
-      error,
-    );
+    console.error(`fetchSource: failed to fetch "${req.url}"`, error);
     return undefined;
   }
 }
 
 /**
- * A `Source` that fetches a JSON snapshot from `url`. Only JSON is supported: the response is
- * parsed as JSON regardless of what `Content-Type` reports (a non-JSON content type is a fallback
- * attempt, not a hard failure). If the download never succeeds, or the body isn't valid JSON, this
- * logs a `console.error` and leaves the store empty (`null`) instead of throwing.
+ * A `Source` that fetches a snapshot from `url`. The response body is turned into `T` by
+ * `bodyParser` (defaulting to `(res) => res.json()`), so non-JSON responses are supported by
+ * passing a custom parser. HTTP request/retry mechanics are delegated to the internal
+ * `httpFetch` helper, which throws when the download never succeeds (network error or a
+ * status rejected by `acceptStatus`, after exhausting `attempts`) or when `bodyParser` throws.
+ * `fetchSource` catches that, logs a `console.error`, and leaves the store empty (`null`)
+ * instead of throwing.
  *
  * By default (`pollingInterval: false`) it fetches `url` exactly once and closes. Set
  * `pollingInterval` to a number of milliseconds to keep fetching on that interval instead — each
@@ -71,14 +48,14 @@ async function fetchOnce<T>(
  * `Source` is closed. A failed round after the first one is logged and skipped, without closing
  * the source or stopping the polling.
  */
-export function fetchSource<T = unknown>(options: FetchSourceOptions): Source<T> {
-  const { url, method = "GET", headers, attempts = 1, pollingInterval = false } = options;
-  const init: RequestInit = { method, headers };
+export function fetchSource<T = unknown>(options: FetchSourceOptions<T>): Source<T> {
+  const { url, method = "GET", headers, attempts = 1, bodyParser, acceptStatus, pollingInterval = false } = options;
+  const req = { url, method, headers, attempts, bodyParser, acceptStatus };
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   return new Source<T>({
     async start(control) {
-      const first = await fetchOnce<T>(url, init, attempts);
+      const first = await fetchRound<T>(req);
       if (!first) {
         control.close();
         return;
@@ -93,7 +70,7 @@ export function fetchSource<T = unknown>(options: FetchSourceOptions): Source<T>
 
       const scheduleNext = () => {
         timer = setTimeout(async () => {
-          const result = await fetchOnce<T>(url, init, attempts);
+          const result = await fetchRound<T>(req);
           if (result) control.set(result.data);
           scheduleNext();
         }, pollingInterval);

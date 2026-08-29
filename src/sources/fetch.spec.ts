@@ -47,6 +47,48 @@ describe("fetchSource", () => {
     expect(store.get()).toEqual({ port: 3000 });
   });
 
+  test("uses a custom bodyParser instead of the default JSON parsing", async () => {
+    globalThis.fetch = (async () => jsonResponse(JSON.stringify({ port: 3000 }))) as unknown as typeof fetch;
+
+    const source = fetchSource<string>({
+      url: "https://example.com/config",
+      bodyParser: async (res) => res.text(),
+    });
+    const store = await source.open();
+
+    expect(store.get()).toBe(JSON.stringify({ port: 3000 }));
+  });
+
+  test("logs and leaves the store empty when a custom bodyParser throws", async () => {
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    globalThis.fetch = (async () => jsonResponse(JSON.stringify({ port: 3000 }))) as unknown as typeof fetch;
+
+    const source = fetchSource({
+      url: "https://example.com/config",
+      bodyParser: async () => {
+        throw new Error("parse failed");
+      },
+    });
+    const store = await source.open();
+
+    expect(store.get()).toBeNull();
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+  });
+
+  test("a custom acceptStatus can accept a status the default would reject", async () => {
+    globalThis.fetch = (async () =>
+      jsonResponse(JSON.stringify({ found: false }), { status: 404 })) as unknown as typeof fetch;
+
+    const source = fetchSource<{ found: boolean }>({
+      url: "https://example.com/config",
+      acceptStatus: (statusCode) => statusCode === 404,
+    });
+    const store = await source.open();
+
+    expect(store.get()).toEqual({ found: false });
+  });
+
   test("logs and leaves the store empty when the body isn't valid JSON", async () => {
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});
     globalThis.fetch = (async () => jsonResponse("not json")) as unknown as typeof fetch;
@@ -91,7 +133,7 @@ describe("fetchSource", () => {
     expect(store.get()).toEqual({ ok: true });
   });
 
-  test("retries on a non-ok response, then logs and leaves the store empty when exhausted", async () => {
+  test("a non-ok response is not retried: logs and leaves the store empty immediately", async () => {
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});
     let calls = 0;
     globalThis.fetch = (async () => {
@@ -102,7 +144,7 @@ describe("fetchSource", () => {
     const source = fetchSource({ url: "https://example.com/config", attempts: 2 });
     const store = await source.open();
 
-    expect(calls).toBe(2);
+    expect(calls).toBe(1);
     expect(store.get()).toBeNull();
     expect(errorSpy).toHaveBeenCalledTimes(1);
     errorSpy.mockRestore();
