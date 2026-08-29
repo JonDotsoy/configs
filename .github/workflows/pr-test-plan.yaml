@@ -1,0 +1,166 @@
+name: PR Test Plan
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test-plan:
+    # Skip draft PRs — the test plan only runs once a PR is marked ready for review.
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: bun test
+        id: bun_test
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          bun test 2>&1 | tee bun-test-output.txt
+
+      - name: Summarize bun test coverage
+        id: bun_test_summary
+        run: |
+          pass=$(grep -oE '^[[:space:]]*[0-9]+ pass' bun-test-output.txt | grep -oE '[0-9]+' || echo 0)
+          fail=$(grep -oE '^[[:space:]]*[0-9]+ fail' bun-test-output.txt | grep -oE '[0-9]+' || echo 0)
+          total=$((pass + fail))
+          echo "pass=$pass" >> "$GITHUB_OUTPUT"
+          echo "fail=$fail" >> "$GITHUB_OUTPUT"
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+
+      - name: bunx tsc --noEmit -p tsconfig.json
+        id: tsc
+        continue-on-error: true
+        run: bunx tsc --noEmit -p tsconfig.json
+
+      - name: bun run test:pack
+        id: test_pack
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          bun run test:pack 2>&1 | tee test-pack-output.txt
+
+      - name: Summarize test:pack coverage
+        id: test_pack_summary
+        run: |
+          ok=$(grep -cE '^ok - ' test-pack-output.txt || true)
+          echo "ok=${ok:-0}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - name: Record Node LTS binary
+        run: echo "NODE_LST_BIN=$(which node)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: latest
+      - name: Record Node latest binary
+        run: echo "NODE_LATEST_BIN=$(which node)" >> "$GITHUB_ENV"
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: latest
+      - name: Record Deno latest binary
+        run: echo "DENO_LATEST_BIN=$(which deno)" >> "$GITHUB_ENV"
+
+      - name: Record Bun latest binary
+        run: echo "BUN_LATEST_BIN=$(which bun)" >> "$GITHUB_ENV"
+
+      - name: bun run test:integration
+        id: test_integration
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          bun run test:integration 2>&1 | tee test-integration-output.txt
+
+      - name: Summarize test:integration coverage
+        id: test_integration_summary
+        run: |
+          pass=$(grep -oE '^[[:space:]]*[0-9]+ pass' test-integration-output.txt | grep -oE '[0-9]+' || echo 0)
+          skip=$(grep -oE '^[[:space:]]*[0-9]+ skip' test-integration-output.txt | grep -oE '[0-9]+' || echo 0)
+          fail=$(grep -oE '^[[:space:]]*[0-9]+ fail' test-integration-output.txt | grep -oE '[0-9]+' || echo 0)
+          total=$((pass + skip + fail))
+          echo "pass=$pass" >> "$GITHUB_OUTPUT"
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+
+      - name: Write job summary
+        if: always()
+        run: |
+          {
+            echo "### Test plan results"
+            echo
+            echo "| Check | Result | Coverage |"
+            echo "| --- | --- | --- |"
+            echo "| \`bun test\` | ${{ steps.bun_test.outcome == 'success' && '✅' || '❌' }} | ${{ steps.bun_test_summary.outputs.pass }}/${{ steps.bun_test_summary.outputs.total }} tests passed |"
+            echo "| \`bunx tsc --noEmit -p tsconfig.json\` | ${{ steps.tsc.outcome == 'success' && '✅' || '❌' }} | — |"
+            echo "| \`bun run test:pack\` | ${{ steps.test_pack.outcome == 'success' && '✅' || '❌' }} | ${{ steps.test_pack_summary.outputs.ok }} import checks passed |"
+            echo "| \`bun run test:integration\` | ${{ steps.test_integration.outcome == 'success' && '✅' || '❌' }} | ${{ steps.test_integration_summary.outputs.pass }}/${{ steps.test_integration_summary.outputs.total }} runtimes verified (${{ steps.test_integration_summary.outputs.skip }} skipped) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Reflects each step's real outcome — and bun test's pass/total
+      # coverage — back onto the PR body's Test plan checklist, so the
+      # description always matches what CI actually ran.
+      - name: Update test plan checklist in PR description
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const results = {
+              "`bun test`": {
+                outcome: "${{ steps.bun_test.outcome }}",
+                coverage: "${{ steps.bun_test_summary.outputs.pass }}/${{ steps.bun_test_summary.outputs.total }} tests passed",
+              },
+              "`bunx tsc --noEmit -p tsconfig.json`": {
+                outcome: "${{ steps.tsc.outcome }}",
+              },
+              "`bun run test:pack`": {
+                outcome: "${{ steps.test_pack.outcome }}",
+                coverage: "${{ steps.test_pack_summary.outputs.ok }} import checks passed",
+              },
+              "`bun run test:integration`": {
+                outcome: "${{ steps.test_integration.outcome }}",
+                coverage: "${{ steps.test_integration_summary.outputs.pass }}/${{ steps.test_integration_summary.outputs.total }} runtimes verified (${{ steps.test_integration_summary.outputs.skip }} skipped)",
+              },
+            };
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+
+            let body = pr.body ?? "";
+            for (const [command, { outcome, coverage }] of Object.entries(results)) {
+              const box = outcome === "success" ? "[x]" : "[ ]";
+              const suffix = coverage ? ` — ${coverage}` : "";
+              // Drop any coverage suffix a previous run left behind before re-adding the current one.
+              const pattern = new RegExp(`- \\[[ x]\\] ${command}(?: — .*)?$`, "gm");
+              body = body.replace(pattern, `- ${box} ${command}${suffix}`);
+            }
+
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              body,
+            });
+
+      - name: Fail if any test plan step failed
+        if: |
+          steps.bun_test.outcome == 'failure' ||
+          steps.tsc.outcome == 'failure' ||
+          steps.test_pack.outcome == 'failure' ||
+          steps.test_integration.outcome == 'failure'
+        run: exit 1
