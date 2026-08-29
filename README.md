@@ -56,6 +56,7 @@ console.log(cfg.server.port.get());
   - [`fetchSource` — a JSON endpoint over HTTP](#fetchsource--a-json-endpoint-over-http)
   - [`sseSource` — live updates over Server-Sent Events](#ssesource--live-updates-over-server-sent-events)
   - [`fileSource` — a local `.json` or `.env` file](#filesource--a-local-json-or-env-file)
+  - [`pullSource` — calling a function on an interval](#pullsource--calling-a-function-on-an-interval)
   - [`literalSource` — a static value](#literalsource--a-static-value)
   - [Reacting to changes — restarting a periodic task](#reacting-to-changes--restarting-a-periodic-task)
   - [Closing a config tree](#closing-a-config-tree)
@@ -70,7 +71,7 @@ npm install @jondotsoy/configs
 
 ### `Source` — building a custom source
 
-The building block behind `envSource`, `fetchSource`, `sseSource`, `fileSource`, and
+The building block behind `envSource`, `fetchSource`, `sseSource`, `fileSource`, `pullSource`, and
 `literalSource`. It takes an
 object with `start(control)` and an optional `close()`, mirroring `ReadableStream`'s
 `UnderlyingSource`: `start` runs once and pushes snapshots via `control.set(value)`, while `close`
@@ -225,6 +226,26 @@ import { fileSource } from "@jondotsoy/configs/sources/file";
 
 const source = fileSource<{ port: number; host: string }>("./config.json");
 // config.json: { "port": 3000, "host": "localhost" }
+```
+
+### `pullSource` — calling a function on an interval
+
+Calls `pull` and publishes whatever it returns as the next snapshot — once immediately, then again
+every `interval` milliseconds until the `Source` is closed. `pull` can be sync or async, so it's a
+general-purpose escape hatch for any input that isn't already covered by a built-in source (a
+database query, a cloud secrets manager, a gRPC call, ...). A `pull` failure is logged via
+`console.error` and swallowed instead of thrown: on the first call this leaves the store empty
+(same as `fetchSource`); on a later call it's skipped, keeping the last good value and the polling
+running.
+
+```ts
+import { pullSource } from "@jondotsoy/configs/sources/pull";
+import { Temporal } from "temporal-polyfill";
+
+const source = pullSource<{ port: number }>({
+  pull: async () => fetchPortFromSomewhere(),
+  interval: Temporal.Duration.from({ seconds: 30 }).total("milliseconds"),
+});
 ```
 
 ### `literalSource` — a static value
