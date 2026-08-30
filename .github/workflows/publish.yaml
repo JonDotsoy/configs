@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g. v1.2.0)'
+        required: true
 
 permissions:
   id-token: write  # Required for npm OIDC trusted publishing
@@ -28,7 +33,8 @@ jobs:
 
       - name: Bump package.json version to match the tag
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${{ inputs.tag || github.ref_name }}"
+          version="${version#v}"
           npm pkg set version="$version"
           if git diff --quiet -- package.json; then
             echo "package.json already at $version, nothing to commit"
