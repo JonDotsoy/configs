@@ -1,0 +1,78 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (semver, no leading "v", e.g. 1.2.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Validate version format
+        run: |
+          version="${{ inputs.version }}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::\"$version\" is not a valid semver version (expected e.g. 1.2.0)"
+            exit 1
+          fi
+
+      - name: Rename [Unreleased] to the release version in CHANGELOG.md
+        run: |
+          version="${{ inputs.version }}"
+
+          if ! grep -q '^## \[Unreleased\]' CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no [Unreleased] section to release"
+            exit 1
+          fi
+
+          date="$(date -u +%Y-%m-%d)"
+          sed -i "s/^## \[Unreleased\]/## [$version] - $date/" CHANGELOG.md
+
+          # Insert the new version's link reference right above the previous
+          # most recent one, keeping the reference-style links sorted newest first.
+          sed -i "0,\|^\[[0-9].*\]: https://github.com/${{ github.repository }}/releases/tag/v|s||[$version]: https://github.com/${{ github.repository }}/releases/tag/v$version\n&|" CHANGELOG.md
+
+      - name: Extract release notes
+        id: notes
+        run: |
+          version="${{ inputs.version }}"
+          awk -v ver="$version" '
+            $0 ~ "^## \\[" ver "\\]" { flag=1; next }
+            flag && /^## \[/ { flag=0 }
+            flag { print }
+          ' CHANGELOG.md > release-notes.md
+          cat release-notes.md
+
+      - name: Bump package.json version
+        run: npm pkg set version="${{ inputs.version }}"
+
+      - name: Commit changelog and version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md package.json
+          git commit -m "chore: release ${{ inputs.version }}"
+          git push origin HEAD:${{ github.event.repository.default_branch }}
+
+      - name: Tag release
+        run: |
+          git tag "v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ inputs.version }}" \
+            --title "v${{ inputs.version }}" \
+            --notes-file release-notes.md
