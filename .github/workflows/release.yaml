@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  actions: write  # Required to dispatch the Publish Package workflow
 
 jobs:
   release:
@@ -30,17 +31,16 @@ jobs:
         run: |
           version="${{ inputs.version }}"
 
-          if ! grep -q '^## \[Unreleased\]' CHANGELOG.md; then
-            echo "::error::CHANGELOG.md has no [Unreleased] section to release"
-            exit 1
+          if grep -q '^## \[Unreleased\]' CHANGELOG.md; then
+            date="$(date -u +%Y-%m-%d)"
+            sed -i "s/^## \[Unreleased\]/## [$version] - $date/" CHANGELOG.md
+
+            # Insert the new version's link reference right above the previous
+            # most recent one, keeping the reference-style links sorted newest first.
+            sed -i "0,\|^\[[0-9].*\]: https://github.com/${{ github.repository }}/releases/tag/v|s||[$version]: https://github.com/${{ github.repository }}/releases/tag/v$version\n&|" CHANGELOG.md
+          else
+            echo "No [Unreleased] section in CHANGELOG.md — release notes will be empty"
           fi
-
-          date="$(date -u +%Y-%m-%d)"
-          sed -i "s/^## \[Unreleased\]/## [$version] - $date/" CHANGELOG.md
-
-          # Insert the new version's link reference right above the previous
-          # most recent one, keeping the reference-style links sorted newest first.
-          sed -i "0,\|^\[[0-9].*\]: https://github.com/${{ github.repository }}/releases/tag/v|s||[$version]: https://github.com/${{ github.repository }}/releases/tag/v$version\n&|" CHANGELOG.md
 
       - name: Extract release notes
         id: notes
@@ -76,3 +76,14 @@ jobs:
           gh release create "v${{ inputs.version }}" \
             --title "v${{ inputs.version }}" \
             --notes-file release-notes.md
+
+      - name: Trigger Publish Package workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # A tag pushed with the default GITHUB_TOKEN doesn't trigger other
+          # workflows (GitHub's loop-prevention rule), so Publish Package's
+          # `push: tags: v*` trigger never fires on its own — dispatch it explicitly.
+          gh workflow run publish.yaml \
+            --ref ${{ github.event.repository.default_branch }} \
+            -f tag=v${{ inputs.version }}
