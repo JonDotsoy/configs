@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0]
+
+### Added
+
+- **`pullSource`** — a `Source` that calls a `pull` function on a fixed `interval` (in
+  milliseconds), publishing whatever it returns as the next config tree snapshot. `pull` runs
+  once immediately on start, then again every `interval` until the source closes; a failed round
+  is logged via `console.error` and swallowed, keeping the last good value (or closing with an
+  empty store if the very first call fails).
+- **`fetchSource`** now supports `pollingInterval` to keep re-fetching `url` on an interval
+  (each round retried up to `attempts` times) instead of fetching once and closing, plus
+  `bodyParser` to turn a non-JSON response into `T` and `acceptStatus` to customize which status
+  codes count as a successful fetch.
+- **`FetchSourceOptions`**/the internal `httpFetch` helper now support `body`, `signal`, `mode`,
+  `cache`, and `redirect`, passed through to the underlying `fetch` call, plus `credentials` for
+  setting the `Authorization` header (`{ basic: { username, password } }` or
+  `{ bearer: { token } }`).
+
 ## [1.0.1]
 
 ### Fixed
@@ -51,5 +69,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ConfigError` for schema/config-level errors, and `DataTypes`/`DataTypeName` for the field type
   and coercion helpers backing schema fields.
 
+[1.1.0]: https://github.com/JonDotsoy/configs/releases/tag/v1.1.0
 [1.0.1]: https://github.com/JonDotsoy/configs/releases/tag/v1.0.1
 [1.0.0]: https://github.com/JonDotsoy/configs/releases/tag/v1.0.0
