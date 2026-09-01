@@ -57,6 +57,25 @@ jobs:
           ok=$(grep -cE '^ok - ' test-pack-output.txt || true)
           echo "ok=${ok:-0}" >> "$GITHUB_OUTPUT"
 
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
+      - name: bun run test:browser
+        id: test_browser
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          bun run test:browser 2>&1 | tee test-browser-output.txt
+
+      - name: Summarize test:browser coverage
+        id: test_browser_summary
+        run: |
+          passed=$(grep -oE '[0-9]+ passed' test-browser-output.txt | grep -oE '^[0-9]+' || echo 0)
+          failed=$(grep -oE '[0-9]+ failed' test-browser-output.txt | grep -oE '^[0-9]+' || echo 0)
+          total=$((passed + failed))
+          echo "passed=${passed:-0}" >> "$GITHUB_OUTPUT"
+          echo "total=${total:-0}" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-node@v7
         with:
           node-version: lts/*
@@ -107,6 +126,7 @@ jobs:
             echo "| \`bun test\` | ${{ steps.bun_test.outcome == 'success' && '✅' || '❌' }} | ${{ steps.bun_test_summary.outputs.pass }}/${{ steps.bun_test_summary.outputs.total }} tests passed |"
             echo "| \`bunx tsc --noEmit -p tsconfig.json\` | ${{ steps.tsc.outcome == 'success' && '✅' || '❌' }} | — |"
             echo "| \`bun run test:pack\` | ${{ steps.test_pack.outcome == 'success' && '✅' || '❌' }} | ${{ steps.test_pack_summary.outputs.ok }} import checks passed |"
+            echo "| \`bun run test:browser\` | ${{ steps.test_browser.outcome == 'success' && '✅' || '❌' }} | ${{ steps.test_browser_summary.outputs.passed }}/${{ steps.test_browser_summary.outputs.total }} tests passed |"
             echo "| \`bun run test:integration\` | ${{ steps.test_integration.outcome == 'success' && '✅' || '❌' }} | ${{ steps.test_integration_summary.outputs.pass }}/${{ steps.test_integration_summary.outputs.total }} runtimes verified (${{ steps.test_integration_summary.outputs.skip }} skipped) |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -128,6 +148,10 @@ jobs:
               "`bun run test:pack`": {
                 outcome: "${{ steps.test_pack.outcome }}",
                 coverage: "${{ steps.test_pack_summary.outputs.ok }} import checks passed",
+              },
+              "`bun run test:browser`": {
+                outcome: "${{ steps.test_browser.outcome }}",
+                coverage: "${{ steps.test_browser_summary.outputs.passed }}/${{ steps.test_browser_summary.outputs.total }} tests passed",
               },
               "`bun run test:integration`": {
                 outcome: "${{ steps.test_integration.outcome }}",
@@ -162,5 +186,6 @@ jobs:
           steps.bun_test.outcome == 'failure' ||
           steps.tsc.outcome == 'failure' ||
           steps.test_pack.outcome == 'failure' ||
+          steps.test_browser.outcome == 'failure' ||
           steps.test_integration.outcome == 'failure'
         run: exit 1

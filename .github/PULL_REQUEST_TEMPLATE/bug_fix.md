@@ -15,4 +15,5 @@ import { configs } from "@jondotsoy/configs";
 - [ ] `bun test`
 - [ ] `bunx tsc --noEmit -p tsconfig.json`
 - [ ] `bun run test:pack`
+- [ ] `bun run test:browser`
 - [ ] `bun run test:integration`
