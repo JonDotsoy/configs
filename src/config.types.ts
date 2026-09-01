@@ -88,6 +88,54 @@ export type InferReadOnlyAccessors<S extends SchemaShape> = {
   [K in keyof S]: InferReadOnlyAccessor<S[K]>;
 };
 
+/**
+ * A resolved config node: a plain, read-only object exposing every shape key as a live field
+ * (`ReadOnlyStore<T>`) or nested-group accessor, plus a snapshot (`get`/`subscribe`/`listen`) and
+ * lifecycle (`close`) surface. There is no `set`: a `ConfigNode` — and every field on it — is
+ * always read-only, so that isn't a method that can fail at runtime, it's a method that doesn't
+ * exist. Not thenable either — `configs.create()`'s return value already exposes this same shape
+ * synchronously (see the module doc on reading a field before its source resolves), and awaiting
+ * it further would only add a redundant chaining step. A thenable whose own `then()` resolved to
+ * itself would also be a chaining cycle, both at runtime per the Promise spec and in TypeScript's
+ * `Awaited<T>`, which rejects the type outright — one more reason this shape stays plain.
+ */
+export type ConfigNode<S extends SchemaShape> = {
+  readonly shape: S;
+  /** Snapshot of every field's current value, recursing into nested groups. */
+  get(): InferShape<S>;
+  /** Calls `subscriber` immediately with the current snapshot (per `get()`), then again on every subsequent change to it. */
+  subscribe(subscriber: Subscriber<InferShape<S>>): Unsubscribe;
+  /** Calls `subscriber` only on a subsequent change to the snapshot, not with the current one. */
+  listen(subscriber: Subscriber<InferShape<S>>): Unsubscribe;
+  /** Closes every source backing this config tree, including nested groups' own. A no-op for a nested-form group of its own. */
+  close(): Promise<void>;
+  /** Enables `await using s = await configs.create(...)`: disposal closes the config tree. */
+  [Symbol.asyncDispose](): Promise<void>;
+} & InferReadOnlyAccessors<S>;
+
+/**
+ * `configs.create()`'s return value: the same `ConfigNode<S>` shape — synchronous and read-only,
+ * with every field already live (see the module doc) — plus `then()`, so it can also be
+ * `await`ed once every source has published its first snapshot, yielding a plain `ConfigNode<S>`
+ * (no longer thenable, per the note on `ConfigNode`). A nested group (`configs.create(shape)`
+ * with no `options`) never needs awaiting: it shares its parent's already-resolved values unless
+ * given sources of its own.
+ */
+export type PendingConfigNode<S extends SchemaShape> = ConfigNode<S> & {
+  then<TResult1 = ConfigNode<S>, TResult2 = never>(
+    onfulfilled?: ((value: ConfigNode<S>) => TResult1 | PromiseLike<TResult1>) | undefined | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | undefined | null,
+  ): PromiseLike<TResult1 | TResult2>;
+};
+
+/**
+ * A nested config group embedded in a parent shape: either shares the parent's resolved values,
+ * or — when created with its own `sources` — resolves independently of it. Always the same
+ * `PendingConfigNode` shape as a root-form `configs.create()` call, since it's built the same way
+ * and stays independently awaitable.
+ */
+export type SchemaGroup<S extends SchemaShape = SchemaShape> = PendingConfigNode<S>;
+
 // ---------------------------------------------------------------------------
 // Runtime helpers: field coercion/validation
 // ---------------------------------------------------------------------------
@@ -177,14 +225,15 @@ function collectEmbeddedStates(shape: SchemaShape): ConfigNodeState<any>[] {
 }
 
 /**
- * The engine behind a `ConfigNode`/`ConfigNodeResolved`: resolves fields from `rootStores` (in
- * priority order), caches field/child-group instances, and recomputes them live as `rootStores`
- * change. A nested group embedded in a parent (via `configs.create(shape)` with no `options`)
- * shares its parent's `rootStores`; one created with its own `sources` (root form) resolves
- * independently, tracked via `ownsResolution`.
+ * The engine behind a `ConfigNode`/`PendingConfigNode` proxy: resolves fields from `rootStores`
+ * (in priority order), caches field/child-group instances, and recomputes them live as
+ * `rootStores` change. A nested group embedded in a parent (via `configs.create(shape)` with no
+ * `options`) shares its parent's `rootStores` — dynamically, via `parent`, so it stays correct even if the
+ * child was created (and cached fields from it) before the parent's own sources had opened; one
+ * created with its own `sources` (root form) resolves independently, tracked via `ownsResolution`.
  */
 class ConfigNodeState<S extends SchemaShape> {
-  private rootStores: Store<any>[];
+  private ownRootStores: Store<any>[] = [];
   private readonly fields = new Map<string, ConfigField<any>>();
   private readonly children = new Map<string, object>();
   private snapshotStore: Store<InferShape<S>> | undefined;
@@ -192,31 +241,47 @@ class ConfigNodeState<S extends SchemaShape> {
 
   constructor(
     readonly shape: S,
-    rootStores: Store<any>[],
+    /** The node this shares its `rootStores` with, when it doesn't own its own resolution. `undefined` at the root. */
+    private readonly parent: ConfigNodeState<any> | undefined,
     private readonly basePath: string[],
     private readonly ownSources: Source<any>[],
     readonly ownsResolution: boolean,
     /** The sources this node's (or an ancestor's) `close()` actually closes. */
     private readonly closableSources: Source<any>[],
   ) {
-    this.rootStores = rootStores;
-
     const embeddedReady = collectEmbeddedStates(shape).map((state) => state.readyPromise);
 
     if (ownsResolution) {
       const opened = Promise.all(ownSources.map((source) => source.open())).then((stores) => {
-        this.rootStores = stores;
+        this.ownRootStores = stores;
         this.wireLiveUpdates();
+        // Catches up any field/snapshot Store already read (and cached) before `rootStores`
+        // resolved — `wireLiveUpdates()` only reacts to source changes from here on, so anything
+        // read while still pending needs one explicit refresh against the now-final stores. This
+        // cascades into every already-cached descendant that shares this resolution, however many
+        // levels deep, since a nested group's own fields can be read (and cached) just as early.
+        this.refreshFields();
       });
       this.readyPromise = Promise.all([opened, ...embeddedReady]).then(() => undefined);
     } else {
-      this.wireLiveUpdates();
       this.readyPromise = Promise.all(embeddedReady).then(() => undefined);
     }
   }
 
+  /**
+   * This node's own resolution's sources, or — for a node embedded without sources of its own —
+   * a live read through to whichever ancestor's `ownRootStores` it shares. A getter rather than a
+   * value copied at construction: the copy would go stale the moment that ancestor's own sources
+   * open (`ownRootStores` is reassigned wholesale, not mutated in place).
+   */
+  private get rootStores(): Store<any>[] {
+    if (this.ownsResolution || !this.parent) return this.ownRootStores;
+    return this.parent.rootStores;
+  }
+
+  /** Only an owning node's stores actually change over time; a sharing node's live updates come from that ancestor's `refreshFields()` cascade instead. */
   private wireLiveUpdates(): void {
-    for (const rootStore of this.rootStores) {
+    for (const rootStore of this.ownRootStores) {
       rootStore.listen(() => this.refreshFields());
     }
   }
@@ -238,6 +303,11 @@ class ConfigNodeState<S extends SchemaShape> {
       const path = [...this.basePath, key];
       const next = this.resolveField(schema, path);
       if (next !== field.get()) field._update(next);
+    }
+    for (const child of this.children.values()) {
+      const childState = stateOf.get(child);
+      // An owning child resolves independently — already covered by its own `opened` chain.
+      if (childState && !childState.ownsResolution) childState.refreshFields();
     }
     this.refreshSnapshot();
   }
@@ -274,16 +344,17 @@ class ConfigNodeState<S extends SchemaShape> {
       // Owns its own sources: resolves independently, unaffected by this node's rootStores.
       result = node as object;
     } else {
-      // Shares this node's already-live rootStores, at the sub-path for `key`.
+      // Shares this node's rootStores (live, via `parent` — see the `rootStores` getter), at the
+      // sub-path for `key`.
       const childState = new ConfigNodeState(
         embeddedState.shape,
-        this.rootStores,
+        this,
         [...this.basePath, key],
         [],
         false,
         this.closableSources,
       );
-      result = wrapNode(new ConfigNode(childState));
+      result = createPendingNode(childState);
     }
     this.children.set(key, result);
     return result;
@@ -300,12 +371,6 @@ class ConfigNodeState<S extends SchemaShape> {
       }
     }
     return out as InferShape<S>;
-  }
-
-  set(key: string): never {
-    const node = this.shape[key];
-    if (!node) throw new ConfigError(`Unknown field "${key}"`);
-    throw new ConfigError(`Cannot set "${[...this.basePath, key].join(".")}": config values are read-only`);
   }
 
   private ensureSnapshotStore(): Store<InferShape<S>> {
@@ -329,14 +394,13 @@ class ConfigNodeState<S extends SchemaShape> {
   }
 }
 
-/** Wraps `instance` in a `Proxy` exposing every shape key as a live field/child-group accessor. */
-function wrapNode<T extends ConfigNodeCore<any>>(instance: T): T {
-  const state = instance._state;
-  const proxy = new Proxy(instance as unknown as object, {
+/** Wraps plain object `node` in a `Proxy` exposing every shape key as a live field/child-group accessor. */
+function wrapNode<T extends object>(node: T, state: ConfigNodeState<any>): T {
+  const proxy = new Proxy(node, {
     get(target, prop, receiver) {
       if (typeof prop === "string" && Object.prototype.hasOwnProperty.call(state.shape, prop)) {
-        const node = (state.shape as Record<string, unknown>)[prop];
-        return isEmbeddedNode(node) ? state.childNode(prop) : state.fieldFor(prop);
+        const shapeNode = (state.shape as Record<string, unknown>)[prop];
+        return isEmbeddedNode(shapeNode) ? state.childNode(prop) : state.fieldFor(prop);
       }
       return Reflect.get(target, prop, receiver);
     },
@@ -345,118 +409,62 @@ function wrapNode<T extends ConfigNodeCore<any>>(instance: T): T {
   return proxy;
 }
 
-/**
- * Shared, non-thenable base behind both `ConfigNode` and `ConfigNodeResolved`: a resolved node
- * must not itself be thenable (awaiting a thenable whose `then()` resolves to itself is a
- * chaining cycle, both at runtime per the Promise spec and in TypeScript's `Awaited<T>`, which
- * rejects the type outright with a "referenced directly or indirectly in the fulfillment
- * callback of its own `then` method" error) — so `then()` lives only on `ConfigNode`, added by a
- * sibling subclass rather than inherited.
- */
-class ConfigNodeCore<S extends SchemaShape> {
-  constructor(readonly _state: ConfigNodeState<S>) {}
-
-  get shape(): S {
-    return this._state.shape;
-  }
-
-  /** Snapshot of every field's current value, recursing into nested groups. */
-  get(): InferShape<S> {
-    return this._state.get();
-  }
-
-  /** Always throws: config values are read-only. */
-  set<K extends keyof S & string>(key: K, _value: InferShape<S>[K]): void {
-    this._state.set(key);
-  }
-
-  /** Calls `subscriber` immediately with the current snapshot (per `get()`), then again on every subsequent change to it. */
-  subscribe(subscriber: Subscriber<InferShape<S>>): Unsubscribe {
-    return this._state.subscribe(subscriber);
-  }
-
-  /** Calls `subscriber` only on a subsequent change to the snapshot, not with the current one. */
-  listen(subscriber: Subscriber<InferShape<S>>): Unsubscribe {
-    return this._state.listen(subscriber);
-  }
-
-  /** Closes every source backing this config tree, including nested groups' own. A no-op for a nested-form group of its own. */
-  close(): Promise<void> {
-    return this._state.close();
-  }
-
-  /** Enables `await using s = await configs.create(...)`: disposal closes the config tree. */
-  [Symbol.asyncDispose](): Promise<void> {
-    return this.close();
-  }
+/** The plain `get`/`subscribe`/`listen`/`close` surface shared by every node, resolved or pending — there is no `set`, a `ConfigNode` is always read-only. */
+function baseNodeMethods<S extends SchemaShape>(
+  state: ConfigNodeState<S>,
+): Omit<ConfigNode<S>, keyof InferReadOnlyAccessors<S>> {
+  return {
+    shape: state.shape,
+    get: () => state.get(),
+    subscribe: (subscriber: Subscriber<InferShape<S>>) => state.subscribe(subscriber),
+    listen: (subscriber: Subscriber<InferShape<S>>) => state.listen(subscriber),
+    close: () => state.close(),
+    [Symbol.asyncDispose]: () => state.close(),
+  } as unknown as Omit<ConfigNode<S>, keyof InferReadOnlyAccessors<S>>;
 }
 
-/** A `ConfigNode` once every source behind it has published its first snapshot. Synchronous only — no longer thenable. */
-export class ConfigNodeResolved<S extends SchemaShape> extends ConfigNodeCore<S> {}
-
-/**
- * `configs.create()`'s return value: synchronous and read-only, but also a `PromiseLike` —
- * awaiting it resolves once every source has published its first snapshot, yielding a
- * `ConfigNodeResolved`. A nested group (`configs.create(shape)` with no `options`) never needs
- * awaiting: it shares its parent's already-resolved values unless given sources of its own.
- */
-export class ConfigNode<S extends SchemaShape>
-  extends ConfigNodeCore<S>
-  implements PromiseLike<ConfigNodeResolved<S> & InferReadOnlyAccessors<S>>
-{
-  /**
-   * `ConfigNodeResolved` is a sibling class, not a subclass (see the note on `ConfigNodeCore`),
-   * so it fails a plain `instanceof ConfigNode` check. Custom `Symbol.hasInstance` widens that
-   * check to "any `ConfigNodeCore`" instead, which both classes satisfy — without giving
-   * `ConfigNodeResolved` a real `then()` and reintroducing the chaining cycle.
-   */
-  static override [Symbol.hasInstance](instance: unknown): boolean {
-    return instance instanceof ConfigNodeCore;
-  }
-
-  then<TResult1 = ConfigNodeResolved<S> & InferReadOnlyAccessors<S>, TResult2 = never>(
-    onfulfilled?:
-      | ((
-          value: ConfigNodeResolved<S> & InferReadOnlyAccessors<S>,
-        ) => TResult1 | PromiseLike<TResult1>)
-      | undefined
-      | null,
-    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | undefined | null,
-  ): PromiseLike<TResult1 | TResult2> {
-    return this._state.readyPromise
-      .then(() => wrapNode(new ConfigNodeResolved(this._state)) as ConfigNodeResolved<S> & InferReadOnlyAccessors<S>)
-      .then(onfulfilled, onrejected as any);
-  }
+/** A resolved node: the plain `ConfigNode<S>` shape, wrapped for live field access — no `then`. */
+function createResolvedNode<S extends SchemaShape>(state: ConfigNodeState<S>): ConfigNode<S> {
+  return wrapNode(baseNodeMethods(state) as object, state) as ConfigNode<S>;
 }
 
 /**
- * A nested config group embedded in a parent shape: either shares the parent's resolved values,
- * or — when created with its own `sources` — resolves independently of it.
+ * `configs.create()`'s return value: the plain `ConfigNode<S>` shape, plus `then()` — resolving
+ * once every source has published its first snapshot, into a plain `ConfigNode<S>` with no `then`
+ * of its own (see the note on `ConfigNode` for why a resolved node deliberately isn't thenable).
  */
-export type SchemaGroup<S extends SchemaShape = SchemaShape> = ConfigNode<S> & InferReadOnlyAccessors<S>;
+function createPendingNode<S extends SchemaShape>(state: ConfigNodeState<S>): PendingConfigNode<S> {
+  const node = {
+    ...baseNodeMethods(state),
+    then<TResult1 = ConfigNode<S>, TResult2 = never>(
+      onfulfilled?: ((value: ConfigNode<S>) => TResult1 | PromiseLike<TResult1>) | undefined | null,
+      onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | undefined | null,
+    ): PromiseLike<TResult1 | TResult2> {
+      return state.readyPromise.then(() => createResolvedNode(state)).then(onfulfilled, onrejected as any);
+    },
+  };
+  return wrapNode(node as object, state) as PendingConfigNode<S>;
+}
 
 /**
  * Nested-group form (no `options`): synchronous, no sources of its own — inherits the
  * parent's resolved values when embedded, unless `options` gives it its own.
  *
- * Root form (`options` given): opens every source. Returns synchronously as a `ConfigNode`
+ * Root form (`options` given): opens every source. Returns synchronously as a `PendingConfigNode`
  * and is awaitable — for each field, the first source (in array order) whose snapshot has
  * that field wins; a field missing everywhere falls back to the field's own `default`, else `null`.
  */
 export function createConfigNode<S extends SchemaShape>(
   shape: S,
   options?: CreateOptions,
-): ConfigNode<S> & InferReadOnlyAccessors<S> {
+): PendingConfigNode<S> {
   const ownSources = options?.sources ?? [];
   const ownsResolution = options !== undefined;
-  const state = new ConfigNodeState<S>(shape, [], [], ownSources, ownsResolution, ownSources);
-  return wrapNode(new ConfigNode(state)) as ConfigNode<S> & InferReadOnlyAccessors<S>;
+  const state = new ConfigNodeState<S>(shape, undefined, [], ownSources, ownsResolution, ownSources);
+  return createPendingNode(state);
 }
 
 /** The type of the `configs` namespace object. */
 export interface configs {
-  create<S extends SchemaShape>(
-    shape: S,
-    options?: CreateOptions,
-  ): ConfigNode<S> & InferReadOnlyAccessors<S>;
+  create<S extends SchemaShape>(shape: S, options?: CreateOptions): PendingConfigNode<S>;
 }

@@ -2,11 +2,13 @@ import { createConfigNode } from "./config.types.js";
 import type { configs as ConfigsApi } from "./config.types.js";
 
 export type {
+  ConfigNode,
   CreateOptions,
   FieldSchema,
   FieldType,
   InferReadOnlyAccessors,
   InferShape,
+  PendingConfigNode,
   ReadOnlyStore,
   SchemaGroup,
   SchemaNode,
@@ -20,7 +22,6 @@ export type { SseSourceOptions } from "./sources/sse.js";
 export type { FileSourceOptions } from "./sources/file.js";
 export type { PullSourceOptions } from "./sources/pull.js";
 
-export { ConfigNode, ConfigNodeResolved } from "./config.types.js";
 export { Source } from "./sources/source.js";
 export { envSource, mapKey } from "./sources/env.js";
 export { fetchSource } from "./sources/fetch.js";

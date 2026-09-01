@@ -4,8 +4,7 @@ import { Source } from "./sources/source";
 import { envSource, mapKey } from "./sources/env";
 import { fetchSource } from "./sources/fetch";
 import { ConfigError } from "./errors";
-import { ConfigNode, ConfigNodeResolved } from "./config.types.ts";
-import type { configs, InferReadOnlyAccessors, ReadOnlyStore, SchemaGroup } from "./config.types.ts";
+import type { ConfigNode, configs, PendingConfigNode, ReadOnlyStore, SchemaGroup } from "./config.types.ts";
 
 declare const configs: configs;
 
@@ -51,6 +50,9 @@ describe("configs.create", () => {
     expect(serverConfigs.tls.key.get()).toBe("key.pem");
     expect(serverConfigs.tls.cert.get()).toBe("cert.pem");
 
+    // `required: true` alone (no `default`) never narrows the type, resolved or not: it isn't
+    // enforced at runtime, so the field can still be `null` after resolving (see the
+    // "resolves required fields with no value anywhere to null instead of throwing" spec below).
     expectTypeOf(serverConfigs.port).toEqualTypeOf<ReadOnlyStore<number | null>>();
     expectTypeOf(serverConfigs.host).toEqualTypeOf<ReadOnlyStore<string | null>>();
     expectTypeOf(serverConfigs.tls.key).toEqualTypeOf<ReadOnlyStore<string | null>>();
@@ -178,6 +180,86 @@ describe("configs.create", () => {
 
       expectTypeOf(cfg.port.get()).toEqualTypeOf<number>();
     });
+
+    test("required: true, unresolved: the type still includes null", () => {
+      const cfg = configs.create(
+        { port: { type: "number", required: true } },
+        { sources: [testSource({ port: 3000 })] },
+      );
+
+      expectTypeOf(cfg.port).toEqualTypeOf<ReadOnlyStore<number | null>>();
+    });
+
+    test("required: true, resolved: the type still includes null — required isn't enforced at runtime", async () => {
+      const pending = configs.create(
+        { port: { type: "number", required: true } },
+        { sources: [testSource({ port: 3000 })] },
+      );
+      const cfg = await pending;
+
+      // this particular source happens to have published a value...
+      expect(cfg.port.get()).toBe(3000);
+      // ...but the type can't assume that: a `required` field with no `default` still resolves to
+      // `null` whenever no source has it (see "resolves required fields with no value anywhere to
+      // null instead of throwing" below), so narrowing to non-null here would be unsound.
+      expectTypeOf(cfg.port).toEqualTypeOf<ReadOnlyStore<number | null>>();
+    });
+
+    test("required: true, resolved, but genuinely no source has the value: still null, proving the type above is honest", async () => {
+      const cfg = await configs.create(
+        { port: { type: "number", required: true } },
+        { sources: [testSource({})] },
+      );
+
+      expect(cfg.port.get()).toBeNull();
+      expectTypeOf(cfg.port).toEqualTypeOf<ReadOnlyStore<number | null>>();
+    });
+
+    test("required: false (default), resolved: the type still includes null", async () => {
+      const pending = configs.create(
+        { port: { type: "number" } },
+        { sources: [testSource({})] },
+      );
+      const cfg = await pending;
+
+      expect(cfg.port.get()).toBeNull();
+      expectTypeOf(cfg.port).toEqualTypeOf<ReadOnlyStore<number | null>>();
+    });
+
+    test("resolved, but with a default instead of required: the type excludes null, same as before", async () => {
+      const cfg = await configs.create(
+        { port: { type: "number", default: 3000 } },
+        { sources: [testSource({})] },
+      );
+
+      expectTypeOf(cfg.port).toEqualTypeOf<ReadOnlyStore<number>>();
+    });
+
+    test("required: true with a default: the value and type are already non-null before the promise resolves", () => {
+      let resolveStart: () => void;
+      const started = new Promise<void>((resolve) => {
+        resolveStart = resolve;
+      });
+      const slowSource = new Source<{ myFeature: boolean }>({
+        async start(control) {
+          await started;
+          control.set({ myFeature: true });
+          control.close();
+        },
+      });
+
+      const cfg = configs.create(
+        { myFeature: { type: "boolean", required: true, default: false } },
+        { sources: [slowSource] },
+      );
+
+      // the `default` is what backfills the value while no source has published yet — `required`
+      // alone (no default) can't do that, since it's only checked once a source resolves.
+      expect(cfg.myFeature.get()).toBe(false);
+      expectTypeOf(cfg.myFeature).toEqualTypeOf<ReadOnlyStore<boolean>>();
+
+      resolveStart!();
+    });
   });
 
   test("returns null for optional fields with no value", async () => {
@@ -229,12 +311,13 @@ describe("configs.create", () => {
     expect(cfg.get()).toEqual({ debug: true });
   });
 
-  test("set throws when no source is writable", async () => {
+  test("a ConfigNode has no set() at all: it's always read-only", async () => {
     const cfg = await configs.create(
       { port: { type: "number" } },
       { sources: [testSource({ port: 3000 })] },
     );
-    expect(() => cfg.set("port", 4000)).toThrow(ConfigError);
+    expectTypeOf(cfg).not.toHaveProperty("set");
+    expect((cfg as { set?: unknown }).set).toBeUndefined();
   });
 
   test("create() without options stays synchronous, for nested groups", () => {
@@ -333,8 +416,7 @@ describe("nested groups with their own sources", () => {
     });
 
     expectTypeOf(pending).toEqualTypeOf<
-      ConfigNode<{ server: SchemaGroup<{ port: { type: "number" } }> }> &
-        InferReadOnlyAccessors<{ server: SchemaGroup<{ port: { type: "number" } }> }>
+      PendingConfigNode<{ server: SchemaGroup<{ port: { type: "number" } }> }>
     >();
   });
 
@@ -437,20 +519,271 @@ describe("nested groups with their own sources", () => {
       expectTypeOf(serverConfigs.features.promoService).toEqualTypeOf<ReadOnlyStore<boolean>>();
     });
   });
+
+  describe("several levels of nesting", () => {
+    test("resolves fields at every depth of a 4-level-deep embedded tree", async () => {
+      const cfg = await configs.create(
+        {
+          app: configs.create({
+            name: { type: "string", required: true },
+            server: configs.create({
+              port: { type: "number", default: 8080 },
+              tls: configs.create({
+                cert: configs.create({
+                  path: { type: "string", required: true },
+                }),
+              }),
+            }),
+          }),
+        },
+        {
+          sources: [
+            testSource({
+              app: {
+                name: "svc",
+                server: {
+                  port: 3000,
+                  tls: { cert: { path: "cert.pem" } },
+                },
+              },
+            }),
+          ],
+        },
+      );
+
+      expect(cfg.app.name.get()).toBe("svc");
+      expect(cfg.app.server.port.get()).toBe(3000);
+      expect(cfg.app.server.tls.cert.path.get()).toBe("cert.pem");
+
+      expect(cfg.get()).toEqual({
+        app: {
+          name: "svc",
+          server: {
+            port: 3000,
+            tls: { cert: { path: "cert.pem" } },
+          },
+        },
+      });
+    });
+
+    test("an unresolved node exposes defaults and nulls synchronously at every depth, before the source resolves", async () => {
+      let resolveStart: () => void;
+      const started = new Promise<void>((resolve) => {
+        resolveStart = resolve;
+      });
+      const slowSource = new Source<Record<string, unknown>>({
+        async start(control) {
+          await started;
+          control.set({
+            env: "production",
+            app: {
+              name: "svc",
+              server: {
+                port: 9090,
+                tls: { cert: { path: "cert.pem" } },
+              },
+            },
+          });
+          control.close();
+        },
+      });
+
+      const cfg = configs.create(
+        {
+          // top-level, required, no default: null until resolved — and stays `string | null`
+          // even once resolved, since `required` alone is never enforced at runtime.
+          env: { type: "string", required: true },
+          app: configs.create({
+            // nested, required, no default: same story, one level down.
+            name: { type: "string", required: true },
+            server: configs.create({
+              // a `default` backfills (and narrows the type) the same way whether resolved or not,
+              // at any depth — unlike `required`, it's an actual runtime guarantee.
+              port: { type: "number", default: 8080 },
+              tls: configs.create({
+                cert: configs.create({
+                  path: { type: "string", required: true, default: "default.pem" },
+                }),
+              }),
+            }),
+          }),
+        },
+        { sources: [slowSource] },
+      );
+
+      // before the source resolves: a `default` already backfills the value at any depth, while a
+      // plain `required` field (no default) is still null — and the *type* reflects the same split.
+      expect(cfg.env.get()).toBeNull();
+      expect(cfg.app.name.get()).toBeNull();
+      expect(cfg.app.server.port.get()).toBe(8080);
+      expect(cfg.app.server.tls.cert.path.get()).toBe("default.pem");
+
+      expectTypeOf(cfg.env).toEqualTypeOf<ReadOnlyStore<string | null>>();
+      expectTypeOf(cfg.app.name).toEqualTypeOf<ReadOnlyStore<string | null>>();
+      expectTypeOf(cfg.app.server.port).toEqualTypeOf<ReadOnlyStore<number>>();
+      expectTypeOf(cfg.app.server.tls.cert.path).toEqualTypeOf<ReadOnlyStore<string>>();
+
+      resolveStart!();
+      const resolved = await cfg;
+
+      // once resolved: the source's values win everywhere...
+      expect(resolved.env.get()).toBe("production");
+      expect(resolved.app.name.get()).toBe("svc");
+      expect(resolved.app.server.port.get()).toBe(9090);
+      expect(resolved.app.server.tls.cert.path.get()).toBe("cert.pem");
+
+      // ...but a plain `required` field's type stays `T | null` even now, at any depth: this
+      // particular source happened to publish a value, but the type can't assume that in general
+      // (see "resolved, but genuinely no source has the value" above) — only `default` narrows.
+      expectTypeOf(resolved.env).toEqualTypeOf<ReadOnlyStore<string | null>>();
+      expectTypeOf(resolved.app.name).toEqualTypeOf<ReadOnlyStore<string | null>>();
+    });
+
+    test("falls back through defaults and nulls independently at each depth", async () => {
+      const cfg = await configs.create(
+        {
+          app: configs.create({
+            name: { type: "string" },
+            server: configs.create({
+              port: { type: "number", default: 8080 },
+              tls: configs.create({
+                cert: configs.create({
+                  path: { type: "string", required: true },
+                }),
+              }),
+            }),
+          }),
+        },
+        { sources: [testSource({})] },
+      );
+
+      expect(cfg.get()).toEqual({
+        app: {
+          name: null,
+          server: {
+            port: 8080,
+            tls: { cert: { path: null } },
+          },
+        },
+      });
+    });
+
+    test("a group partway down the tree with its own source resolves independently of its ancestors and descendants", async () => {
+      const cfg = await configs.create(
+        {
+          app: configs.create({
+            name: { type: "string" },
+            server: configs.create(
+              {
+                port: { type: "number" },
+                tls: configs.create({
+                  cert: configs.create({
+                    path: { type: "string" },
+                  }),
+                }),
+              },
+              { sources: [envSource({ env: { PORT: "3000" }, mapKey: mapKey.snakeCase() })] },
+            ),
+          }),
+        },
+        { sources: [testSource({ app: { name: "svc", server: { tls: { cert: { path: "cert.pem" } } } } })] },
+      );
+
+      expect(cfg.app.name.get()).toBe("svc");
+      // `server` owns its own source, so its descendants (`tls`, `cert`) resolve from it too —
+      // `port` comes from the envSource...
+      expect(cfg.app.server.port.get()).toBe(3000);
+      // ...and `path`, absent from that same envSource, does *not* fall through to the
+      // ancestor's testSource (which had it), even though that testSource does carry a value there.
+      expect(cfg.app.server.tls.cert.path.get()).toBeNull();
+    });
+
+    test("stays live through three levels of embedded nesting", async () => {
+      const store1 = store.create<Record<string, unknown>>({});
+      const source = new Source<Record<string, unknown>>({
+        async start(control) {
+          control.set(store1.get());
+          store1.subscribe((v) => control.set(v));
+        },
+      });
+      store1.set({ a: { b: { c: { value: 1 } } } });
+
+      const cfg = await configs.create(
+        {
+          a: configs.create({
+            b: configs.create({
+              c: configs.create({
+                value: { type: "number", required: true },
+              }),
+            }),
+          }),
+        },
+        { sources: [source] },
+      );
+
+      const seen: (number | null)[] = [];
+      const unsub = cfg.a.b.c.value.subscribe((value) => {
+        seen.push(value);
+      });
+
+      store1.set({ a: { b: { c: { value: 2 } } } });
+
+      expect(seen).toEqual([1, 2]);
+
+      unsub();
+    });
+
+    test("closing the root also closes a source owned by a group several levels down", async () => {
+      let closed = false;
+      const deepSource = new Source<{ cert: { path: string } }>({
+        start(control) {
+          // `deepSource` is `tls`'s own source, so values must be shaped from `tls`'s root —
+          // including the embedded `cert` sub-path, not just `path` on its own.
+          control.set({ cert: { path: "cert.pem" } });
+          control.close();
+        },
+        close() {
+          closed = true;
+        },
+      });
+
+      const cfg = await configs.create({
+        app: configs.create({
+          server: configs.create({
+            tls: configs.create(
+              {
+                cert: configs.create({ path: { type: "string" } }),
+              },
+              { sources: [deepSource] },
+            ),
+          }),
+        }),
+      });
+
+      expect(cfg.app.server.tls.cert.path.get()).toBe("cert.pem");
+      await cfg.close();
+      expect(closed).toBe(true);
+    });
+  });
 });
 
 describe("configs.create() as a ConfigNode", () => {
-  test("root form returns a ConfigNode instance synchronously, before it resolves", () => {
+  test("root form returns a plain object synchronously, before it resolves — not a class instance, not a Promise", () => {
     const cfg = configs.create(
       { port: { type: "number" } },
       { sources: [testSource({ port: 3000 })] },
     );
 
-    expect(cfg).toBeInstanceOf(ConfigNode);
+    // a plain object (Proxy over an object literal): no custom prototype/class identity.
+    expect(Object.getPrototypeOf(cfg)).toBe(Object.prototype);
+    expect(cfg).not.toBeInstanceOf(Promise);
+    // but it is thenable, so `await`ing it works.
+    expect(typeof cfg.then).toBe("function");
     expectTypeOf(cfg).not.toEqualTypeOf<Promise<unknown>>();
+    expectTypeOf(cfg).toEqualTypeOf<PendingConfigNode<{ port: { type: "number" } }>>();
   });
 
-  test("ConfigNode.then() resolves to a ConfigNodeResolved instance", async () => {
+  test("ConfigNode.then() resolves to a plain object with no `then` of its own", async () => {
     const cfg = configs.create(
       { port: { type: "number" } },
       { sources: [testSource({ port: 3000 })] },
@@ -458,10 +791,13 @@ describe("configs.create() as a ConfigNode", () => {
 
     const resolved = await cfg;
 
-    expect(resolved).toBeInstanceOf(ConfigNodeResolved);
+    expect(Object.getPrototypeOf(resolved)).toBe(Object.prototype);
+    // not thenable: awaiting it again is a plain identity, not another resolution step.
+    expect(typeof (resolved as { then?: unknown }).then).toBe("undefined");
+    expectTypeOf(resolved).toEqualTypeOf<ConfigNode<{ port: { type: "number" } }>>();
   });
 
-  test("a ConfigNodeResolved is still a ConfigNode", async () => {
+  test("the resolved node still exposes the full ConfigNode surface: get, subscribe, listen, close — but no set, it's always read-only", async () => {
     const cfg = configs.create(
       { port: { type: "number" } },
       { sources: [testSource({ port: 3000 })] },
@@ -469,7 +805,12 @@ describe("configs.create() as a ConfigNode", () => {
 
     const resolved = await cfg;
 
-    expect(resolved).toBeInstanceOf(ConfigNode);
+    expect(typeof resolved.get).toBe("function");
+    expect(typeof resolved.subscribe).toBe("function");
+    expect(typeof resolved.listen).toBe("function");
+    expect(typeof resolved.close).toBe("function");
+    expect((resolved as { set?: unknown }).set).toBeUndefined();
+    expect(resolved.get()).toEqual({ port: 3000 });
   });
 
   test("awaiting still exposes live field access on the resolved node", async () => {
@@ -479,6 +820,67 @@ describe("configs.create() as a ConfigNode", () => {
     );
 
     expect(cfg.port.get()).toBe(3000);
+  });
+
+  test("the field's Store is reachable synchronously before the promise resolves, and reflects the resolved value once it does", async () => {
+    let resolveStart: () => void;
+    const started = new Promise<void>((resolve) => {
+      resolveStart = resolve;
+    });
+    const source = new Source<{ myFeature: boolean }>({
+      async start(control) {
+        await started;
+        control.set({ myFeature: true });
+        control.close();
+      },
+    });
+
+    const cfg = configs.create(
+      { myFeature: { type: "boolean", required: true } },
+      { sources: [source] },
+    );
+
+    // accessible immediately, without awaiting `cfg`: null until the source publishes.
+    expect(cfg.myFeature.get()).toBeNull();
+    expectTypeOf(cfg.myFeature).toEqualTypeOf<ReadOnlyStore<boolean | null>>();
+
+    resolveStart!();
+    const resolved = await cfg;
+
+    // the runtime value updates once resolved...
+    expect(resolved.myFeature.get()).toBe(true);
+    // ...but the type stays `boolean | null`: `required` alone isn't enforced at runtime (a
+    // source that never sets the field would leave it `null` even after resolving), so the type
+    // can't assume non-null just because the promise settled.
+    expectTypeOf(resolved.myFeature).toEqualTypeOf<ReadOnlyStore<boolean | null>>();
+  });
+
+  test("the unresolved node's field Store stays live and picks up the resolved value even without awaiting it", async () => {
+    let resolveStart: () => void;
+    const started = new Promise<void>((resolve) => {
+      resolveStart = resolve;
+    });
+    const source = new Source<{ myFeature: boolean }>({
+      async start(control) {
+        await started;
+        control.set({ myFeature: true });
+        control.close();
+      },
+    });
+
+    const cfg = configs.create(
+      { myFeature: { type: "boolean", required: true } },
+      { sources: [source] },
+    );
+    const field = cfg.myFeature;
+
+    expect(field.get()).toBeNull();
+
+    resolveStart!();
+    await cfg;
+
+    // same Store instance, now reflecting the resolved value.
+    expect(field.get()).toBe(true);
   });
 });
 
