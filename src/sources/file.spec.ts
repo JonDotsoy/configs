@@ -57,6 +57,16 @@ describe("fileSource", () => {
       expect(store.get()).toEqual({ server: { port: 3000 } });
     });
 
+    test("parses a file with an unrecognized extension as JSON by default", async () => {
+      const path = join(dir, "config.conf");
+      await Bun.write(path, JSON.stringify({ port: 3000 }));
+
+      const source = fileSource(path, { watch: false });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000 });
+    });
+
     test("parses a named .env file into a flat string map", async () => {
       const path = join(dir, "file.env");
       await Bun.write(path, "PORT=3000\nHOST=localhost\n");
@@ -96,6 +106,84 @@ describe("fileSource", () => {
 
       // The backslash isn't stripped by DotEnv.parse — see src/utils/dotenv.md.
       expect(store.get()).toEqual({ NAME: "my app", OTHER: "it\\'s fine" });
+    });
+  });
+
+  describe("parser", () => {
+    test("uses a custom parser instead of extension-based detection", async () => {
+      const path = join(dir, "config.yaml");
+      await Bun.write(path, "port: 3000\nhost: localhost\n");
+
+      const source = fileSource(path, {
+        watch: false,
+        parser: (buffer) => {
+          const text = new TextDecoder().decode(buffer);
+          const result: Record<string, string | number> = {};
+          for (const line of text.split("\n")) {
+            const [key, value] = line.split(": ");
+            if (!key || value === undefined) continue;
+            result[key] = /^\d+$/.test(value) ? Number(value) : value;
+          }
+          return result;
+        },
+      });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000, host: "localhost" });
+    });
+
+    test("a custom parser is used even for a recognized extension like .json", async () => {
+      const path = join(dir, "config.json");
+      await Bun.write(path, JSON.stringify({ port: 3000 }));
+
+      const source = fileSource(path, {
+        watch: false,
+        parser: () => ({ overridden: true }),
+      });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ overridden: true });
+    });
+
+    test("a custom parser error is logged and leaves the store null", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      const path = join(dir, "config.yaml");
+      await Bun.write(path, "not: [valid");
+
+      const source = fileSource(path, {
+        watch: false,
+        parser: () => {
+          throw new Error("bad yaml");
+        },
+      });
+      const store = await source.open();
+
+      expect(store.get()).toBeNull();
+      expect(errorSpy).toHaveBeenCalled();
+      errorSpy.mockRestore();
+    });
+
+    test("stays live with a custom parser: a later change republishes", async () => {
+      const path = join(dir, "config.yaml");
+      await Bun.write(path, "port: 3000\n");
+
+      const source = fileSource<{ port: number }>(path, {
+        parser: (buffer) => {
+          const text = new TextDecoder().decode(buffer);
+          const [, value] = text.trim().split(": ");
+          return { port: Number(value) };
+        },
+      });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000 });
+
+      await Bun.write(path, "port: 4000\n");
+      await waitFor(() => store.get()?.port === 4000);
+
+      expect(store.get()).toEqual({ port: 4000 });
+
+      await source.close();
     });
   });
 
@@ -221,7 +309,7 @@ describe("fileSource", () => {
   });
 
   describe("error handling", () => {
-    test("logs and leaves the store null for an unrecognized extension", async () => {
+    test("logs and leaves the store null when a non-JSON, non-.env file fails to parse as JSON", async () => {
       const errorSpy = spyOn(console, "error").mockImplementation(() => {});
       const path = join(dir, "config.toml");
       await Bun.write(path, "port = 3000");
