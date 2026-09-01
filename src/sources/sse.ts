@@ -1,9 +1,50 @@
+import {
+  applyCredentials,
+  defaultAcceptStatus,
+  downloadWithRetry,
+  type HttpFetchCredentials,
+} from "../utils/http-fetch.js";
 import { Source } from "./source.js";
 
-export interface SseSourceOptions {
+export type { HttpFetchCredentials };
+
+export interface SseSourceOptions<T = unknown> {
   url: string | URL;
   method?: string;
   headers?: RequestInit["headers"];
+  /** Request body, passed through to `fetch` as-is (e.g. a JSON string, `FormData`, `Blob`). */
+  body?: RequestInit["body"];
+  /**
+   * Aborts the connection (and stops retrying it) when the signal fires. Independent of the
+   * `Source`'s own `close()`, which also aborts the connection.
+   */
+  signal?: AbortSignal;
+  /** Passed through to `fetch` as-is. See `RequestInit["mode"]`. */
+  mode?: RequestInit["mode"];
+  /** Passed through to `fetch` as-is. See `RequestInit["cache"]`. */
+  cache?: RequestInit["cache"];
+  /** Passed through to `fetch` as-is. See `RequestInit["redirect"]`. */
+  redirect?: RequestInit["redirect"];
+  /**
+   * Sets the `Authorization` header for the request. `{ basic: { username, password } }` sends
+   * `Basic <base64>`; `{ bearer: { token } }` sends `Bearer <token>`. See `HttpFetchCredentials`.
+   */
+  credentials?: HttpFetchCredentials;
+  /** Attempts to establish the connection before giving up. Defaults to 1 (no retry). */
+  attempts?: number;
+  /**
+   * Decides whether a response's status code counts as accepted. Defaults
+   * to 2xx: `(statusCode) => statusCode >= 200 && statusCode < 300`.
+   */
+  acceptStatus?: (statusCode: number) => boolean;
+  /**
+   * Combines each parsed message with the config tree accumulated so far, overriding the default
+   * shallow patch-merge (new fields added, existing ones overwritten, everything else kept).
+   * Receives the parsed message as `incoming` and the previously published tree as `previous`
+   * (`null` before the first message). Defaults to the shallow patch-merge described above — a
+   * custom `reduce` replaces it entirely, so it must do its own merging if that's still wanted.
+   */
+  reduce?: (incoming: T, previous: T | null) => T;
 }
 
 function isPatch(value: unknown): value is Record<string, unknown> {
@@ -59,16 +100,46 @@ async function readEvents(
  * not one waiting on a race. The connection then stays open in the background, applying further
  * messages as patches, until the resource closes the stream — or `close()` is called on the
  * returned `Source` (or via a config tree's own `close()`), which aborts the connection.
+ *
+ * Beyond `url`/`method`/`headers`, it accepts the same request-shaping options as `fetchSource`:
+ * `body`, `signal`, `mode`, `cache`, `redirect`, `credentials`, `attempts` (retries only the
+ * initial connection — once the stream is open, a dropped connection closes the source rather
+ * than reconnecting), and `acceptStatus`. `reduce` overrides the default patch-merge behavior
+ * entirely, e.g. to replace the tree wholesale on every message instead of merging.
  */
-export function sseSource<T = unknown>(options: SseSourceOptions): Source<T> {
-  const { url, method = "GET", headers } = options;
+export function sseSource<T = unknown>(options: SseSourceOptions<T>): Source<T> {
+  const {
+    url,
+    method = "GET",
+    headers,
+    body,
+    signal: externalSignal,
+    mode,
+    cache,
+    redirect,
+    credentials,
+    attempts = 1,
+    acceptStatus = defaultAcceptStatus,
+    reduce,
+  } = options;
+  const defaultReduce = (patch: T, previous: T | null): T =>
+    ({
+      ...((previous as Record<string, unknown> | null) ?? {}),
+      ...(patch as Record<string, unknown>),
+    }) as T;
   const abortController = new AbortController();
+  const signal = externalSignal ? AbortSignal.any([externalSignal, abortController.signal]) : abortController.signal;
 
   return new Source<T>({
     async start(control) {
       let response: Response;
       try {
-        response = await fetch(url, { method, headers, signal: abortController.signal });
+        response = await downloadWithRetry(
+          url,
+          { method, headers: applyCredentials(headers, credentials), body, signal, mode, cache, redirect },
+          attempts,
+          acceptStatus,
+        );
       } catch (error) {
         if (!abortController.signal.aborted) {
           console.error(`sseSource: failed to connect to "${url}"`, error);
@@ -77,8 +148,8 @@ export function sseSource<T = unknown>(options: SseSourceOptions): Source<T> {
         return;
       }
 
-      if (!response.ok || !response.body) {
-        console.error(`sseSource: received ${response.status} ${response.statusText} from "${url}"`);
+      if (!response.body) {
+        console.error(`sseSource: response from "${url}" has no body`);
         control.close();
         return;
       }
@@ -122,11 +193,7 @@ export function sseSource<T = unknown>(options: SseSourceOptions): Source<T> {
           });
       });
     },
-    reduce: (patch, previous) =>
-      ({
-        ...((previous as Record<string, unknown> | null) ?? {}),
-        ...(patch as Record<string, unknown>),
-      }) as T,
+    reduce: reduce ?? defaultReduce,
     close() {
       abortController.abort();
     },

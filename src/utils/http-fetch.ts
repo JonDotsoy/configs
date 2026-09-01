@@ -49,7 +49,7 @@ export interface HttpFetchResponse<T> {
   body: T;
 }
 
-const defaultAcceptStatus = (statusCode: number) => statusCode >= 200 && statusCode < 300;
+export const defaultAcceptStatus = (statusCode: number) => statusCode >= 200 && statusCode < 300;
 const defaultBodyParser = <T>(response: Response) => response.json() as Promise<T>;
 
 /** Thrown by `download` when a response's status is rejected by `acceptStatus`. Not retried. */
@@ -75,7 +75,8 @@ function withAuthorizationHeader(headers: RequestInit["headers"] | undefined, va
   return result;
 }
 
-function applyCredentials(
+/** Sets the `Authorization` header from `credentials`, if given; passes `headers` through unchanged otherwise. */
+export function applyCredentials(
   headers: RequestInit["headers"] | undefined,
   credentials: HttpFetchCredentials | undefined,
 ): RequestInit["headers"] | undefined {
@@ -110,9 +111,10 @@ function isAbortError(error: unknown): boolean {
  * errors are retried — a rejected status (`UnacceptedStatusError`) or an abort (`init.signal`
  * firing) throws immediately, since both are definitive outcomes rather than transient failures.
  * If every attempt fails with a network error, throws an `AttemptsExhaustedError` wrapping the
- * last one.
+ * last one. Returns the raw `Response` (unlike `httpFetch`, no `bodyParser` is applied), so a
+ * caller that needs the live body stream — like `sseSource` — can consume it directly.
  */
-async function downloadWithRetry(
+export async function downloadWithRetry(
   url: string | URL,
   init: RequestInit,
   attempts: number,

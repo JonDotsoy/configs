@@ -216,4 +216,64 @@ describe("sseSource", () => {
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
   });
+
+  describe("reduce", () => {
+    test("defaults to a shallow patch-merge onto the tree accumulated so far", async () => {
+      const { response, release } = controlledSseResponse([
+        JSON.stringify({ port: 3000 }),
+        JSON.stringify({ host: "10.0.0.1" }),
+      ]);
+      globalThis.fetch = (async () => response) as unknown as typeof fetch;
+
+      const source = sseSource<{ port?: number; host?: string }>({ url: "https://example.com/events" });
+      release();
+      const store = await source.open();
+
+      release();
+      const final = await waitForValue(store, (value) => value?.host !== undefined);
+
+      expect(final).toEqual({ port: 3000, host: "10.0.0.1" });
+    });
+
+    test("a custom reduce overrides the default merge entirely", async () => {
+      const { response, release } = controlledSseResponse([
+        JSON.stringify({ port: 3000 }),
+        JSON.stringify({ host: "10.0.0.1" }),
+      ]);
+      globalThis.fetch = (async () => response) as unknown as typeof fetch;
+
+      const source = sseSource<{ port?: number; host?: string }>({
+        url: "https://example.com/events",
+        // replaces wholesale instead of merging
+        reduce: (incoming) => incoming,
+      });
+      release();
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000 });
+
+      release();
+      const final = await waitForValue(store, (value) => value?.host !== undefined);
+
+      expect(final).toEqual({ host: "10.0.0.1" });
+    });
+
+    test("receives the previously published value as `previous`, null before the first message", async () => {
+      const { response, release } = controlledSseResponse([JSON.stringify({ port: 3000 })]);
+      globalThis.fetch = (async () => response) as unknown as typeof fetch;
+
+      let receivedPrevious: unknown;
+      const source = sseSource<{ port?: number }>({
+        url: "https://example.com/events",
+        reduce: (incoming, previous) => {
+          receivedPrevious = previous;
+          return incoming;
+        },
+      });
+      release();
+      await source.open();
+
+      expect(receivedPrevious).toBeNull();
+    });
+  });
 });

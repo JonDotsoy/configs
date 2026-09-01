@@ -1,4 +1,5 @@
 import { httpFetch, type HttpFetchCredentials, type HttpFetchRequest } from "../utils/http-fetch.js";
+import { selectTreePath } from "../utils/tree-path.js";
 import { Source } from "./source.js";
 
 export type { HttpFetchCredentials };
@@ -41,6 +42,20 @@ export interface FetchSourceOptions<T = unknown> {
    * (each round retried up to `attempts` times) until the `Source` is closed.
    */
   pollingInterval?: number | false;
+  /**
+   * Selects a subtree of the fetched body to use as the config tree instead of the whole thing,
+   * e.g. `["containers", "settings"]` to use `{ containers: { settings: {...} } }`'s inner object
+   * and ignore the rest of the response. Defaults to `[]`: the whole body is used, unchanged.
+   */
+  treePath?: string[];
+  /**
+   * Combines each successful fetch with the previously published value instead of replacing it
+   * outright. Especially useful with `pollingInterval`, when a later round's response is a
+   * partial update rather than a full snapshot. Receives the freshly fetched (and
+   * `treePath`-selected) body as `incoming` and the last published value as `previous` (`null`
+   * before the first round). Defaults to publishing `incoming` as-is — a full replace.
+   */
+  reduce?: (incoming: T, previous: T | null) => T;
 }
 
 /** Runs one `httpFetch` round, logging and swallowing any failure into `undefined`. */
@@ -52,6 +67,25 @@ async function fetchRound<T>(req: HttpFetchRequest<T>): Promise<{ data: T } | un
     console.error(`fetchSource: failed to fetch "${req.url}"`, error);
     return undefined;
   }
+}
+
+/**
+ * Selects `treePath` out of `data`, same as `fileSource`'s `treePath` — an empty `treePath` is a
+ * no-op. A missing or non-object segment along the way is logged via `console.error` but still
+ * publishes a snapshot: an empty object (`{}`), not `null` / the previous value, since the fetch
+ * itself succeeded fine.
+ */
+function applyTreePath<T>(url: string | URL, data: T, treePath: string[]): T {
+  if (treePath.length === 0) return data;
+
+  const selected = selectTreePath(data, treePath);
+  if (selected === undefined) {
+    console.error(
+      `fetchSource: treePath [${treePath.map((k) => JSON.stringify(k)).join(", ")}] did not resolve to anything in the response from "${url}"`,
+    );
+    return {} as T;
+  }
+  return selected as T;
 }
 
 /**
@@ -68,6 +102,12 @@ async function fetchRound<T>(req: HttpFetchRequest<T>): Promise<{ data: T } | un
  * round retried up to `attempts` times, updating the store on every successful fetch, until the
  * `Source` is closed. A failed round after the first one is logged and skipped, without closing
  * the source or stopping the polling.
+ *
+ * `treePath` selects a subtree of the fetched body to use as the config tree, same as
+ * `fileSource`'s option of the same name — applied on every round, including polled ones.
+ *
+ * `reduce` combines each round's body with the previously published value instead of replacing
+ * it outright — handy with `pollingInterval` when later rounds return partial updates.
  */
 export function fetchSource<T = unknown>(options: FetchSourceOptions<T>): Source<T> {
   const {
@@ -84,6 +124,8 @@ export function fetchSource<T = unknown>(options: FetchSourceOptions<T>): Source
     bodyParser,
     acceptStatus,
     pollingInterval = false,
+    treePath = [],
+    reduce,
   } = options;
   const req = {
     url,
@@ -109,7 +151,7 @@ export function fetchSource<T = unknown>(options: FetchSourceOptions<T>): Source
         return;
       }
 
-      control.set(first.data);
+      control.set(applyTreePath(url, first.data, treePath));
 
       if (pollingInterval === false) {
         control.close();
@@ -119,7 +161,7 @@ export function fetchSource<T = unknown>(options: FetchSourceOptions<T>): Source
       const scheduleNext = () => {
         timer = setTimeout(async () => {
           const result = await fetchRound<T>(req);
-          if (result) control.set(result.data);
+          if (result) control.set(applyTreePath(url, result.data, treePath));
           scheduleNext();
         }, pollingInterval);
       };
@@ -128,5 +170,6 @@ export function fetchSource<T = unknown>(options: FetchSourceOptions<T>): Source
     close() {
       clearTimeout(timer);
     },
+    reduce,
   });
 }

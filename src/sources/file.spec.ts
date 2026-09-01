@@ -517,6 +517,62 @@ describe("fileSource", () => {
     });
   });
 
+  describe("reduce", () => {
+    test("defaults to a full replace: a later watched change overwrites the previous value", async () => {
+      const path = join(dir, "config.json");
+      await Bun.write(path, JSON.stringify({ port: 3000 }));
+
+      const source = fileSource<Record<string, unknown>>(path);
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000 });
+
+      await Bun.write(path, JSON.stringify({ host: "localhost" }));
+      await waitFor(() => store.get()?.host !== undefined);
+
+      expect(store.get()).toEqual({ host: "localhost" });
+
+      await source.close();
+    });
+
+    test("merges each read into the previously published value instead of replacing it", async () => {
+      const path = join(dir, "config.json");
+      await Bun.write(path, JSON.stringify({ port: 3000 }));
+
+      const source = fileSource<Record<string, unknown>>(path, {
+        reduce: (incoming, previous) => ({ ...(previous ?? {}), ...incoming }),
+      });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000 });
+
+      await Bun.write(path, JSON.stringify({ host: "localhost" }));
+      await waitFor(() => store.get()?.host !== undefined);
+
+      expect(store.get()).toEqual({ port: 3000, host: "localhost" });
+
+      await source.close();
+    });
+
+    test("receives the treePath-selected value, not the whole parsed file", async () => {
+      const path = join(dir, "config.json");
+      await Bun.write(path, JSON.stringify({ containers: { settings: { port: 3000 } } }));
+
+      let received: unknown;
+      const source = fileSource<{ port: number }>(path, {
+        watch: false,
+        treePath: ["containers", "settings"],
+        reduce: (incoming) => {
+          received = incoming;
+          return incoming;
+        },
+      });
+      await source.open();
+
+      expect(received).toEqual({ port: 3000 });
+    });
+  });
+
   test("wires into configs.create as a source", async () => {
     const path = join(dir, "config.json");
     await Bun.write(path, JSON.stringify({ port: 3000, host: "localhost" }));

@@ -3,10 +3,11 @@ import { readFile } from "node:fs/promises";
 import { Source } from "./source.js";
 import { DotEnv } from "../utils/dotenv.js";
 import { t } from "../utils/t.js";
+import { selectTreePath } from "../utils/tree-path.js";
 
 export type FileFormat = "json" | "env";
 
-export interface FileSourceOptions {
+export interface FileSourceOptions<T = unknown> {
   /** Republishes the config tree whenever the file changes on disk. Defaults to `true`. */
   watch?: boolean;
   /**
@@ -31,6 +32,14 @@ export interface FileSourceOptions {
    * parses them per `format` (or, without one, `path`'s detected format).
    */
   parser?: (buffer: Uint8Array) => unknown;
+  /**
+   * Combines each read with the previously published value instead of replacing it outright.
+   * Especially useful with `watch` (the default), when a later read should merge into what's
+   * already there rather than replace it wholesale. Receives the freshly read (and
+   * `treePath`-selected) tree as `incoming` and the last published value as `previous` (`null`
+   * before the first read). Defaults to publishing `incoming` as-is — a full replace.
+   */
+  reduce?: (incoming: T, previous: T | null) => T;
 }
 
 /** Picks a format from the path's extension; a bare `.env` (no basename) counts as `.env` too. Defaults to `"json"`. */
@@ -58,16 +67,6 @@ function defaultParser(path: string | URL, format: FileFormat | undefined): (buf
   return (buffer) => parseFile(resolvedFormat, new TextDecoder().decode(buffer));
 }
 
-/** Walks `treePath` into `data`, one key per segment. `undefined` means the path doesn't resolve — either a missing key, or an intermediate segment that isn't an object. */
-function selectTreePath(data: unknown, treePath: string[]): unknown {
-  let node = data;
-  for (const key of treePath) {
-    if (typeof node !== "object" || node === null) return undefined;
-    node = (node as Record<string, unknown>)[key];
-  }
-  return node;
-}
-
 /**
  * A `Source` that reads a config tree from a local file — `.json` or `.env` by default (matched by
  * `path`'s extension, or by the bare `.env` filename itself; anything else is parsed as JSON), or
@@ -92,14 +91,19 @@ function selectTreePath(data: unknown, treePath: string[]): unknown {
  * With `watch` (the default), the file is re-read on every change and the store updated live; a
  * parse error on one of those later reads is logged but keeps the last good value, same as
  * `sseSource` does for a bad SSE message. `watch: false` reads the file once and closes.
+ *
+ * `reduce` combines each read with the previously published value instead of replacing it
+ * outright — handy with `watch` when a later read is a partial update rather than a full
+ * snapshot.
  */
 export function fileSource<T = unknown>(
   path: string | URL,
-  options: FileSourceOptions = {},
+  options: FileSourceOptions<T> = {},
 ): Source<T> {
   const shouldWatch = options.watch ?? true;
   const treePath = options.treePath ?? [];
   const parser = options.parser ?? defaultParser(path, options.format);
+  const reduce = options.reduce;
   let watcher: FSWatcher | undefined;
 
   return new Source<T>({
@@ -144,5 +148,6 @@ export function fileSource<T = unknown>(
     close() {
       watcher?.close();
     },
+    reduce,
   });
 }

@@ -4,6 +4,7 @@ import { Source } from "./sources/source";
 import { envSource, mapKey } from "./sources/env";
 import { fetchSource } from "./sources/fetch";
 import { ConfigError } from "./errors";
+import { create } from "./configs.ts";
 import type { ConfigNode, configs, PendingConfigNode, ReadOnlyStore, SchemaGroup } from "./config.types.ts";
 
 declare const configs: configs;
@@ -324,6 +325,17 @@ describe("configs.create", () => {
     const group = configs.create({ key: { type: "string" } });
     expectTypeOf(group).not.toEqualTypeOf<Promise<unknown>>();
     expect(group.get()).toEqual({ key: null });
+  });
+});
+
+describe("named `create` export", () => {
+  test("is the same function as configs.create, usable as `import { create } from \"@jondotsoy/configs\"`", async () => {
+    const cfg = await create(
+      { port: { type: "number", required: true } },
+      { sources: [testSource({ port: 3000 })] },
+    );
+
+    expect(cfg.port.get()).toBe(3000);
   });
 });
 
