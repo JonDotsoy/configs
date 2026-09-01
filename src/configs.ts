@@ -38,4 +38,6 @@ export const configs: ConfigsApi = {
   create: createConfigNode,
 };
 
+export const create: ConfigsApi["create"] = createConfigNode;
+
 export default configs;
