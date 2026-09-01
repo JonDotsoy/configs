@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`fileSource`** now accepts a `parser?: (buffer: Uint8Array) => unknown` option, letting it
+  read formats it doesn't parse itself — e.g. YAML with a library of your choice:
+  `fileSource("./file.yaml", { parser: (bytes) => YAML.parse(new TextDecoder().decode(bytes)) })`.
+  When omitted, `fileSource` decodes the file as UTF-8 and parses it as `.env` (for a
+  `.env`-named path) or JSON otherwise — a file with an unrecognized extension is no longer
+  rejected up front; it's parsed as JSON like anything else, and fails the same way invalid JSON
+  always does.
+
 ## [1.1.1] - 2026-09-01
 
 ### Added
