@@ -188,6 +188,23 @@ const source = fetchSource<{ port: number }>({
 });
 ```
 
+`credentials` sets the `Authorization` header up front instead of adding it to `headers` yourself:
+`{ basic: { username, password } }` sends `Basic <base64>`; `{ bearer: { token } }` sends
+`Bearer <token>`. `body`, `signal`, `mode`, `cache`, and `redirect` are passed through to the
+underlying `fetch` call as-is. `bodyParser` turns a non-JSON `Response` into `T` (defaults to
+`(res) => res.json()`), and `acceptStatus` decides which status codes count as a successful fetch
+(defaults to 2xx) — a rejected status stops retrying immediately, same as a `bodyParser` failure.
+
+```ts
+import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+
+const source = fetchSource<{ port: number }>({
+  url: "https://config-service.internal/app",
+  credentials: { bearer: { token: process.env.CONFIG_TOKEN! } },
+  acceptStatus: (status) => status === 200,
+});
+```
+
 ### `sseSource` — live updates over Server-Sent Events
 
 Connects to an SSE endpoint (`url`, `method`, `headers`). Every message tries to parse as JSON and,
@@ -216,17 +233,49 @@ patches until the resource closes the stream.
 
 Reads a config tree from `path`, parsed by its extension: `.json` or `.env` (matched by extension,
 or by the bare `.env` filename itself — a `.env` file always parses to a flat string map, one
-entry per `KEY=VALUE` line, blank lines and `#`-comments skipped). `watch` defaults to `true`: the
-file is re-read and the store updated live on every change; `watch: false` reads it once. A
-missing file, an unrecognized extension, or a parse failure (including on a later watched change)
-is logged via `console.error` and leaves the store empty instead of throwing — a parse error on a
-later change keeps the last good value instead.
+entry per `KEY=VALUE` line, blank lines and `#`-comments skipped; anything else is parsed as JSON).
+`watch` defaults to `true`: the file is re-read and the store updated live on every change;
+`watch: false` reads it once. A missing file or a parse failure (including on a later watched
+change) is logged via `console.error` and leaves the store empty instead of throwing — a parse
+error on a later change keeps the last good value instead.
 
 ```ts
 import { fileSource } from "@jondotsoy/configs/sources/file";
 
 const source = fileSource<{ port: number; host: string }>("./config.json");
 // config.json: { "port": 3000, "host": "localhost" }
+```
+
+`format` picks the built-in parser explicitly (`"json"` or `"env"`) instead of relying on `path`'s
+extension — handy for an extensionless path:
+
+```ts
+const source = fileSource("./config", { format: "env" });
+```
+
+`parser` overrides the default parsing entirely: it receives the file's raw bytes and its return
+value is used as the parsed tree, so `fileSource` can support formats it doesn't parse itself
+(like YAML) without a hard dependency on a YAML library. `format` is ignored once `parser` is set:
+
+```ts
+import { fileSource } from "@jondotsoy/configs/sources/file";
+import YAML from "yaml";
+
+const source = fileSource("./config.yaml", {
+  parser: (bytes) => YAML.parse(new TextDecoder().decode(bytes)),
+});
+```
+
+`treePath` selects a subtree of the parsed file to use as the config tree instead of the whole
+thing, e.g. to pull just `containers.settings` out of a larger file shared with other tools:
+
+```ts
+import { fileSource } from "@jondotsoy/configs/sources/file";
+
+// file.json: { "containers": { "settings": { "port": 3000 } }, "metadata": {...} }
+const source = fileSource<{ port: number }>("./file.json", {
+  treePath: ["containers", "settings"],
+});
 ```
 
 ### `pullSource` — calling a function on an interval
