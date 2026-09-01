@@ -74,19 +74,38 @@
       "_entryPoint": "./src/sources/pull.ts",
       "types": "./dist/sources/pull.d.ts",
       "import": "./dist/sources/pull.js"
+    },
+    "./react": {
+      "_entryPoint": "./src/react.ts",
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
     }
   },
   "scripts": {
     "build": "bash scripts/build.sh",
     "build:types": "tsc -p tsconfig.build.json",
     "test:pack": "bun run scripts/manual-pack-test.ts",
-    "test:integration": "bun test ./test/integration/runtime-imports.ts"
+    "test:integration": "bun test ./test/integration/runtime-imports.ts",
+    "test:browser": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/bun": "latest",
+    "@types/react": "^19",
+    "@types/react-dom": "^19.2.5",
+    "@types/react-test-renderer": "^19",
+    "react": "^19",
+    "react-dom": "^19.2.8",
+    "react-test-renderer": "^19",
     "typescript": "^5"
   },
   "peerDependencies": {
+    "react": ">=18",
     "typescript": "^5"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
   }
 }

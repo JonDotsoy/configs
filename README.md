@@ -59,6 +59,7 @@ console.log(cfg.server.port.get());
   - [`pullSource` — calling a function on an interval](#pullsource--calling-a-function-on-an-interval)
   - [`literalSource` — a static value](#literalsource--a-static-value)
   - [Reacting to changes — restarting a periodic task](#reacting-to-changes--restarting-a-periodic-task)
+  - [`useConfig` — reading a field in React](#useconfig--reading-a-field-in-react)
   - [Closing a config tree](#closing-a-config-tree)
 
 ## Install
@@ -312,6 +313,26 @@ subsequent change — `clearInterval(timer)` cancels the previous one before `se
 new one, so there's never more than one timer running for this field. The callback's returned
 cleanup only fires once, when `unsubscribe()` itself is called, so it's the right place to stop the
 last timer for good — it's not a substitute for the `clearInterval` at the top of the callback.
+
+### ⚛️ `useConfig` — reading a field in React
+
+`@jondotsoy/configs/react` exports a `useConfig(store)` hook that subscribes a component to any
+field (or nested group) and re-renders it on every update. React is a peer dependency — the hook
+only needs it if you actually import this subpath, so it's never pulled into apps that don't use
+React:
+
+```tsx
+import { configs } from "@jondotsoy/configs";
+import { useConfig } from "@jondotsoy/configs/react";
+
+const cfg = configs.create({ bannerIsActive: { type: "boolean", default: false } });
+
+function App() {
+  const bannerIsActive = useConfig(cfg.bannerIsActive);
+
+  return bannerIsActive ? <Banner /> : null;
+}
+```
 
 ### Closing a config tree
 

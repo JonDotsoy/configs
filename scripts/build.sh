@@ -15,5 +15,6 @@ mapfile -t entry_points < <(bun -e '
 bun build "${entry_points[@]}" \
   --outdir dist \
   --target node \
-  --format esm
+  --format esm \
+  --external react
 bun run build:types

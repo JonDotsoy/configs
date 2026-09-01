@@ -19,6 +19,9 @@ import { configs, envSource, literalSource, mapKey, Source, ConfigError } from "
 import { envSource as envSource2 } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
+import { useConfig } from "@jondotsoy/configs/react";
+import React from "react";
+import TestRenderer, { act } from "react-test-renderer";
 
 function assert(cond, message) {
   if (!cond) throw new Error("FAIL: " + message);
@@ -43,7 +46,27 @@ const cfg = await configs.create(
 
 assert(cfg.server.port.get() === 4000, "cfg.server.port.get() reads SERVER_PORT=4000 via envSource");
 
+assert(typeof useConfig === "function", "useConfig exported from /react");
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+const bannerSource = literalSource({ bannerIsActive: true });
+const bannerCfg = await configs.create(
+  { bannerIsActive: { type: "boolean", required: true } },
+  { sources: [bannerSource] },
+);
+
+let renderedValue;
+function Reader() {
+  renderedValue = useConfig(bannerCfg.bannerIsActive);
+  return null;
+}
+act(() => {
+  TestRenderer.create(React.createElement(Reader));
+});
+assert(renderedValue === true, "useConfig reads the live value from a config field");
+
 await cfg.close();
+await bannerCfg.close();
 console.log("\\nAll manual import checks passed.");
 `;
 
@@ -86,7 +109,7 @@ try {
     join(workDir, "package.json"),
     JSON.stringify({ name: "manual-test-configs", module: "test.ts", type: "module", private: true }, null, 2),
   );
-  await $`bun add ${tarballPath}`.cwd(workDir);
+  await $`bun add ${tarballPath} react react-test-renderer`.cwd(workDir);
 
   const testFile = join(workDir, "test.ts");
   await Bun.write(testFile, MANUAL_TEST_SOURCE);
