@@ -187,6 +187,55 @@ describe("fileSource", () => {
     });
   });
 
+  describe("format", () => {
+    test("parses an extensionless path as .env when format: \"env\" is set", async () => {
+      const path = join(dir, "config");
+      await Bun.write(path, "PORT=3000\nHOST=localhost\n");
+
+      const source = fileSource(path, { watch: false, format: "env" });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ PORT: "3000", HOST: "localhost" });
+    });
+
+    test("without format, an extensionless path falls back to JSON and fails to parse .env content", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      const path = join(dir, "config");
+      await Bun.write(path, "PORT=3000\n");
+
+      const source = fileSource(path, { watch: false });
+      const store = await source.open();
+
+      expect(store.get()).toBeNull();
+      expect(errorSpy).toHaveBeenCalled();
+      errorSpy.mockRestore();
+    });
+
+    test("format: \"json\" forces JSON parsing on a .env-named file", async () => {
+      const path = join(dir, ".env");
+      await Bun.write(path, JSON.stringify({ port: 3000 }));
+
+      const source = fileSource(path, { watch: false, format: "json" });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000 });
+    });
+
+    test("format is ignored once parser is set", async () => {
+      const path = join(dir, "config");
+      await Bun.write(path, "PORT=3000\n");
+
+      const source = fileSource(path, {
+        watch: false,
+        format: "env",
+        parser: () => ({ overridden: true }),
+      });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ overridden: true });
+    });
+  });
+
   describe("treePath", () => {
     test("selects a nested subtree, ignoring everything else in the file", async () => {
       const path = join(dir, "config.json");
