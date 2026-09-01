@@ -230,4 +230,148 @@ describe("fetchSource", () => {
       errorSpy.mockRestore();
     });
   });
+
+  describe("treePath", () => {
+    test("selects a nested subtree, ignoring everything else in the response", async () => {
+      globalThis.fetch = (async () =>
+        jsonResponse(
+          JSON.stringify({
+            containers: { settings: { port: 3000, host: "localhost" } },
+            metadata: { generatedAt: "2024-01-01" },
+          }),
+        )) as unknown as typeof fetch;
+
+      const source = fetchSource({
+        url: "https://example.com/config",
+        treePath: ["containers", "settings"],
+      });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000, host: "localhost" });
+    });
+
+    test("a leaf value at treePath is used as-is, not just objects", async () => {
+      globalThis.fetch = (async () =>
+        jsonResponse(JSON.stringify({ server: { port: 3000 } }))) as unknown as typeof fetch;
+
+      const source = fetchSource({
+        url: "https://example.com/config",
+        treePath: ["server", "port"],
+      });
+      const store = await source.open();
+
+      expect(store.get()).toBe(3000);
+    });
+
+    test("an empty treePath (or omitting it) uses the whole body, same as the default", async () => {
+      globalThis.fetch = (async () => jsonResponse(JSON.stringify({ port: 3000 }))) as unknown as typeof fetch;
+
+      const source = fetchSource({ url: "https://example.com/config", treePath: [] });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000 });
+    });
+
+    test("logs and sets an empty object when treePath doesn't resolve to anything", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      globalThis.fetch = (async () => jsonResponse(JSON.stringify({ containers: {} }))) as unknown as typeof fetch;
+
+      const source = fetchSource({
+        url: "https://example.com/config",
+        treePath: ["containers", "settings"],
+      });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({});
+      expect(errorSpy).toHaveBeenCalled();
+      errorSpy.mockRestore();
+    });
+
+    test("is applied on every polled round, not just the first", async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        return jsonResponse(JSON.stringify({ containers: { settings: { port: calls } } }));
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<{ port: number }>({
+        url: "https://example.com/config",
+        treePath: ["containers", "settings"],
+        pollingInterval: 5,
+      });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 1 });
+
+      await Bun.sleep(30);
+
+      expect(calls).toBeGreaterThan(1);
+      expect(store.get()).toEqual({ port: calls });
+
+      await source.close();
+    });
+  });
+
+  describe("reduce", () => {
+    test("defaults to a full replace: each fetch overwrites the previous value", async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        return jsonResponse(JSON.stringify(calls === 1 ? { port: 3000 } : { host: "x" }));
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<Record<string, unknown>>({
+        url: "https://example.com/config",
+        pollingInterval: 5,
+      });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000 });
+
+      await Bun.sleep(15);
+
+      expect(store.get()).toEqual({ host: "x" });
+      await source.close();
+    });
+
+    test("merges each round into the previous value instead of replacing it", async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        return jsonResponse(JSON.stringify(calls === 1 ? { port: 3000 } : { host: "x" }));
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<Record<string, unknown>>({
+        url: "https://example.com/config",
+        pollingInterval: 5,
+        reduce: (incoming, previous) => ({ ...(previous ?? {}), ...incoming }),
+      });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000 });
+
+      await Bun.sleep(15);
+
+      expect(store.get()).toEqual({ port: 3000, host: "x" });
+      await source.close();
+    });
+
+    test("receives the treePath-selected value, not the raw response", async () => {
+      globalThis.fetch = (async () =>
+        jsonResponse(JSON.stringify({ containers: { settings: { port: 3000 } } }))) as unknown as typeof fetch;
+
+      let received: unknown;
+      const source = fetchSource<{ port: number }>({
+        url: "https://example.com/config",
+        treePath: ["containers", "settings"],
+        reduce: (incoming) => {
+          received = incoming;
+          return incoming;
+        },
+      });
+      await source.open();
+
+      expect(received).toEqual({ port: 3000 });
+    });
+  });
 });
