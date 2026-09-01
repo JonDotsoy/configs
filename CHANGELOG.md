@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`create`** — a named export equivalent to `configs.create`, so `configs.create(...)` can also
+  be written as `import { create } from "@jondotsoy/configs"; create(...)`.
+- **`sseSource`** now accepts the same request-shaping options as `fetchSource`: `body`, `signal`,
+  `mode`, `cache`, `redirect`, `credentials`, `attempts` (retries only the initial connection), and
+  `acceptStatus`.
+- **`fetchSource`** now accepts a `treePath?: string[]` option, same as `fileSource`'s, to select a
+  subtree of the fetched body as the config tree instead of the whole response — applied on every
+  round, including polled ones.
+- **`fetchSource`**, **`sseSource`**, and **`fileSource`** now accept a
+  `reduce?: (incoming: T, previous: T | null) => T` option, so a later snapshot can be combined
+  with the previously published value instead of always replacing it outright — most useful for
+  `fetchSource` with `pollingInterval` and `fileSource` with `watch`, when a later round/read is a
+  partial update rather than a full snapshot. `fetchSource` and `fileSource` default to a full
+  replace (`reduce` unset); `sseSource` defaults to its existing shallow patch-merge, which a
+  custom `reduce` now overrides entirely instead of being fixed behavior.
+
 ## [1.1.2] - 2026-09-01
 
 ### Added

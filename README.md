@@ -12,21 +12,21 @@ the moment a source pushes a new value.
 - **Typed with TS check** — schemas are statically checked, so `cfg.port.get()` is inferred as `number | null` (or `number` when a `default` is set), not `any`.
 
 ```ts
-import { configs } from "@jondotsoy/configs";
+import { create } from "@jondotsoy/configs";
 import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 
 // SERVER_PORT=3000 SERVER_HOST=localhost → { server: { port: "3000", host: "localhost" } }
 // GET https://example.com/features → { promoService: true } (polled every 30s)
-const cfg = await configs.create({
-  server: configs.create(
+const cfg = await create({
+  server: create(
     {
       port: { type: "number", summary: "HTTP port", default: 3000 },
       host: { type: "string", summary: "bind host", default: "localhost" },
     },
     { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
   ),
-  features: configs.create(
+  features: create(
     {
       promoService: { type: "boolean", summary: "enable the promo service", default: false },
     },
@@ -122,6 +122,22 @@ const source = new Source<{ port?: number; host?: string }>({
 Reads `process.env` (or any object you pass as `env`) into the config tree. `mapKey` decides how
 each key maps to a path; the default is the identity mapping, `"FOO_TAR" => ["FOO_TAR"]`.
 
+**Options (`EnvSourceOptions`):**
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `env` | `Record<string, string \| undefined>` | `process.env` | The env vars to read. |
+| `prefix` | `string` | — | Only keys starting with `prefix` are included; the prefix is stripped before `mapKey` runs. |
+| `suffix` | `string` | — | Only keys ending with `suffix` are included; the suffix is stripped before `mapKey` runs. |
+| `mapKey` | `EnvKeyMapper` | identity mapping (`"FOO_TAR" => ["FOO_TAR"]`) | Maps each (already prefix/suffix-trimmed) key to a path into the config tree. |
+
+```ts
+import { envSource } from "@jondotsoy/configs/sources/env";
+
+// APP_PORT=3000 OTHER_VAR=x → { port: "3000" } (prefix stripped, OTHER_VAR excluded)
+const source = envSource({ prefix: "APP_", mapKey: (key) => [key.toLowerCase()] });
+```
+
 Built-in strategies live under the `mapKey` namespace, each a factory returning an `EnvKeyMapper`:
 
 - **`mapKey.snakeCase(options?)`** — splits a `SCREAMING_SNAKE_CASE` key into a lowercase nested
@@ -174,6 +190,26 @@ fetching `url` on that interval (each round still retried up to `attempts` times
 store on every successful fetch, until the `Source` is closed. A failed round after the first one
 is logged and skipped, without closing the source or stopping the polling.
 
+**Options (`FetchSourceOptions<T>`):**
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `url` | `string \| URL` | *required* | The endpoint to fetch. |
+| `method` | `string` | `"GET"` | HTTP method for the request. |
+| `headers` | `RequestInit["headers"]` | — | Request headers, passed through to `fetch` as-is. |
+| `body` | `RequestInit["body"]` | — | Request body, passed through to `fetch` as-is (e.g. a JSON string, `FormData`, `Blob`). |
+| `signal` | `AbortSignal` | — | Aborts the in-flight fetch (and stops retrying it) when it fires. Covers a single round only — with `pollingInterval` set, later rounds still run; close the `Source` itself to stop polling entirely. |
+| `mode` | `RequestInit["mode"]` | — | Passed through to `fetch` as-is. |
+| `cache` | `RequestInit["cache"]` | — | Passed through to `fetch` as-is. |
+| `redirect` | `RequestInit["redirect"]` | — | Passed through to `fetch` as-is. |
+| `credentials` | `HttpFetchCredentials` | — | Sets the `Authorization` header up front instead of adding it to `headers` yourself: `{ basic: { username, password } }` sends `Basic <base64>`; `{ bearer: { token } }` sends `Bearer <token>`. |
+| `attempts` | `number` | `1` (no retry) | Attempts to download the data before giving up, on a network error or a non-`ok` response. |
+| `bodyParser` | `(response: Response) => Promise<T>` | `(res) => res.json()` | Turns the fetched `Response` into `T`. |
+| `acceptStatus` | `(statusCode: number) => boolean` | 2xx: `(status) => status >= 200 && status < 300` | Decides whether a response's status code counts as accepted. A rejected status stops retrying immediately, same as a `bodyParser` failure. |
+| `pollingInterval` | `number \| false` | `false` (off) | Milliseconds between fetches. `false` fetches `url` once and closes; a number keeps fetching on that interval (each round retried up to `attempts` times) until the `Source` is closed. |
+| `treePath` | `string[]` | `[]` (whole body) | Selects a subtree of the fetched body to use as the config tree, e.g. `["containers", "settings"]`. Applied on every round, including polled ones. Same behavior as `fileSource`'s option of the same name. |
+| `reduce` | `(incoming: T, previous: T \| null) => T` | publishes `incoming` as-is (full replace) | Combines each successful fetch with the previously published value instead of replacing it outright. Especially useful with `pollingInterval`, when a later round's response is a partial update. Receives the `treePath`-selected body. |
+
 ```ts
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 import { Temporal } from "temporal-polyfill";
@@ -188,12 +224,16 @@ const source = fetchSource<{ port: number }>({
 });
 ```
 
-`credentials` sets the `Authorization` header up front instead of adding it to `headers` yourself:
-`{ basic: { username, password } }` sends `Basic <base64>`; `{ bearer: { token } }` sends
-`Bearer <token>`. `body`, `signal`, `mode`, `cache`, and `redirect` are passed through to the
-underlying `fetch` call as-is. `bodyParser` turns a non-JSON `Response` into `T` (defaults to
-`(res) => res.json()`), and `acceptStatus` decides which status codes count as a successful fetch
-(defaults to 2xx) — a rejected status stops retrying immediately, same as a `bodyParser` failure.
+```ts
+import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+
+// each round only returns the fields that changed — merge into what's already there
+const source = fetchSource<Record<string, unknown>>({
+  url: "https://config-service.internal/app/changes",
+  pollingInterval: 30_000,
+  reduce: (incoming, previous) => ({ ...(previous ?? {}), ...incoming }),
+});
+```
 
 ```ts
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
@@ -211,6 +251,26 @@ Connects to an SSE endpoint (`url`, `method`, `headers`). Every message tries to
 if it's a plain object, is applied as a **patch** on top of what was already received — fields add
 up and overwrite, the tree is never replaced wholesale:
 
+**Options (`SseSourceOptions`):** the same request-shaping surface as `fetchSource`, minus
+`bodyParser` and `pollingInterval` (a persistent connection, not a repeated request), plus
+`attempts` retries only the initial connection — once the stream is open, a dropped connection
+closes the source rather than reconnecting.
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `url` | `string \| URL` | *required* | The SSE endpoint to connect to. |
+| `method` | `string` | `"GET"` | HTTP method for the request. |
+| `headers` | `RequestInit["headers"]` | — | Request headers, passed through to `fetch` as-is. |
+| `body` | `RequestInit["body"]` | — | Request body, passed through to `fetch` as-is (e.g. a JSON string, `FormData`, `Blob`). |
+| `signal` | `AbortSignal` | — | Aborts the connection (and stops retrying it) when it fires. Independent of the `Source`'s own `close()`, which also aborts the connection. |
+| `mode` | `RequestInit["mode"]` | — | Passed through to `fetch` as-is. |
+| `cache` | `RequestInit["cache"]` | — | Passed through to `fetch` as-is. |
+| `redirect` | `RequestInit["redirect"]` | — | Passed through to `fetch` as-is. |
+| `credentials` | `HttpFetchCredentials` | — | Sets the `Authorization` header up front instead of adding it to `headers` yourself: `{ basic: { username, password } }` sends `Basic <base64>`; `{ bearer: { token } }` sends `Bearer <token>`. |
+| `attempts` | `number` | `1` (no retry) | Attempts to establish the connection before giving up. |
+| `acceptStatus` | `(statusCode: number) => boolean` | 2xx: `(status) => status >= 200 && status < 300` | Decides whether a response's status code counts as accepted. |
+| `reduce` | `(incoming: T, previous: T \| null) => T` | shallow patch-merge (see below) | Combines each parsed message with the tree accumulated so far. Overrides the default patch-merge entirely — a custom `reduce` must do its own merging if that's still wanted. |
+
 ```ts
 import { sseSource } from "@jondotsoy/configs/sources/sse";
 
@@ -220,6 +280,26 @@ const source = sseSource<{ port?: number; host?: string }>({
 
 // message: {"port":3000}       => Store<{ port: 3000 }>
 // message: {"host":"10.0.0.1"} => Store<{ port: 3000, host: "10.0.0.1" }>
+```
+
+```ts
+import { sseSource } from "@jondotsoy/configs/sources/sse";
+
+// each message is a full snapshot, not a patch — replace instead of merging
+const source = sseSource<{ port: number }>({
+  url: "https://config-service.internal/app/events",
+  reduce: (incoming) => incoming,
+});
+```
+
+```ts
+import { sseSource } from "@jondotsoy/configs/sources/sse";
+
+const source = sseSource<{ port?: number; host?: string }>({
+  url: "https://config-service.internal/app/events",
+  credentials: { bearer: { token: process.env.CONFIG_TOKEN! } },
+  attempts: 3,
+});
 ```
 
 A message that isn't valid JSON, or doesn't parse to a plain object, is logged via
@@ -238,6 +318,18 @@ entry per `KEY=VALUE` line, blank lines and `#`-comments skipped; anything else 
 `watch: false` reads it once. A missing file or a parse failure (including on a later watched
 change) is logged via `console.error` and leaves the store empty instead of throwing — a parse
 error on a later change keeps the last good value instead.
+
+`fileSource(path, options?)` takes `path` (a `string` or a `file:` `URL`, e.g.
+`new URL("./config.json", import.meta.url)`) as its first argument, and the following as its
+second (`FileSourceOptions`):
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `watch` | `boolean` | `true` | Republishes the config tree whenever the file changes on disk. `false` reads it once and closes. |
+| `treePath` | `string[]` | `[]` (whole file) | Selects a subtree of the parsed file to use as the config tree, e.g. `["containers", "settings"]`. |
+| `format` | `"json" \| "env"` | detected from `path`'s extension (`.env`, `"json"` otherwise) | Picks which built-in parser to use, overriding extension-based detection. Ignored once `parser` is set. |
+| `parser` | `(buffer: Uint8Array) => unknown` | decodes as UTF-8 and parses per `format`/detected format | Overrides the default parsing entirely — receives the file's raw bytes and returns the parsed tree, so `fileSource` can support formats it doesn't parse itself (like YAML). |
+| `reduce` | `(incoming: T, previous: T \| null) => T` | publishes `incoming` as-is (full replace) | Combines each read with the previously published value instead of replacing it outright. Especially useful with `watch`, when a later read is a partial update. Receives the `treePath`-selected tree. |
 
 ```ts
 import { fileSource } from "@jondotsoy/configs/sources/file";
@@ -278,6 +370,18 @@ const source = fileSource<{ port: number }>("./file.json", {
 });
 ```
 
+`reduce` combines each read with the previously published value instead of replacing it
+outright — handy with `watch` (the default) when the file is only ever appended to with partial
+updates rather than rewritten as a full snapshot each time:
+
+```ts
+import { fileSource } from "@jondotsoy/configs/sources/file";
+
+const source = fileSource<Record<string, unknown>>("./config.json", {
+  reduce: (incoming, previous) => ({ ...(previous ?? {}), ...incoming }),
+});
+```
+
 ### `pullSource` — calling a function on an interval
 
 Calls `pull` and publishes whatever it returns as the next snapshot — once immediately, then again
@@ -287,6 +391,13 @@ database query, a cloud secrets manager, a gRPC call, ...). A `pull` failure is 
 `console.error` and swallowed instead of thrown: on the first call this leaves the store empty
 (same as `fetchSource`); on a later call it's skipped, keeping the last good value and the polling
 running.
+
+**Options (`PullSourceOptions<T>`):**
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `pull` | `() => T \| Promise<T>` | *required* | Called on every round to produce a fresh snapshot. May be sync or async. |
+| `interval` | `number` | *required* | Milliseconds between calls to `pull`. |
 
 ```ts
 import { pullSource } from "@jondotsoy/configs/sources/pull";
@@ -304,6 +415,8 @@ Publishes a plain, already-in-hand value as a snapshot immediately, then closes.
 options — just wraps `value` in a `Source` so it can sit in a `sources` array alongside the rest.
 Handy as a static fallback tree (put it last so real sources win), a hardcoded default for a
 single environment, or a stand-in source in a test.
+
+**Options:** none — `literalSource(value)` takes only the value to publish, as its single argument.
 
 ```ts
 import { configs } from "@jondotsoy/configs";
