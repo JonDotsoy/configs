@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`@jondotsoy/configs/react`** — a `useConfig(store)` hook built on
+  `useSyncExternalStore` that subscribes a component to any config field or
+  nested group and re-renders it on updates. React is an optional peer
+  dependency, externalized from the build so importing this subpath is the
+  only way it's pulled in.
+
+### Fixed
+
+- `configs.create()`'s field `Store`s are now readable synchronously, even
+  before the returned node's sources have finished opening: a field read
+  (and cached) while still pending now catches up once its source resolves,
+  instead of staying stuck at its initial `null`/default value forever.
+- `configs.create()` now returns a plain object (a `Proxy` over an object
+  literal) instead of a class instance — no more `ConfigNode`/
+  `ConfigNodeResolved` classes or `instanceof` checks. Only `default` now
+  narrows a field's type to non-null, consistently whether the node is
+  resolved or not — `required` documents intent only and is never enforced
+  at runtime.
+
 ## [1.1.0] - 2026-08-30
 
 ### Added
