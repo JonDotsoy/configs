@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.env`-named path) or JSON otherwise — a file with an unrecognized extension is no longer
   rejected up front; it's parsed as JSON like anything else, and fails the same way invalid JSON
   always does.
+- **`fileSource`** also accepts a `format?: "json" | "env"` option to pick the built-in parser
+  explicitly instead of relying on `path`'s extension — e.g. for an extensionless path:
+  `fileSource("./config", { format: "env" })`. Ignored once `parser` is set.
 
 ## [1.1.1] - 2026-09-01
 
