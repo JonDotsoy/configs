@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { configs } from "../configs";
+import type { CounterMetric, HistogramMetric } from "../utils/metric";
 import { fileSource } from "./file";
 
 let dir: string;
@@ -409,6 +410,65 @@ describe("fileSource", () => {
 
       await source.close();
       errorSpy.mockRestore();
+    });
+  });
+
+  describe("metrics", () => {
+    test("bumps reads and readDuration, labeled ok=true, on a successful read", async () => {
+      const path = join(dir, "config.json");
+      await Bun.write(path, JSON.stringify({ port: 3000 }));
+
+      const source = fileSource(path, { watch: false });
+      await source.open();
+      const reads = source.metrics.reads as CounterMetric;
+      const readDuration = source.metrics.readDuration as HistogramMetric;
+
+      expect(reads.get({ ok: "true" })).toBe(1);
+      expect(reads.get({ ok: "false" })).toBe(0);
+      expect(readDuration.get({ ok: "true" }).count).toBe(1);
+    });
+
+    test("bumps reads, labeled ok=false, when the file doesn't exist", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      const path = join(dir, "missing.json");
+
+      const source = fileSource(path, { watch: false });
+      await source.open();
+      const reads = source.metrics.reads as CounterMetric;
+
+      expect(reads.get({ ok: "false" })).toBe(1);
+      expect(reads.get({ ok: "true" })).toBe(0);
+      errorSpy.mockRestore();
+    });
+
+    test("bumps reads, labeled ok=false, on invalid JSON", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      const path = join(dir, "config.json");
+      await Bun.write(path, "{not valid json");
+
+      const source = fileSource(path, { watch: false });
+      await source.open();
+      const reads = source.metrics.reads as CounterMetric;
+
+      expect(reads.get({ ok: "false" })).toBe(1);
+      errorSpy.mockRestore();
+    });
+
+    test("bumps reads again on every watch-triggered re-read", async () => {
+      const path = join(dir, "config.json");
+      await Bun.write(path, JSON.stringify({ port: 3000 }));
+
+      const source = fileSource<{ port: number }>(path);
+      const store = await source.open();
+      const reads = source.metrics.reads as CounterMetric;
+
+      expect(reads.get({ ok: "true" })).toBe(1);
+
+      await Bun.write(path, JSON.stringify({ port: 4000 }));
+      await waitFor(() => store.get()?.port === 4000);
+
+      expect(reads.get({ ok: "true" })).toBe(2);
+      await source.close();
     });
   });
 
