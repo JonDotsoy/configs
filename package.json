@@ -80,6 +80,11 @@
       "_entryPoint": "./src/react.ts",
       "types": "./dist/react.d.ts",
       "import": "./dist/react.js"
+    },
+    "./utils/metrics": {
+      "_entryPoint": "./src/utils/metric.ts",
+      "types": "./dist/utils/metric.d.ts",
+      "import": "./dist/utils/metric.js"
     }
   },
   "scripts": {

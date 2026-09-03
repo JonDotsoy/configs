@@ -20,6 +20,7 @@ import { envSource as envSource2 } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
 import { useConfig } from "@jondotsoy/configs/react";
+import { CounterMetric, GaugeMetric, HistogramMetric, SummaryMetric } from "@jondotsoy/configs/utils/metrics";
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
 
@@ -37,6 +38,14 @@ assert(typeof ConfigError === "function", "ConfigError exported from root");
 assert(typeof envSource2 === "function", "envSource exported from /sources/env");
 assert(typeof fetchSource === "function", "fetchSource exported from /sources/fetch");
 assert(typeof sseSource === "function", "sseSource exported from /sources/sse");
+assert(typeof CounterMetric === "function", "CounterMetric exported from /utils/metrics");
+assert(typeof GaugeMetric === "function", "GaugeMetric exported from /utils/metrics");
+assert(typeof HistogramMetric === "function", "HistogramMetric exported from /utils/metrics");
+assert(typeof SummaryMetric === "function", "SummaryMetric exported from /utils/metrics");
+
+const requests = new CounterMetric({ name: "requests_total" });
+requests.inc();
+assert(requests.get() === 1, "CounterMetric.inc()/get() work via /utils/metrics");
 
 const source = envSource({ mapKey: mapKey.snakeCase() });
 const cfg = await configs.create(
