@@ -97,7 +97,8 @@
     "react": "^19",
     "react-dom": "^19.2.8",
     "react-test-renderer": "^19",
-    "typescript": "^5"
+    "typescript": "^5",
+    "zod": "^4.5.4"
   },
   "peerDependencies": {
     "react": ">=18",

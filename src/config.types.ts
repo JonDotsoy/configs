@@ -1,8 +1,9 @@
 import { Source } from "./sources/source.js";
 import { Store, type Subscriber, type Unsubscribe } from "./utils/store.js";
+import { tSync } from "./utils/t.js";
 import { ConfigError } from "./errors.js";
 
-export type FieldType = "string" | "number" | "boolean";
+export type FieldType = "string" | "number" | "boolean" | "shape";
 
 interface BaseFieldSchema {
   summary?: string;
@@ -11,10 +12,51 @@ interface BaseFieldSchema {
   readonly?: boolean;
 }
 
+/**
+ * Structural stand-in for a validation library's schema (zod, valibot, superstruct, ...): anything
+ * exposing `parse(value: unknown): T`. Kept minimal on purpose so this package stays dependency-free
+ * while still inferring `T` from whatever schema object a caller passes in.
+ */
+export interface Parseable<T> {
+  parse(value: unknown): T;
+}
+
+/**
+ * Split out generic (unlike the other `FieldSchema` members) purely so `default`'s type stays
+ * tied to the same `T` as `schema` when a caller writes `ShapeFieldSchema<T>` directly, instead of
+ * a hardcoded `unknown`. `FieldSchema` itself instantiates `T` as `unknown` (below) since it isn't
+ * generic — same as every other `FieldSchema` member, a field's real value/default type comes from
+ * matching the caller's own literal shape structurally (see `PrimitiveOfField`), not from this
+ * declared type. `schema` itself is optional: a `"shape"` field with no `schema` is passed through
+ * as-is (only checked for `typeof value === "object"`), for callers who just want a free-form object.
+ */
+interface ShapeFieldSchema<T> extends BaseFieldSchema {
+  type: "shape";
+  schema?: Parseable<T>;
+  default?: T;
+}
+
+/**
+ * `{ schema: z.number() }` — the same as `{ type: "shape", schema: z.number() }`, minus the tag.
+ * `schema` stays *required* here (unlike `ShapeFieldSchema`, where it's optional) specifically so
+ * this doesn't become a "weak type" indistinguishable from any other object — a nested group
+ * (`SchemaGroupNode`, just `{ shape }`) or an unrelated typo'd shape entry has no `schema` property
+ * to match against, so it's never mistaken for this. `type?: never` (rather than leaving `type` out
+ * of the interface) rejects an object that *does* carry a `type` — string/number/boolean/`"shape"`
+ * fields keep going through their own tagged member instead of this one.
+ */
+interface UntaggedShapeFieldSchema<T> extends BaseFieldSchema {
+  type?: never;
+  schema: Parseable<T>;
+  default?: T;
+}
+
 export type FieldSchema =
   | (BaseFieldSchema & { type: "string"; pattern?: RegExp; default?: string })
   | (BaseFieldSchema & { type: "number"; default?: number })
-  | (BaseFieldSchema & { type: "boolean"; default?: boolean });
+  | (BaseFieldSchema & { type: "boolean"; default?: boolean })
+  | ShapeFieldSchema<unknown>
+  | UntaggedShapeFieldSchema<unknown>;
 
 export interface CreateOptions {
   sources?: Source<any>[];
@@ -36,8 +78,19 @@ interface SchemaGroupNode {
   readonly shape: SchemaShape;
 }
 
-export type SchemaNode = FieldSchema | SchemaGroupNode;
+/**
+ * A schema object used directly as a shape entry — `port: z.number()` instead of the explicit
+ * `port: { type: "shape", schema: z.number() }`. Flattened to `Parseable<unknown>` here for the
+ * same reason `ShapeFieldSchema` is flattened to `unknown` in `FieldSchema`: `SchemaNode` isn't
+ * generic, so the real per-field type still comes from matching the caller's own literal type
+ * structurally (see `PrimitiveOfField`/`InferField`), not from this declared member. `unknown`
+ * rather than `any` avoids the literal-widening poisoning `SchemaGroupNode`'s doc above warns about.
+ */
+export type SchemaNode = FieldSchema | SchemaGroupNode | Parseable<unknown>;
 export type SchemaShape = Record<string, SchemaNode>;
+
+/** Extracts a schema's parsed output type from its `parse` method — `unknown` when it isn't shaped like a `Parseable`. */
+type InferSchemaType<A> = A extends { parse(value: unknown): infer R } ? R : unknown;
 
 type PrimitiveOfField<F extends FieldSchema> = F extends { type: "number" }
   ? number
@@ -45,7 +98,13 @@ type PrimitiveOfField<F extends FieldSchema> = F extends { type: "number" }
     ? string
     : F extends { type: "boolean" }
       ? boolean
-      : never;
+      : F extends { type: "shape"; schema: infer Z }
+        ? InferSchemaType<Z>
+        : F extends { type: "shape" }
+          ? unknown
+          : F extends { schema: infer Z }
+            ? InferSchemaType<Z>
+            : never;
 
 /**
  * A field only ever resolves to `null` when no source has it and it has no `default` — data comes
@@ -62,7 +121,9 @@ type InferField<F extends SchemaNode> = F extends ConfigNode<infer S>
   ? InferShape<S>
   : F extends FieldSchema
     ? InferFieldValue<F>
-    : never;
+    : F extends { parse(value: unknown): infer R }
+      ? R | null
+      : never;
 
 export type InferShape<S extends SchemaShape> = {
   [K in keyof S]: InferField<S[K]>;
@@ -81,7 +142,9 @@ type InferReadOnlyAccessor<F extends SchemaNode> = F extends ConfigNode<infer S>
   ? SchemaGroup<S>
   : F extends FieldSchema
     ? ReadOnlyStore<InferFieldValue<F>>
-    : never;
+    : F extends { parse(value: unknown): infer R }
+      ? ReadOnlyStore<R | null>
+      : never;
 
 /** Shape of the live proxy returned by `configs.create()`: a leaf field is a read-only `ReadOnlyStore<T>`, a nested group is a `SchemaGroup`. */
 export type InferReadOnlyAccessors<S extends SchemaShape> = {
@@ -162,7 +225,36 @@ function validate(field: FieldSchema, value: unknown, path: string[]): void {
   }
 }
 
+/**
+ * A `"shape"` field that fails to parse doesn't take down the whole config tree by default — data
+ * comes from sources outside this package's control, so a malformed value is logged via
+ * `console.error` and the field resolves to `null`, same as a source that simply doesn't have it.
+ * Only an explicit `required: true` escalates that failure into a thrown `ConfigError`.
+ */
+function shapeFailure(field: FieldSchema, error: ConfigError): unknown {
+  if (field.required) throw error;
+  console.error(error);
+  return null;
+}
+
 function coerce(field: FieldSchema, raw: unknown, path: string[]): unknown {
+  if (field.type === "shape") {
+    if (!field.schema) {
+      if (typeof raw !== "object" || raw === null) {
+        return shapeFailure(
+          field,
+          new ConfigError(`Expected shape at "${path.join(".")}", got ${JSON.stringify(raw)}`),
+        );
+      }
+      return raw;
+    }
+    const schema = field.schema;
+    const [ok, err, result] = tSync(() => schema.parse(raw));
+    if (ok) return result;
+    const message = err instanceof Error ? err.message : String(err);
+    return shapeFailure(field, new ConfigError(`Value at "${path.join(".")}" failed schema validation: ${message}`));
+  }
+
   let value: unknown = raw;
 
   if (field.type === "number" && typeof value !== "number") {
@@ -213,6 +305,41 @@ const stateOf = new WeakMap<object, ConfigNodeState<any>>();
 
 function isEmbeddedNode(value: unknown): value is object {
   return typeof value === "object" && value !== null && stateOf.has(value);
+}
+
+/**
+ * Detects a bare schema object used directly as a shape entry (`port: z.number()`), as opposed to
+ * an explicit `FieldSchema` (`port: { type: "shape", schema: z.number() }`). A `type` property
+ * isn't a reliable discriminator by itself — many schema libraries' own instances (zod's included)
+ * carry a `type` property of their own (e.g. `"number"`), which could collide with one of this
+ * package's `FieldType`s. What's actually different is *shape*: an explicit `FieldSchema` is always
+ * a plain object literal (`Object.prototype` or `null` as its prototype), while a schema library's
+ * instance is built by a factory/class (`z.number()`, `v.number()`, ...) and so isn't.
+ */
+function isBareParseable(node: SchemaNode | undefined): node is Parseable<unknown> {
+  if (typeof node !== "object" || node === null) return false;
+  if (typeof (node as Parseable<unknown>).parse !== "function") return false;
+  const proto = Object.getPrototypeOf(node);
+  return proto !== Object.prototype && proto !== null;
+}
+
+/**
+ * Normalizes a shape entry to a `FieldSchema`. Two shorthands both collapse to an explicit
+ * `{ type: "shape", ... }`: a bare schema object (`port: z.number()`, see `isBareParseable`), and a
+ * plain `FieldSchema`-shaped object that has `schema` but omits `type` entirely (`port: { schema:
+ * z.number() }`) — the latter is only recognized when `type` is genuinely absent (an actual
+ * `type: "string"`/`"number"`/`"boolean"`/`"shape"` object always passes through as itself). Only
+ * called for entries that aren't nested groups (checked separately via `isEmbeddedNode`), so a
+ * `SchemaGroupNode` (no `schema` property) never reaches here.
+ */
+function toFieldSchema(node: SchemaNode | undefined): FieldSchema {
+  if (isBareParseable(node)) {
+    return { type: "shape", schema: node };
+  }
+  if (typeof node === "object" && node !== null && !("type" in node) && "schema" in node) {
+    return { ...(node as object), type: "shape" } as FieldSchema;
+  }
+  return node as FieldSchema;
 }
 
 function collectEmbeddedStates(shape: SchemaShape): ConfigNodeState<any>[] {
@@ -298,7 +425,7 @@ class ConfigNodeState<S extends SchemaShape> {
 
   private refreshFields(): void {
     for (const [key, field] of this.fields) {
-      const schema = this.shape[key] as FieldSchema;
+      const schema = toFieldSchema(this.shape[key]);
       if (schema.readonly) continue;
       const path = [...this.basePath, key];
       const next = this.resolveField(schema, path);
@@ -321,7 +448,7 @@ class ConfigNodeState<S extends SchemaShape> {
   fieldFor(key: string): ConfigField<any> {
     let field = this.fields.get(key);
     if (!field) {
-      const schema = this.shape[key] as FieldSchema;
+      const schema = toFieldSchema(this.shape[key]);
       const path = [...this.basePath, key];
       field = new ConfigField(this.resolveField(schema, path));
       this.fields.set(key, field);

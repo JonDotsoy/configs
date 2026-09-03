@@ -8,6 +8,7 @@ export type {
   FieldType,
   InferReadOnlyAccessors,
   InferShape,
+  Parseable,
   PendingConfigNode,
   ReadOnlyStore,
   SchemaGroup,
