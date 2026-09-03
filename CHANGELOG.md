@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`type: "shape"`** field — takes an optional `schema` that's any `Parseable<T>` (structurally
+  `{ parse(value: unknown): T }`, exactly what zod, valibot, and most validation libraries already
+  export), so complex, library-validated fields are supported without adding a runtime dependency.
+  `{ type: "shape" }` alone passes the raw value through as-is (typed `unknown`), only checking
+  it's an object. `type` can be omitted when `schema` is set (`{ port: { schema: z.number() } }`),
+  and a schema can be used directly as a shape entry, skipping the wrapper entirely
+  (`create({ port: z.number() })`) — though that shorthand has no room for
+  `summary`/`required`/`readonly`/`default`. A failed parse (or, with no schema, a non-object
+  value) is logged via `console.error` and the field resolves to `null` instead of failing the
+  whole config tree, unless `required: true` escalates it into a thrown `ConfigError`.
 - **`sseSource`** now accepts an `overwrite?: boolean` option (default `false`). Set it to `true`
   to replace the accumulated tree wholesale with each parsed message instead of the default
   shallow patch-merge. A custom `reduce`, if set, still takes precedence over `overwrite`.
