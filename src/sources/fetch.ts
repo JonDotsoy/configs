@@ -1,4 +1,5 @@
 import { httpFetch, type HttpFetchCredentials, type HttpFetchRequest } from "../utils/http-fetch.js";
+import { t } from "../utils/t.js";
 import { selectTreePath } from "../utils/tree-path.js";
 import { Source } from "./source.js";
 
@@ -60,13 +61,12 @@ export interface FetchSourceOptions<T = unknown> {
 
 /** Runs one `httpFetch` round, logging and swallowing any failure into `undefined`. */
 async function fetchRound<T>(req: HttpFetchRequest<T>): Promise<{ data: T } | undefined> {
-  try {
-    const result = await httpFetch<T>(req);
-    return { data: result.body };
-  } catch (error) {
+  const [ok, error, result] = await t(() => httpFetch<T>(req));
+  if (!ok) {
     console.error(`fetchSource: failed to fetch "${req.url}"`, error);
     return undefined;
   }
+  return { data: result.body };
 }
 
 /**

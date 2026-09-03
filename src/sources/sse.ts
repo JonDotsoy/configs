@@ -4,6 +4,7 @@ import {
   downloadWithRetry,
   type HttpFetchCredentials,
 } from "../utils/http-fetch.js";
+import { t, tSync } from "../utils/t.js";
 import { Source } from "./source.js";
 
 export type { HttpFetchCredentials };
@@ -142,17 +143,17 @@ export function sseSource<T = unknown>(options: SseSourceOptions<T>): Source<T> 
 
   return new Source<T>({
     async start(control) {
-      let response: Response;
-      try {
-        response = await downloadWithRetry(
+      const [connectOk, connectError, response] = await t(() =>
+        downloadWithRetry(
           url,
           { method, headers: applyCredentials(headers, credentials), body, signal, mode, cache, redirect },
           attempts,
           acceptStatus,
-        );
-      } catch (error) {
+        ),
+      );
+      if (!connectOk) {
         if (!abortController.signal.aborted) {
-          console.error(`sseSource: failed to connect to "${url}"`, error);
+          console.error(`sseSource: failed to connect to "${url}"`, connectError);
         }
         control.close();
         return;
@@ -176,11 +177,9 @@ export function sseSource<T = unknown>(options: SseSourceOptions<T>): Source<T> 
           const raw = extractData(rawEvent);
           if (raw === null || raw.trim() === "") return;
 
-          let parsed: unknown;
-          try {
-            parsed = JSON.parse(raw);
-          } catch (error) {
-            console.error(`sseSource: message from "${url}" is not valid JSON`, error);
+          const [parseOk, parseError, parsed] = tSync(() => JSON.parse(raw));
+          if (!parseOk) {
+            console.error(`sseSource: message from "${url}" is not valid JSON`, parseError);
             return;
           }
 

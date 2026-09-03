@@ -1,3 +1,4 @@
+import { t } from "../utils/t.js";
 import { Source } from "./source.js";
 
 export interface PullSourceOptions<T = unknown> {
@@ -9,12 +10,12 @@ export interface PullSourceOptions<T = unknown> {
 
 /** Runs one `pull()` call, logging and swallowing any failure into `undefined`. */
 async function pullRound<T>(pull: () => T | Promise<T>): Promise<{ data: T } | undefined> {
-  try {
-    return { data: await pull() };
-  } catch (error) {
+  const [ok, error, data] = await t(pull);
+  if (!ok) {
     console.error("pullSource: `pull` threw", error);
     return undefined;
   }
+  return { data };
 }
 
 /**
