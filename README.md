@@ -52,6 +52,8 @@ console.log(cfg.server.port.get());
 - [Install](#install)
 - [Guide](#guide)
   - [Field types](#field-types)
+  - [TypeScript inference](#typescript-inference)
+    - [Shape fields](#shape-fields)
   - [`Source` — building a custom source](#source--building-a-custom-source)
   - [`envSource` — environment variables](#envsource--environment-variables)
   - [`fetchSource` — a JSON endpoint over HTTP](#fetchsource--a-json-endpoint-over-http)
@@ -136,6 +138,135 @@ const cfg = await create(
   { sources: [/* ... */] },
 );
 // same as { port: { type: "shape", schema: z.number(), required: true } }
+```
+
+### TypeScript inference
+
+Every field's type is derived from its schema literal — `type: "number"` gives you a `number`,
+`{ schema: z.object(...) }` gives you whatever `schema.parse` returns — with no manual annotation.
+The only thing that changes whether `null` is in the type is **whether the field has a `default`**:
+
+```ts
+const cfg = await create({ port: { type: "number" } }, { sources: [/* ... */] });
+const port = cfg.port.get();
+//    ^? const port: number | null
+
+const cfg2 = await create({ port: { type: "number", default: 3000 } }, { sources: [/* ... */] });
+const port2 = cfg2.port.get();
+//    ^? const port2: number
+```
+
+`required: true` does **not** narrow the type — it only escalates a runtime failure (a value that
+fails validation) into a thrown `ConfigError`. Data comes from sources this package doesn't
+control, so a `required` field with no `default` can still end up with nothing from any source and
+resolve to `null` — the type stays `T | null` to reflect that honestly, `required` or not:
+
+```ts
+const cfg = await create({ port: { type: "number", required: true } }, { sources: [/* ... */] });
+const port = cfg.port.get();
+//    ^? const port: number | null   (required doesn't remove `null` — only `default` does)
+```
+
+Combine `required: true` with a `default` to get a non-`null` type *and* a hard failure on bad
+data instead of a silent fallback:
+
+```ts
+const cfg = await create(
+  { port: { type: "number", required: true, default: 3000 } },
+  { sources: [/* a source publishing an invalid port throws instead of falling back */] },
+);
+const port = cfg.port.get();
+//    ^? const port: number
+```
+
+`await`ing `create(...)` isn't what changes the type either — `create(...)`'s return value
+(`PendingConfigNode`) already exposes every field with its fully inferred type, synchronously,
+before any source has resolved; `await` only waits for the first snapshot to land, then resolves
+to a plain `ConfigNode` with the same field types (see [Field types](#field-types) for how a field
+without `type` — a bare `schema` — is inferred, and [Closing a config tree](#closing-a-config-tree)
+for what `await`ing actually buys you):
+
+```ts
+const pending = create({ port: { type: "number", default: 3000 } }, { sources: [/* ... */] });
+pending.port.get();
+//      ^? number  (already available before awaiting)
+
+const cfg = await pending;
+cfg.port.get();
+//  ^? number  (same type, now backed by the first resolved snapshot)
+```
+
+A nested group (`server: create({ port: { type: "number" } })` embedded in a parent shape) infers
+the same way, recursively — `cfg.server.port.get()` is `number | null` unless `server`'s `port`
+has a `default`.
+
+#### Shape fields
+
+A `"shape"` field's type isn't declared anywhere — it's extracted from whatever `schema` you pass,
+by inferring `schema.parse`'s return type. The same `default`-drives-`null` rule from above still
+applies: no `default` means the type is `T | null` (a bad or missing value resolves to `null` at
+runtime — see [Field types](#field-types)), a `default` means the type is `T`:
+
+```ts
+import { z } from "zod";
+
+const cfg = await create(
+  { jwt: { type: "shape", schema: z.object({ issuer: z.string(), ttl: z.number() }) } },
+  { sources: [/* ... */] },
+);
+const jwt = cfg.jwt.get();
+//    ^? const jwt: { issuer: string; ttl: number } | null
+
+const cfg2 = await create(
+  {
+    jwt: {
+      type: "shape",
+      schema: z.object({ issuer: z.string(), ttl: z.number() }),
+      default: { issuer: "auth0", ttl: 3600 },
+    },
+  },
+  { sources: [/* ... */] },
+);
+const jwt2 = cfg2.jwt.get();
+//    ^? const jwt2: { issuer: string; ttl: number }
+```
+
+`schema` only needs to be `Parseable<T>` — an object exposing `parse(value: unknown): T` — so
+inference works the same with `zod`, `valibot`, or a hand-rolled validator; the package itself has
+no dependency on any of them. It comes from `schema.parse`'s return type, not from the value you
+pass into `parse()`, so a schema whose `parse` narrows or transforms (e.g. a zod `.transform(...)`)
+is inferred as its output type:
+
+```ts
+const parity = { parse: (value: unknown) => (Number(value) % 2 === 0 ? "even" : "odd") };
+const cfg = await create({ n: { type: "shape", schema: parity } }, { sources: [/* ... */] });
+const n = cfg.n.get();
+//    ^? const n: "even" | "odd" | null
+```
+
+Omitting `schema` entirely (`{ type: "shape" }`) passes the raw value through untyped — the field
+is `unknown`, whether or not a source ever has it. `unknown | null` collapses to `unknown` in
+TypeScript, so there's no `| null` to see in the type here, unlike every other field:
+
+```ts
+const cfg = await create({ metadata: { type: "shape" } }, { sources: [/* ... */] });
+const metadata = cfg.metadata.get();
+//    ^? const metadata: unknown
+```
+
+Both shorthands for a shape field — a bare schema used directly (`port: z.number()`) and the
+untagged form (`port: { schema: z.number() }`) — infer identically to the explicit
+`{ type: "shape", schema: z.number() }`. The bare-schema shorthand just has no room for `default`,
+so it's always `T | null`:
+
+```ts
+const cfg = await create({ port: z.number() }, { sources: [/* ... */] });
+const port = cfg.port.get();
+//    ^? const port: number | null   (no `default` slot on this shorthand)
+
+const cfg2 = await create({ port: { schema: z.number(), default: 3000 } }, { sources: [/* ... */] });
+const port2 = cfg2.port.get();
+//    ^? const port2: number   (untagged form still has `default`/`required`, so this narrows)
 ```
 
 ### `Source` — building a custom source
