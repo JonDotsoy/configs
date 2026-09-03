@@ -94,12 +94,12 @@ const tarEntries = (await $`tar -tzf ${tarballPath}`.text())
   .map((entry) => entry.replace(/^package\//, ""));
 
 const strayFiles = tarEntries.filter(
-  (entry) => !entry.startsWith("dist/") && !allowedRootFiles.has(entry),
+  (entry) => !entry.startsWith("dist/") && !entry.startsWith("docs/") && !allowedRootFiles.has(entry),
 );
 if (strayFiles.length > 0) {
   throw new Error(`Unexpected files leaked into the package tarball:\n${strayFiles.join("\n")}`);
 }
-console.log(`ok - tarball only contains dist/ and ${[...allowedRootFiles].join(", ")}`);
+console.log(`ok - tarball only contains dist/, docs/, and ${[...allowedRootFiles].join(", ")}`);
 
 const workDir = await mkdtemp(join(tmpdir(), "configs-manual-test-"));
 console.log(`== installing tarball in ${workDir} ==`);

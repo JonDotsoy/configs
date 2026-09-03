@@ -37,7 +37,8 @@
     "access": "public"
   },
   "files": [
-    "dist"
+    "dist",
+    "docs"
   ],
   "exports": {
     ".": {
