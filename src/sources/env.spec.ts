@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { configs } from "../configs";
+import type { GaugeMetric } from "../utils/metric";
 import { envSource, mapKey } from "./env";
 
 describe("mapKey.snakeCase", () => {
@@ -177,5 +178,31 @@ describe("envSource", () => {
 
     expect(cfg.server.port.get()).toBe(3000);
     expect(cfg.server.host.get()).toBe("localhost");
+  });
+
+  describe("metrics", () => {
+    test("keys reflects how many env vars ended up in the tree", async () => {
+      const source = envSource({ env: { FOO: "1", BAR: "2" } });
+      await source.open();
+      const keys = source.metrics.keys as GaugeMetric;
+
+      expect(keys.get()).toBe(2);
+    });
+
+    test("keys only counts vars that survive prefix/suffix filtering", async () => {
+      const source = envSource({ env: { APP_FOO: "1", OTHER: "2" }, prefix: "APP_" });
+      await source.open();
+      const keys = source.metrics.keys as GaugeMetric;
+
+      expect(keys.get()).toBe(1);
+    });
+
+    test("keys is 0 when no env vars are included", async () => {
+      const source = envSource({ env: { FOO: undefined } });
+      await source.open();
+      const keys = source.metrics.keys as GaugeMetric;
+
+      expect(keys.get()).toBe(0);
+    });
   });
 });
