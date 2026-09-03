@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`sseSource`** now accepts an `overwrite?: boolean` option (default `false`). Set it to `true`
+  to replace the accumulated tree wholesale with each parsed message instead of the default
+  shallow patch-merge. A custom `reduce`, if set, still takes precedence over `overwrite`.
+
 ## [1.1.4] - 2026-09-01
 
 ### Added
