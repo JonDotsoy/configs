@@ -4,6 +4,7 @@ import {
   downloadWithRetry,
   type HttpFetchCredentials,
 } from "../utils/http-fetch.js";
+import { CounterMetric, HistogramMetric, type Metric } from "../utils/metric.js";
 import { t, tSync } from "../utils/t.js";
 import { Source } from "./source.js";
 
@@ -52,6 +53,36 @@ export interface SseSourceOptions<T = unknown> {
    * patch-merging it. Ignored when `reduce` is set. Defaults to `false`.
    */
   overwrite?: boolean;
+}
+
+/** The metrics `sseSource` records, exposed as-is on the resulting `Source` via `source.metrics`. */
+type SseSourceMetrics = Record<string, Metric> & {
+  /** Connection attempts, labeled `ok` (`"true"` / `"false"`). One per `sseSource` call. */
+  connections: CounterMetric;
+  /** How long the connection attempt took, in seconds, labeled `ok` (`"true"` / `"false"`). */
+  connectionDuration: HistogramMetric;
+  /** SSE messages received, labeled `ok` (`"true"` for a valid patch, `"false"` otherwise). */
+  messages: CounterMetric;
+};
+
+function createMetrics(): SseSourceMetrics {
+  return {
+    connections: new CounterMetric({
+      name: "sse_source_connections_total",
+      help: "Total sseSource connection attempts, labeled by outcome.",
+      labelNames: ["ok"],
+    }),
+    connectionDuration: new HistogramMetric({
+      name: "sse_source_connection_duration_seconds",
+      help: "How long connecting to the SSE endpoint took, in seconds, labeled by outcome.",
+      labelNames: ["ok"],
+    }),
+    messages: new CounterMetric({
+      name: "sse_source_messages_total",
+      help: "Total SSE messages received by sseSource, labeled by outcome.",
+      labelNames: ["ok"],
+    }),
+  };
 }
 
 function isPatch(value: unknown): value is Record<string, unknown> {
@@ -114,6 +145,10 @@ async function readEvents(
  * than reconnecting), and `acceptStatus`. Set `overwrite: true` to replace the tree wholesale on
  * every message instead of merging. `reduce` overrides the default patch-merge (or `overwrite`)
  * behavior entirely.
+ *
+ * Records three built-in metrics, exposed on the returned `Source` via `source.metrics`:
+ * `connections` and `connectionDuration` (seconds) for the initial connection attempt, and
+ * `messages` for every SSE message received — all labeled `ok` (`"true"` / `"false"`).
  */
 export function sseSource<T = unknown>(options: SseSourceOptions<T>): Source<T> {
   const {
@@ -140,9 +175,18 @@ export function sseSource<T = unknown>(options: SseSourceOptions<T>): Source<T> 
         } as T);
   const abortController = new AbortController();
   const signal = externalSignal ? AbortSignal.any([externalSignal, abortController.signal]) : abortController.signal;
+  const metrics = createMetrics();
 
   return new Source<T>({
+    metrics,
     async start(control) {
+      const connectStartedAt = performance.now();
+      const recordConnection = (ok: boolean) => {
+        const labels = { ok: String(ok) };
+        metrics.connections.inc(labels);
+        metrics.connectionDuration.observe(labels, (performance.now() - connectStartedAt) / 1000);
+      };
+
       const [connectOk, connectError, response] = await t(() =>
         downloadWithRetry(
           url,
@@ -152,6 +196,7 @@ export function sseSource<T = unknown>(options: SseSourceOptions<T>): Source<T> 
         ),
       );
       if (!connectOk) {
+        recordConnection(false);
         if (!abortController.signal.aborted) {
           console.error(`sseSource: failed to connect to "${url}"`, connectError);
         }
@@ -160,10 +205,13 @@ export function sseSource<T = unknown>(options: SseSourceOptions<T>): Source<T> 
       }
 
       if (!response.body) {
+        recordConnection(false);
         console.error(`sseSource: response from "${url}" has no body`);
         control.close();
         return;
       }
+
+      recordConnection(true);
 
       await new Promise<void>((resolveFirstMessage) => {
         let settled = false;
@@ -179,15 +227,18 @@ export function sseSource<T = unknown>(options: SseSourceOptions<T>): Source<T> 
 
           const [parseOk, parseError, parsed] = tSync(() => JSON.parse(raw));
           if (!parseOk) {
+            metrics.messages.inc({ ok: "false" });
             console.error(`sseSource: message from "${url}" is not valid JSON`, parseError);
             return;
           }
 
           if (!isPatch(parsed)) {
+            metrics.messages.inc({ ok: "false" });
             console.error(`sseSource: message from "${url}" did not parse to a JSON object`, parsed);
             return;
           }
 
+          metrics.messages.inc({ ok: "true" });
           control.set(parsed as T);
           settle();
         })
