@@ -62,6 +62,7 @@ console.log(cfg.server.port.get());
   - [Reacting to changes — restarting a periodic task](#reacting-to-changes--restarting-a-periodic-task)
   - [`useConfig` — reading a field in React](#useconfig--reading-a-field-in-react)
   - [Closing a config tree](#closing-a-config-tree)
+- [Documentation](#documentation)
 
 ## Install
 
@@ -601,3 +602,17 @@ async function run() {
   // closed automatically here, no explicit serverConfigs.close() needed
 }
 ```
+
+## Documentation
+
+Further guides live under [`docs/`](./docs):
+
+- [`docs/getting-starter/features.md`](./docs/getting-starter/features.md) —
+  portability: isomorphism, and browser/Node.js/Bun support notes.
+- [`docs/examples/`](./docs/examples) — runnable-shaped snippets for common
+  ways to wire up `@jondotsoy/configs`: a Kubernetes `ConfigMap` reload, a
+  `.env`-plus-JSON overlay, a React feature-flag poll, and verifying
+  Google-signed JWTs against rotating keys.
+- [`docs/develop/check-package.md`](./docs/develop/check-package.md) —
+  validating the published package against real Node, Bun, and Deno
+  processes.
