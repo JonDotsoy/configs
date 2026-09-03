@@ -258,6 +258,43 @@ describe("sseSource", () => {
       expect(final).toEqual({ host: "10.0.0.1" });
     });
 
+    test("overwrite: true replaces the tree wholesale instead of merging", async () => {
+      const { response, release } = controlledSseResponse([
+        JSON.stringify({ port: 3000 }),
+        JSON.stringify({ host: "10.0.0.1" }),
+      ]);
+      globalThis.fetch = (async () => response) as unknown as typeof fetch;
+
+      const source = sseSource<{ port?: number; host?: string }>({
+        url: "https://example.com/events",
+        overwrite: true,
+      });
+      release();
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000 });
+
+      release();
+      const final = await waitForValue(store, (value) => value?.host !== undefined);
+
+      expect(final).toEqual({ host: "10.0.0.1" });
+    });
+
+    test("a custom reduce takes precedence over overwrite", async () => {
+      const { response, release } = controlledSseResponse([JSON.stringify({ port: 3000 })]);
+      globalThis.fetch = (async () => response) as unknown as typeof fetch;
+
+      const source = sseSource<{ port?: number }>({
+        url: "https://example.com/events",
+        overwrite: true,
+        reduce: (incoming, previous) => ({ ...previous, ...incoming }),
+      });
+      release();
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000 });
+    });
+
     test("receives the previously published value as `previous`, null before the first message", async () => {
       const { response, release } = controlledSseResponse([JSON.stringify({ port: 3000 })]);
       globalThis.fetch = (async () => response) as unknown as typeof fetch;

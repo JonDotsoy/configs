@@ -316,7 +316,8 @@ const source = fetchSource<{ port: number }>({
 
 Connects to an SSE endpoint (`url`, `method`, `headers`). Every message tries to parse as JSON and,
 if it's a plain object, is applied as a **patch** on top of what was already received — fields add
-up and overwrite, the tree is never replaced wholesale:
+up and overwrite, the tree is never replaced wholesale by default. Set `overwrite: true` (or pass
+a custom `reduce`) to replace the tree wholesale with each message instead:
 
 **Options (`SseSourceOptions`):** the same request-shaping surface as `fetchSource`, minus
 `bodyParser` and `pollingInterval` (a persistent connection, not a repeated request), plus
@@ -336,7 +337,8 @@ closes the source rather than reconnecting.
 | `credentials` | `HttpFetchCredentials` | — | Sets the `Authorization` header up front instead of adding it to `headers` yourself: `{ basic: { username, password } }` sends `Basic <base64>`; `{ bearer: { token } }` sends `Bearer <token>`. |
 | `attempts` | `number` | `1` (no retry) | Attempts to establish the connection before giving up. |
 | `acceptStatus` | `(statusCode: number) => boolean` | 2xx: `(status) => status >= 200 && status < 300` | Decides whether a response's status code counts as accepted. |
-| `reduce` | `(incoming: T, previous: T \| null) => T` | shallow patch-merge (see below) | Combines each parsed message with the tree accumulated so far. Overrides the default patch-merge entirely — a custom `reduce` must do its own merging if that's still wanted. |
+| `reduce` | `(incoming: T, previous: T \| null) => T` | shallow patch-merge (see below) | Combines each parsed message with the tree accumulated so far. Overrides the default patch-merge (and `overwrite`) entirely — a custom `reduce` must do its own merging if that's still wanted. |
+| `overwrite` | `boolean` | `false` | Replaces the tree wholesale with each parsed message instead of shallow patch-merging it. Ignored when `reduce` is set. |
 
 ```ts
 import { sseSource } from "@jondotsoy/configs/sources/sse";
@@ -355,8 +357,11 @@ import { sseSource } from "@jondotsoy/configs/sources/sse";
 // each message is a full snapshot, not a patch — replace instead of merging
 const source = sseSource<{ port: number }>({
   url: "https://config-service.internal/app/events",
-  reduce: (incoming) => incoming,
+  overwrite: true,
 });
+
+// message: {"port":3000}       => Store<{ port: 3000 }>
+// message: {"host":"10.0.0.1"} => Store<{ host: "10.0.0.1" }>  (port is gone)
 ```
 
 ```ts

@@ -43,8 +43,14 @@ export interface SseSourceOptions<T = unknown> {
    * Receives the parsed message as `incoming` and the previously published tree as `previous`
    * (`null` before the first message). Defaults to the shallow patch-merge described above — a
    * custom `reduce` replaces it entirely, so it must do its own merging if that's still wanted.
+   * Takes precedence over `overwrite` when both are set.
    */
   reduce?: (incoming: T, previous: T | null) => T;
+  /**
+   * Replaces the accumulated tree wholesale with each parsed message instead of shallow
+   * patch-merging it. Ignored when `reduce` is set. Defaults to `false`.
+   */
+  overwrite?: boolean;
 }
 
 function isPatch(value: unknown): value is Record<string, unknown> {
@@ -104,8 +110,9 @@ async function readEvents(
  * Beyond `url`/`method`/`headers`, it accepts the same request-shaping options as `fetchSource`:
  * `body`, `signal`, `mode`, `cache`, `redirect`, `credentials`, `attempts` (retries only the
  * initial connection — once the stream is open, a dropped connection closes the source rather
- * than reconnecting), and `acceptStatus`. `reduce` overrides the default patch-merge behavior
- * entirely, e.g. to replace the tree wholesale on every message instead of merging.
+ * than reconnecting), and `acceptStatus`. Set `overwrite: true` to replace the tree wholesale on
+ * every message instead of merging. `reduce` overrides the default patch-merge (or `overwrite`)
+ * behavior entirely.
  */
 export function sseSource<T = unknown>(options: SseSourceOptions<T>): Source<T> {
   const {
@@ -121,12 +128,15 @@ export function sseSource<T = unknown>(options: SseSourceOptions<T>): Source<T> 
     attempts = 1,
     acceptStatus = defaultAcceptStatus,
     reduce,
+    overwrite = false,
   } = options;
   const defaultReduce = (patch: T, previous: T | null): T =>
-    ({
-      ...((previous as Record<string, unknown> | null) ?? {}),
-      ...(patch as Record<string, unknown>),
-    }) as T;
+    overwrite
+      ? patch
+      : ({
+          ...((previous as Record<string, unknown> | null) ?? {}),
+          ...(patch as Record<string, unknown>),
+        } as T);
   const abortController = new AbortController();
   const signal = externalSignal ? AbortSignal.any([externalSignal, abortController.signal]) : abortController.signal;
 
