@@ -13,3 +13,12 @@ export async function t<T>(handler: Promise<T> | (() => Promise<T> | T)): Promis
     return [false, err, null];
   }
 }
+
+/** Synchronous counterpart to `t()`, for a `handler` that never returns a `Promise` — same tuple, no `await`. */
+export function tSync<T>(handler: () => T): TResult<T> {
+  try {
+    return [true, null, handler()];
+  } catch (err) {
+    return [false, err, null];
+  }
+}

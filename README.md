@@ -51,6 +51,7 @@ console.log(cfg.server.port.get());
 
 - [Install](#install)
 - [Guide](#guide)
+  - [Field types](#field-types)
   - [`Source` — building a custom source](#source--building-a-custom-source)
   - [`envSource` — environment variables](#envsource--environment-variables)
   - [`fetchSource` — a JSON endpoint over HTTP](#fetchsource--a-json-endpoint-over-http)
@@ -69,6 +70,72 @@ npm install @jondotsoy/configs
 ```
 
 ## Guide
+
+### Field types
+
+A field's `type` is `"string"`, `"number"`, `"boolean"`, or `"shape"`. The first three coerce and
+validate primitives (numeric/boolean-ish strings, an optional `pattern` for strings). `"shape"`
+hands the raw value to a `schema` you provide — anything with a `parse(value: unknown): T` method,
+which is exactly the shape `zod`, `valibot`, and most other validation libraries already export —
+so there's no dependency on any specific one:
+
+```ts
+import { create } from "@jondotsoy/configs";
+import { z } from "zod";
+
+const cfg = await create(
+  {
+    jwt: { type: "shape", schema: z.object({ issuer: z.string(), ttl: z.number() }) },
+  },
+  { sources: [/* ... */] },
+);
+
+// cfg.jwt.get() is typed as { issuer: string; ttl: number } | null — inferred from `schema.parse`'s
+// return type, no manual annotation needed.
+```
+
+A value that fails to parse doesn't take down the whole config tree by default — data comes from
+sources outside this package's control, so a `schema.parse` failure (or, with no `schema`, any
+non-object value) is logged via `console.error` and the field resolves to `null`, same as a source
+that simply doesn't have it. Set `required: true` to escalate that failure into a thrown
+`ConfigError` instead:
+
+```ts
+const cfg = await create(
+  { jwt: { type: "shape", schema: z.object({ issuer: z.string() }), required: true } },
+  { sources: [/* a source publishing an invalid jwt throws instead of logging */] },
+);
+```
+
+`schema` itself is optional — `{ type: "shape" }` alone just passes the raw value through as-is,
+rejecting (per the same log-or-throw rule above) anything that isn't an object:
+
+```ts
+const cfg = await create({ metadata: { type: "shape" } }, { sources: [/* ... */] });
+// cfg.metadata.get() is typed as unknown | null
+```
+
+A schema can also be used directly as a shape entry, skipping `{ type: "shape", schema }`:
+
+```ts
+const cfg = await create({ port: z.number() }, { sources: [/* ... */] });
+// cfg.port.get() is typed as number | null — same as { port: { type: "shape", schema: z.number() } }
+```
+
+This shorthand has no room for `summary`/`required`/`readonly`/`default` — so a bad value here
+always logs and resolves to `null`. Reach for the explicit `{ type: "shape", schema }` form when
+you need `required: true` (or any of the others).
+
+`type` can also just be omitted from that explicit form — `{ schema: z.number() }` behaves exactly
+like `{ type: "shape", schema: z.number() }`, `required` included:
+
+```ts
+const cfg = await create(
+  { port: { schema: z.number(), required: true } },
+  { sources: [/* ... */] },
+);
+// same as { port: { type: "shape", schema: z.number(), required: true } }
+```
 
 ### `Source` — building a custom source
 

@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, expectTypeOf, test } from "bun:test";
+import { afterEach, describe, expect, expectTypeOf, spyOn, test } from "bun:test";
 import { Store, store } from "./utils/store";
 import { Source } from "./sources/source";
 import { envSource, mapKey } from "./sources/env";
 import { fetchSource } from "./sources/fetch";
 import { ConfigError } from "./errors";
 import { create } from "./configs.ts";
+import { z } from "zod";
 import type { ConfigNode, configs, PendingConfigNode, ReadOnlyStore, SchemaGroup } from "./config.types.ts";
 
 declare const configs: configs;
@@ -310,6 +311,357 @@ describe("configs.create", () => {
       { sources: [testSource({ debug: "true" })] },
     );
     expect(cfg.get()).toEqual({ debug: true });
+  });
+
+  test("parses object fields through a Parseable schema (no zod dependency)", async () => {
+    const jwtSchema = {
+      parse(value: unknown): { issuer: string; ttl: number } {
+        if (typeof value !== "object" || value === null) {
+          throw new Error("expected an object");
+        }
+        const { issuer, ttl } = value as Record<string, unknown>;
+        if (typeof issuer !== "string" || typeof ttl !== "number") {
+          throw new Error("expected { issuer: string, ttl: number }");
+        }
+        return { issuer, ttl };
+      },
+    };
+
+    const cfg = await configs.create(
+      { jwt: { type: "shape", schema: jwtSchema } },
+      { sources: [testSource({ jwt: { issuer: "auth0", ttl: 3600 } })] },
+    );
+
+    expect(cfg.get()).toEqual({ jwt: { issuer: "auth0", ttl: 3600 } });
+    expectTypeOf(cfg.jwt).toEqualTypeOf<ReadOnlyStore<{ issuer: string; ttl: number } | null>>();
+  });
+
+  test("an object field's default resolves and is typed from the schema's inferred type", async () => {
+    const jwtSchema = {
+      parse(value: unknown): { issuer: string; ttl: number } {
+        return value as { issuer: string; ttl: number };
+      },
+    };
+
+    const cfg = await configs.create(
+      { jwt: { type: "shape", schema: jwtSchema, default: { issuer: "auth0", ttl: 3600 } } },
+      { sources: [testSource({})] },
+    );
+
+    expect(cfg.get()).toEqual({ jwt: { issuer: "auth0", ttl: 3600 } });
+    expectTypeOf(cfg.jwt).toEqualTypeOf<ReadOnlyStore<{ issuer: string; ttl: number }>>();
+  });
+
+  test("parses object fields through a real zod schema", async () => {
+    const jwtSchema = z.object({ issuer: z.string(), ttl: z.number() });
+
+    const cfg = await configs.create(
+      { jwt: { type: "shape", schema: jwtSchema, default: { issuer: "auth0", ttl: 3600 } } },
+      { sources: [testSource({ jwt: { issuer: "clerk", ttl: 900 } })] },
+    );
+
+    expect(cfg.get()).toEqual({ jwt: { issuer: "clerk", ttl: 900 } });
+    expectTypeOf(cfg.jwt).toEqualTypeOf<ReadOnlyStore<{ issuer: string; ttl: number }>>();
+
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    const invalid = await configs.create(
+      { jwt: { type: "shape", schema: jwtSchema } },
+      { sources: [testSource({ jwt: { issuer: "clerk", ttl: "not-a-number" } })] },
+    );
+    expect(invalid.get()).toEqual({ jwt: null });
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+
+    const required = await configs.create(
+      { jwt: { type: "shape", schema: jwtSchema, required: true } },
+      { sources: [testSource({ jwt: { issuer: "clerk", ttl: "not-a-number" } })] },
+    );
+    expect(() => required.get()).toThrow(ConfigError);
+  });
+
+  test("an object field with no schema passes the raw object through, logging (not throwing) on non-objects", async () => {
+    const cfg = await configs.create(
+      { metadata: { type: "shape" } },
+      { sources: [testSource({ metadata: { any: "shape", works: 1 } })] },
+    );
+
+    expect(cfg.get()).toEqual({ metadata: { any: "shape", works: 1 } });
+    expectTypeOf(cfg.metadata).toEqualTypeOf<ReadOnlyStore<unknown>>();
+
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    const bad = await configs.create(
+      { metadata: { type: "shape" } },
+      { sources: [testSource({ metadata: "not an object" })] },
+    );
+    expect(bad.get()).toEqual({ metadata: null });
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+
+    const required = await configs.create(
+      { metadata: { type: "shape", required: true } },
+      { sources: [testSource({ metadata: "not an object" })] },
+    );
+    expect(() => required.get()).toThrow(ConfigError);
+  });
+
+  test("accepts a bare schema directly as a shape entry, same as { type: \"object\", schema }", async () => {
+    const cfg = await configs.create(
+      { port: z.number() },
+      { sources: [testSource({ port: 3000 })] },
+    );
+
+    expect(cfg.get()).toEqual({ port: 3000 });
+    expectTypeOf(cfg.port).toEqualTypeOf<ReadOnlyStore<number | null>>();
+
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    const bad = await configs.create(
+      { port: z.number() },
+      { sources: [testSource({ port: "not-a-number" })] },
+    );
+    // the shorthand has no room for `required` (see above), so a bad value always logs + resolves
+    // to null here — reach for the explicit `{ type: "shape", schema, required: true }` form to throw.
+    expect(bad.get()).toEqual({ port: null });
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+  });
+
+  test("a bare schema field with nothing published resolves to null (it has no room for `default`)", async () => {
+    const cfg = await configs.create({ port: z.number() }, { sources: [testSource({})] });
+    expect(cfg.get()).toEqual({ port: null });
+  });
+
+  test("omits `type` when the field object has `schema`, same as { type: \"shape\", schema }", async () => {
+    const cfg = await configs.create(
+      { port: { schema: z.number(), default: 8080 } },
+      { sources: [testSource({ port: 3000 })] },
+    );
+
+    expect(cfg.get()).toEqual({ port: 3000 });
+    expectTypeOf(cfg.port).toEqualTypeOf<ReadOnlyStore<number>>();
+
+    const fallsBackToDefault = await configs.create(
+      { port: { schema: z.number(), default: 8080 } },
+      { sources: [testSource({})] },
+    );
+    expect(fallsBackToDefault.get()).toEqual({ port: 8080 });
+
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    const bad = await configs.create(
+      { port: { schema: z.number() } },
+      { sources: [testSource({ port: "not-a-number" })] },
+    );
+    expect(bad.get()).toEqual({ port: null });
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+
+    const required = await configs.create(
+      { port: { schema: z.number(), required: true } },
+      { sources: [testSource({ port: "not-a-number" })] },
+    );
+    expect(() => required.get()).toThrow(ConfigError);
+  });
+
+  test("a schema.parse failure logs a ConfigError via console.error instead of throwing", async () => {
+    const jwtSchema = {
+      parse(value: unknown): { issuer: string } {
+        throw new Error("always invalid");
+      },
+    };
+
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    const cfg = await configs.create(
+      { jwt: { type: "shape", schema: jwtSchema } },
+      { sources: [testSource({ jwt: {} })] },
+    );
+
+    expect(cfg.get()).toEqual({ jwt: null });
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0]?.[0]).toBeInstanceOf(ConfigError);
+    errorSpy.mockRestore();
+  });
+
+  test("required: true escalates a schema.parse failure into a thrown ConfigError", async () => {
+    const jwtSchema = {
+      parse(value: unknown): { issuer: string } {
+        throw new Error("always invalid");
+      },
+    };
+
+    const cfg = await configs.create(
+      { jwt: { type: "shape", schema: jwtSchema, required: true } },
+      { sources: [testSource({ jwt: {} })] },
+    );
+
+    expect(() => cfg.get()).toThrow(ConfigError);
+  });
+
+  describe("\"shape\" field edge cases", () => {
+    function sourceStream<T>(value: Store<T>): Source<T> {
+      return new Source<T>({
+        async start(control) {
+          control.set(value.get());
+          value.subscribe((v) => control.set(v));
+        },
+      });
+    }
+
+    test("an earlier source's invalid value blocks fallthrough to a later source's valid one", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+
+      const cfg = await configs.create(
+        { port: { schema: z.number() } },
+        {
+          sources: [
+            // first source has the field, but it fails to parse — resolution stops there instead
+            // of falling through to the second source's otherwise-valid value.
+            testSource({ port: "not-a-number" }),
+            testSource({ port: 3000 }),
+          ],
+        },
+      );
+
+      expect(cfg.get()).toEqual({ port: null });
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      errorSpy.mockRestore();
+    });
+
+    test("a live source re-parses on every update, recovering after a bad-then-good transition", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      const upstream = store.create<Record<string, unknown>>({ port: "not-a-number" });
+
+      const cfg = await configs.create(
+        { port: { schema: z.number() } },
+        { sources: [sourceStream(upstream)] },
+      );
+
+      const seen: (number | null)[] = [];
+      const unsub = cfg.port.subscribe((value) => seen.push(value));
+
+      expect(cfg.port.get()).toBeNull();
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+
+      upstream.set({ port: 4000 });
+      expect(cfg.port.get()).toBe(4000);
+
+      upstream.set({ port: "still not a number" });
+      expect(cfg.port.get()).toBeNull();
+      expect(errorSpy).toHaveBeenCalledTimes(2);
+
+      expect(seen).toEqual([null, 4000, null]);
+
+      unsub();
+      errorSpy.mockRestore();
+    });
+
+    test("a readonly shape field freezes at its first resolved value, even across a later invalid update", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      const upstream = store.create<Record<string, unknown>>({ port: 3000 });
+
+      const cfg = await configs.create(
+        { port: { schema: z.number(), readonly: true } },
+        { sources: [sourceStream(upstream)] },
+      );
+
+      expect(cfg.port.get()).toBe(3000);
+
+      upstream.set({ port: "not-a-number" });
+
+      expect(cfg.port.get()).toBe(3000);
+      expect(errorSpy).not.toHaveBeenCalled();
+      errorSpy.mockRestore();
+    });
+
+    test("bare-schema detection keys off the object's prototype, not its own `type` property", async () => {
+      // a hand-rolled schema class, not zod — but shaped just like it: its own `type` getter
+      // collides with one of this package's FieldTypes ("number"), the same way zod's does.
+      class FakeNumberSchema {
+        get type() {
+          return "number";
+        }
+        parse(value: unknown): number {
+          if (typeof value !== "number") throw new Error("not a number");
+          return value;
+        }
+      }
+
+      const cfg = await configs.create(
+        { port: new FakeNumberSchema() },
+        { sources: [testSource({ port: 42 })] },
+      );
+
+      expect(cfg.get()).toEqual({ port: 42 });
+      expectTypeOf(cfg.port).toEqualTypeOf<ReadOnlyStore<number | null>>();
+    });
+
+    test("an explicit `schema: undefined` behaves the same as omitting `schema` entirely", async () => {
+      const cfg = await configs.create(
+        { metadata: { type: "shape", schema: undefined } },
+        { sources: [testSource({ metadata: { free: "form" } })] },
+      );
+
+      expect(cfg.get()).toEqual({ metadata: { free: "form" } });
+    });
+
+    test("a non-Error thrown from schema.parse is still logged as a ConfigError", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      const throwsAString = {
+        parse(): never {
+          throw "not an Error instance";
+        },
+      };
+
+      const cfg = await configs.create(
+        { port: { schema: throwsAString } },
+        { sources: [testSource({ port: 3000 })] },
+      );
+
+      expect(cfg.get()).toEqual({ port: null });
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      const loggedError = errorSpy.mock.calls[0]?.[0];
+      expect(loggedError).toBeInstanceOf(ConfigError);
+      expect((loggedError as ConfigError).message).toContain("not an Error instance");
+      errorSpy.mockRestore();
+    });
+
+    test("works nested inside a nested group, both tagged and bare forms", async () => {
+      const cfg = await configs.create(
+        {
+          auth: configs.create({
+            jwt: { schema: z.object({ issuer: z.string() }) },
+            apiKey: z.string(),
+          }),
+        },
+        { sources: [testSource({ auth: { jwt: { issuer: "auth0" }, apiKey: "sk_live" } })] },
+      );
+
+      expect(cfg.get()).toEqual({ auth: { jwt: { issuer: "auth0" }, apiKey: "sk_live" } });
+      expectTypeOf(cfg.auth.jwt).toEqualTypeOf<ReadOnlyStore<{ issuer: string } | null>>();
+      expectTypeOf(cfg.auth.apiKey).toEqualTypeOf<ReadOnlyStore<string | null>>();
+    });
+
+    test("infers a deeply nested zod schema's parsed type, arrays included", async () => {
+      const schema = z.object({
+        issuer: z.string(),
+        scopes: z.array(z.string()),
+        meta: z.object({ ttl: z.number() }),
+      });
+
+      const cfg = await configs.create(
+        { jwt: { schema } },
+        {
+          sources: [
+            testSource({ jwt: { issuer: "auth0", scopes: ["read", "write"], meta: { ttl: 3600 } } }),
+          ],
+        },
+      );
+
+      expect(cfg.get()).toEqual({
+        jwt: { issuer: "auth0", scopes: ["read", "write"], meta: { ttl: 3600 } },
+      });
+      expectTypeOf(cfg.jwt).toEqualTypeOf<
+        ReadOnlyStore<{ issuer: string; scopes: string[]; meta: { ttl: number } } | null>
+      >();
+    });
   });
 
   test("a ConfigNode has no set() at all: it's always read-only", async () => {

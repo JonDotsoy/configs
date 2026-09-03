@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, test } from "bun:test";
-import { t } from "./t";
+import { t, tSync } from "./t";
 
 describe("t", () => {
   test("resolves [true, null, result] for a fulfilled promise", async () => {
@@ -94,5 +94,58 @@ describe("t", () => {
       expectTypeOf(data).toEqualTypeOf<null>();
       expectTypeOf(err).toEqualTypeOf<unknown>();
     }
+  });
+});
+
+describe("tSync", () => {
+  test("returns [true, null, result] for a function returning a value", () => {
+    const [ok, err, result] = tSync(() => 7);
+
+    expect(ok).toBe(true);
+    expect(err).toBeNull();
+    expect(result).toBe(7);
+  });
+
+  test("returns [false, err, null] for a function that throws", () => {
+    const error = new Error("sync boom");
+    const [ok, err, result] = tSync(() => {
+      throw error;
+    });
+
+    expect(ok).toBe(false);
+    expect(err).toBe(error);
+    expect(result).toBeNull();
+  });
+
+  test("propagates a thrown non-Error value as-is", () => {
+    const [ok, err, result] = tSync(() => {
+      throw "just a string";
+    });
+
+    expect(ok).toBe(false);
+    expect(err).toBe("just a string");
+    expect(result).toBeNull();
+  });
+
+  test("narrows result to T and err to null on the success branch", () => {
+    const tuple = tSync(() => "hello");
+
+    if (tuple[0]) {
+      expectTypeOf(tuple[2]).toEqualTypeOf<string>();
+      expectTypeOf(tuple[1]).toEqualTypeOf<null>();
+    }
+  });
+
+  test("narrows result to null on the failure branch", () => {
+    const tuple = tSync(() => "hello");
+
+    if (!tuple[0]) {
+      expectTypeOf(tuple[2]).toEqualTypeOf<null>();
+    }
+  });
+
+  test("does not return a Promise, unlike t()", () => {
+    const result = tSync(() => "hello");
+    expectTypeOf(result).not.toEqualTypeOf<Promise<unknown>>();
   });
 });
