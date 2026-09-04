@@ -8,10 +8,23 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-function jsonResponse(body: string, init: { status?: number; contentType?: string } = {}): Response {
+function jsonResponse(
+  body: string,
+  init: {
+    status?: number;
+    contentType?: string;
+    cacheControl?: string;
+    etag?: string;
+    lastModified?: string;
+  } = {},
+): Response {
+  const headers: Record<string, string> = { "content-type": init.contentType ?? "application/json" };
+  if (init.cacheControl !== undefined) headers["cache-control"] = init.cacheControl;
+  if (init.etag !== undefined) headers["etag"] = init.etag;
+  if (init.lastModified !== undefined) headers["last-modified"] = init.lastModified;
   return new Response(body, {
     status: init.status ?? 200,
-    headers: { "content-type": init.contentType ?? "application/json" },
+    headers,
   });
 }
 
@@ -419,6 +432,291 @@ describe("fetchSource", () => {
 
       expect(requests.get({ ok: "true" })).toBe(calls);
       await source.close();
+    });
+  });
+
+  describe("followCacheControl", () => {
+    test("off by default: pollingInterval alone drives the cadence", async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        return jsonResponse(JSON.stringify({ port: calls }), { cacheControl: "max-age=100" });
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<{ port: number }>({
+        url: "https://example.com/config",
+        pollingInterval: 5,
+      });
+      const store = await source.open();
+
+      await Bun.sleep(30);
+
+      expect(calls).toBeGreaterThan(1);
+      expect(store.get()).toEqual({ port: calls });
+
+      await source.close();
+    });
+
+    test("schedules the next fetch after max-age seconds, ignoring pollingInterval", async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        return jsonResponse(JSON.stringify({ port: calls }), { cacheControl: "max-age=0.01" });
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<{ port: number }>({
+        url: "https://example.com/config",
+        pollingInterval: 10_000,
+        followCacheControl: true,
+      });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 1 });
+
+      await Bun.sleep(30);
+
+      expect(calls).toBeGreaterThan(1);
+      expect(store.get()).toEqual({ port: calls });
+
+      await source.close();
+    });
+
+    test("starts polling purely from the header even with pollingInterval left at false", async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        return jsonResponse(JSON.stringify({ port: calls }), { cacheControl: "max-age=0.01" });
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<{ port: number }>({
+        url: "https://example.com/config",
+        followCacheControl: true,
+      });
+      const store = await source.open();
+
+      await Bun.sleep(30);
+
+      expect(calls).toBeGreaterThan(1);
+      expect(store.get()).toEqual({ port: calls });
+
+      await source.close();
+    });
+
+    test("no-store/no-cache fetches again immediately", async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        return jsonResponse(JSON.stringify({ port: calls }), { cacheControl: "no-store" });
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<{ port: number }>({
+        url: "https://example.com/config",
+        followCacheControl: true,
+      });
+      const store = await source.open();
+
+      await Bun.sleep(20);
+
+      expect(calls).toBeGreaterThan(1);
+      expect(store.get()).toEqual({ port: calls });
+
+      await source.close();
+    });
+
+    test("falls back to pollingInterval for a round without a usable Cache-Control header", async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        return jsonResponse(JSON.stringify({ port: calls }));
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<{ port: number }>({
+        url: "https://example.com/config",
+        pollingInterval: 5,
+        followCacheControl: true,
+      });
+      const store = await source.open();
+
+      await Bun.sleep(30);
+
+      expect(calls).toBeGreaterThan(1);
+      expect(store.get()).toEqual({ port: calls });
+
+      await source.close();
+    });
+
+    test("stops polling after a round with no usable header when pollingInterval is false", async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        return jsonResponse(JSON.stringify({ port: calls }));
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<{ port: number }>({
+        url: "https://example.com/config",
+        followCacheControl: true,
+      });
+      await source.open();
+      await Bun.sleep(20);
+
+      expect(calls).toBe(1);
+    });
+  });
+
+  describe("useConditionalRequests", () => {
+    test("on by default: echoes back ETag as If-None-Match without setting the option", async () => {
+      let calls = 0;
+      const receivedHeaders: Headers[] = [];
+      globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+        calls++;
+        receivedHeaders.push(new Headers(init?.headers));
+        return jsonResponse(JSON.stringify({ port: calls }), { etag: '"v1"' });
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<{ port: number }>({
+        url: "https://example.com/config",
+        pollingInterval: 5,
+      });
+      await source.open();
+      await Bun.sleep(20);
+      await source.close();
+
+      expect(calls).toBeGreaterThan(1);
+      expect(receivedHeaders[0]?.has("if-none-match")).toBe(false);
+      expect(receivedHeaders[1]?.get("if-none-match")).toBe('"v1"');
+    });
+
+    test("useConditionalRequests: false opts out — no If-None-Match/If-Modified-Since is ever sent", async () => {
+      let calls = 0;
+      const receivedHeaders: Headers[] = [];
+      globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+        calls++;
+        receivedHeaders.push(new Headers(init?.headers));
+        return jsonResponse(JSON.stringify({ port: calls }), { etag: '"v1"' });
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<{ port: number }>({
+        url: "https://example.com/config",
+        pollingInterval: 5,
+        useConditionalRequests: false,
+      });
+      await source.open();
+      await Bun.sleep(20);
+      await source.close();
+
+      expect(calls).toBeGreaterThan(1);
+      expect(receivedHeaders.every((h) => !h.has("if-none-match"))).toBe(true);
+    });
+
+    test("explicitly setting useConditionalRequests: true behaves the same as the default", async () => {
+      let calls = 0;
+      const receivedHeaders: Headers[] = [];
+      globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+        calls++;
+        receivedHeaders.push(new Headers(init?.headers));
+        return jsonResponse(JSON.stringify({ port: calls }), { etag: '"v1"' });
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<{ port: number }>({
+        url: "https://example.com/config",
+        pollingInterval: 5,
+        useConditionalRequests: true,
+      });
+      await source.open();
+      await Bun.sleep(20);
+      await source.close();
+
+      expect(calls).toBeGreaterThan(1);
+      expect(receivedHeaders[0]?.has("if-none-match")).toBe(false);
+      expect(receivedHeaders[1]?.get("if-none-match")).toBe('"v1"');
+    });
+
+    test("echoes back Last-Modified as If-Modified-Since on the next round", async () => {
+      let calls = 0;
+      const receivedHeaders: Headers[] = [];
+      globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+        calls++;
+        receivedHeaders.push(new Headers(init?.headers));
+        return jsonResponse(JSON.stringify({ port: calls }), { lastModified: "Mon, 01 Jan 2024 00:00:00 GMT" });
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<{ port: number }>({
+        url: "https://example.com/config",
+        pollingInterval: 5,
+        useConditionalRequests: true,
+      });
+      await source.open();
+      await Bun.sleep(20);
+      await source.close();
+
+      expect(receivedHeaders[1]?.get("if-modified-since")).toBe("Mon, 01 Jan 2024 00:00:00 GMT");
+    });
+
+    test("a 304 response is accepted and leaves the store at its last published value", async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        if (calls === 1) return jsonResponse(JSON.stringify({ port: 1 }), { etag: '"v1"' });
+        return jsonResponse("", { status: 304, etag: '"v1"' });
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<{ port: number }>({
+        url: "https://example.com/config",
+        pollingInterval: 5,
+        useConditionalRequests: true,
+      });
+      const store = await source.open();
+
+      await Bun.sleep(20);
+      await source.close();
+
+      expect(calls).toBeGreaterThan(1);
+      expect(store.get()).toEqual({ port: 1 });
+    });
+
+    test("a fresh 200 after a 304 updates the store and refreshes the stored ETag", async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        if (calls === 1) return jsonResponse(JSON.stringify({ port: 1 }), { etag: '"v1"' });
+        if (calls === 2) return jsonResponse("", { status: 304, etag: '"v1"' });
+        return jsonResponse(JSON.stringify({ port: 2 }), { etag: '"v2"' });
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<{ port: number }>({
+        url: "https://example.com/config",
+        pollingInterval: 5,
+        useConditionalRequests: true,
+      });
+      const store = await source.open();
+
+      await Bun.sleep(40);
+      await source.close();
+
+      expect(calls).toBeGreaterThanOrEqual(3);
+      expect(store.get()).toEqual({ port: 2 });
+    });
+
+    test("works together with followCacheControl: a 304's Cache-Control still drives the next delay", async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        if (calls === 1) return jsonResponse(JSON.stringify({ port: 1 }), { etag: '"v1"', cacheControl: "max-age=0.005" });
+        return jsonResponse("", { status: 304, etag: '"v1"', cacheControl: "max-age=0.005" });
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource<{ port: number }>({
+        url: "https://example.com/config",
+        followCacheControl: true,
+        useConditionalRequests: true,
+      });
+      const store = await source.open();
+
+      await Bun.sleep(30);
+      await source.close();
+
+      expect(calls).toBeGreaterThan(1);
+      expect(store.get()).toEqual({ port: 1 });
     });
   });
 

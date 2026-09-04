@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`fetchSource`** now accepts a `followCacheControl?: boolean` option: when `true`, each
+  response's `Cache-Control` header decides the delay before the next poll (`max-age=<seconds>`
+  schedules the next fetch that many seconds out, `no-store`/`no-cache` schedules it immediately),
+  falling back to `pollingInterval` for any round whose response doesn't specify one. Can be set
+  alone (`pollingInterval` left `false`) to poll purely off what the server reports.
+- **`fetchSource`** now accepts a `useConditionalRequests?: boolean` option, **on by default**:
+  every round after the first sends a conditional GET, echoing the previous response's
+  `ETag`/`Last-Modified` back as `If-None-Match`/`If-Modified-Since`. A `304 Not Modified` reply is
+  accepted and skipped, leaving the store at its last published value instead of being overwritten.
+  Set it to `false` to always send a plain, unconditional GET.
+
 ## [1.2.1] - 2026-09-04
 
 ### Changed
