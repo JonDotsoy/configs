@@ -19,6 +19,7 @@ import { configs, envSource, literalSource, mapKey, Source, ConfigError } from "
 import { envSource as envSource2 } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
+import { shellSource } from "@jondotsoy/configs/sources/shell";
 import { useConfig } from "@jondotsoy/configs/react";
 import { CounterMetric, GaugeMetric, HistogramMetric, SummaryMetric } from "@jondotsoy/configs/utils/metrics";
 import React from "react";
@@ -38,6 +39,7 @@ assert(typeof ConfigError === "function", "ConfigError exported from root");
 assert(typeof envSource2 === "function", "envSource exported from /sources/env");
 assert(typeof fetchSource === "function", "fetchSource exported from /sources/fetch");
 assert(typeof sseSource === "function", "sseSource exported from /sources/sse");
+assert(typeof shellSource === "function", "shellSource exported from /sources/shell");
 assert(typeof CounterMetric === "function", "CounterMetric exported from /utils/metrics");
 assert(typeof GaugeMetric === "function", "GaugeMetric exported from /utils/metrics");
 assert(typeof HistogramMetric === "function", "HistogramMetric exported from /utils/metrics");

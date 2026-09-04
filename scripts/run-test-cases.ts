@@ -51,7 +51,9 @@ interface CliEngine {
 const cliEngines: CliEngine[] = [
   { name: "node", bin: process.env.NODE_BIN ?? Bun.which("node") ?? undefined, args: (f) => ["--experimental-strip-types", "--no-warnings", f] },
   { name: "bun", bin: process.env.BUN_BIN ?? Bun.which("bun") ?? undefined, args: (f) => [f] },
-  { name: "deno", bin: process.env.DENO_BIN ?? Bun.which("deno") ?? undefined, args: (f) => ["run", "--allow-net", "--allow-read", "--allow-write", "--allow-env", f] },
+  // --allow-run: shellSource's test case spawns a real command via node:child_process, which
+  // Deno's permission system gates the same as its own Deno.Command.
+  { name: "deno", bin: process.env.DENO_BIN ?? Bun.which("deno") ?? undefined, args: (f) => ["run", "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--allow-run", f] },
 ];
 
 interface CaseResult {
@@ -101,6 +103,7 @@ const subpathAliases: Record<string, string> = {
   "@jondotsoy/configs/sources/file": "src/sources/file.ts",
   "@jondotsoy/configs/sources/literal": "src/sources/literal.ts",
   "@jondotsoy/configs/sources/pull": "src/sources/pull.ts",
+  "@jondotsoy/configs/sources/shell": "src/sources/shell.ts",
   "@jondotsoy/configs/react": "src/react.ts",
 };
 

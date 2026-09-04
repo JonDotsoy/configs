@@ -52,4 +52,10 @@ export const cases: CaseDef[] = [
     engines: allEngines,
     tolerateFailureEngines: ["browser"],
   },
+  {
+    file: "16-shell-source-runs-command.ts",
+    description: "shellSource runs a command via node:child_process's spawn and publishes its parsed stdout as the config tree — node:child_process-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.",
+    engines: allEngines,
+    tolerateFailureEngines: ["browser"],
+  },
 ];
