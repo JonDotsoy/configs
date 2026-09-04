@@ -34,7 +34,6 @@ src/
 
 scripts/
   build.sh                  # bun build (entry points read from package.json "exports")
-  manual-pack-test.ts       # bun run test:pack — see "Before opening a PR" below
 
 dist/                      # build output, gitignored, published via "files"/"exports"
 ```
@@ -102,49 +101,22 @@ release process; don't invent one yourself.
 
 ### Before opening a PR
 
-Run both, from the repo root, and make sure they pass before pushing:
+Run, from the repo root, and make sure it passes before pushing:
 
 ```sh
 bun test
-bun run test:pack
 ```
-
-`bun test` runs the unit specs. `bun run test:pack` builds the package,
-packs it with `bun pm pack`, installs the tarball into a scratch temp
-directory like a real consumer would, verifies every import path
-(`@jondotsoy/configs` and each `sources/*` subpath) actually resolves
-and works, and checks that no stray file leaked into the tarball beyond
-`dist/**` and the files npm/bun always include (`package.json`, `README.md`,
-`LICENSE`).
 
 When opening the PR itself, use the matching template under
 `.github/PULL_REQUEST_TEMPLATE/` — `bug_fix.md` for a fix,
 `feature.md` for new functionality (pick via GitHub's `?template=`
 query param, or `gh pr create --template`). Both share a `## Summary`
 of what changed and a `## Test plan` checklist covering `bun test`,
-`bunx tsc --noEmit -p tsconfig.json`, `bun run test:pack`,
-`bun run test:integration`, and `bun run test:cases` — check off what you
-ran, and note anything skipped (e.g. a runtime binary unavailable in the
-environment) instead of silently omitting it. `.github/workflows/pr-test-plan.yaml`
-runs the whole test plan (including `test:cases`) on every PR and reflects
-each step's real outcome back onto this checklist.
-
-### Cross-runtime integration suite
-
-`test/integration/runtime-imports.ts` verifies the packed tarball actually
-imports and works under Node LTS, Node latest, Bun latest, and Deno latest —
-not just under Bun via source resolution like the unit specs do. It isn't
-part of the default `bun test` sweep (its filename has no `.test`/`.spec`),
-so run it explicitly, pointing each env var at a runtime binary (any of the
-four may be omitted — that runtime is skipped, not failed):
-
-```sh
-NODE_LST_BIN=/path/to/node-lts \
-NODE_LATEST_BIN=/path/to/node-latest \
-BUN_LATEST_BIN=/path/to/bun \
-DENO_LATEST_BIN=/path/to/deno \
-bun run test:integration
-```
+`bunx tsc --noEmit -p tsconfig.json`, and `bun run test:cases` — check off
+what you ran, and note anything skipped instead of silently omitting it.
+`.github/workflows/pr-test-plan.yaml` runs the whole test plan (including
+`test:cases`) on every PR and reflects each step's real outcome back onto
+this checklist.
 
 ### Per-scenario engine coverage (`test/cases/`)
 
@@ -278,10 +250,7 @@ Bun's resolver: each is a single, self-contained script under
 unmodified end-to-end against the built `dist/` output, registered in
 `test/cases/manifest.ts` with the engines (`node`/`bun`/`deno`/`browser`) it
 must pass under. Run them with `bun run test:cases` (see "Per-scenario
-engine coverage" below). `test/integration/runtime-imports.ts` covers the
-same "latest implementation" concern at the package level — the packed
-tarball imported fresh under Node LTS, Node latest, Bun latest, and Deno
-latest — run with `bun run test:integration`.
+engine coverage" below).
 
 ## Frontend
 

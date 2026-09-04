@@ -77,8 +77,9 @@ ESM package from Node:
 npx tsc --noEmit --module nodenext --moduleResolution nodenext test.ts
 ```
 
-This flow is covered by the repo's integration suite (`bun run
-test:integration`, runtimes `NODE_LST_BIN`/`NODE_LATEST_BIN`).
+This flow is covered by the repo's `bun run test:cases` suite (see
+[`docs/develop/check-package.md`](../develop/check-package.md) for the
+manual validation checklist).
 
 ## Bun support
 
@@ -103,8 +104,8 @@ console.log(cfg.server.port.get());
 
 With a typical Bun project `tsconfig.json` (`moduleResolution: "bundler"`,
 `types: ["bun"]`), `bunx tsc --noEmit` type-checks correctly against the
-published `.d.ts` files. This flow is covered by `bun run test:pack` and by
-`bun run test:integration` (`BUN_LATEST_BIN`).
+published `.d.ts` files. This flow is covered by `bun run test:cases`
+(engine `bun`).
 
 ## See also
 
