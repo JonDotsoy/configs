@@ -193,11 +193,26 @@ assert(typeof mapKey.lookup === "function", "mapKey.lookup is exported from root
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno test/cases/01-import-root.ts`
+Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/01-import-root.ts`
 
 ```
-[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
-(no output)
+[PASSED]
+ok - configs.create is a function
+ok - create is exported from root
+ok - envSource is exported from root
+ok - fetchSource is exported from root
+ok - fileSource is exported from root
+ok - literalSource is exported from root
+ok - pullSource is exported from root
+ok - sseSource is exported from root
+ok - Source is exported from root
+ok - Store is exported from root
+ok - ConfigError is exported from root
+ok - mapKey.snakeCase is exported from root
+ok - mapKey.camelCase is exported from root
+ok - mapKey.identity is exported from root
+ok - mapKey.lookup is exported from root
+ALL_CHECKS_PASSED
 ```
 
 ## case test/cases/01-import-root.ts — browser
@@ -275,8 +290,9 @@ Every browser-safe sources/* subpath resolves its factory function.
 
 ```ts
 // Case: every browser-safe `sources/*` subpath resolves and exports its
-// factory function. `sources/file` is excluded here — it needs `node:fs`, so
-// it has its own case (03) that only runs under node/bun/deno.
+// factory function. `sources/file` and `sources/shell` are excluded here —
+// they need `node:fs`/`node:child_process`, so each has its own case (03,
+// 16) that exercises real behavior instead of just an import check.
 import { envSource } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
@@ -315,8 +331,9 @@ Every browser-safe sources/* subpath resolves its factory function.
 
 ```ts
 // Case: every browser-safe `sources/*` subpath resolves and exports its
-// factory function. `sources/file` is excluded here — it needs `node:fs`, so
-// it has its own case (03) that only runs under node/bun/deno.
+// factory function. `sources/file` and `sources/shell` are excluded here —
+// they need `node:fs`/`node:child_process`, so each has its own case (03,
+// 16) that exercises real behavior instead of just an import check.
 import { envSource } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
@@ -355,8 +372,9 @@ Every browser-safe sources/* subpath resolves its factory function.
 
 ```ts
 // Case: every browser-safe `sources/*` subpath resolves and exports its
-// factory function. `sources/file` is excluded here — it needs `node:fs`, so
-// it has its own case (03) that only runs under node/bun/deno.
+// factory function. `sources/file` and `sources/shell` are excluded here —
+// they need `node:fs`/`node:child_process`, so each has its own case (03,
+// 16) that exercises real behavior instead of just an import check.
 import { envSource } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
@@ -377,11 +395,16 @@ assert(typeof pullSource === "function", "pullSource exported from sources/pull"
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno test/cases/02-import-sources-subpaths.ts`
+Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/02-import-sources-subpaths.ts`
 
 ```
-[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
-(no output)
+[PASSED]
+ok - envSource exported from sources/env
+ok - fetchSource exported from sources/fetch
+ok - sseSource exported from sources/sse
+ok - literalSource exported from sources/literal
+ok - pullSource exported from sources/pull
+ALL_CHECKS_PASSED
 ```
 
 ## case test/cases/02-import-sources-subpaths.ts — browser
@@ -390,8 +413,9 @@ Every browser-safe sources/* subpath resolves its factory function.
 
 ```ts
 // Case: every browser-safe `sources/*` subpath resolves and exports its
-// factory function. `sources/file` is excluded here — it needs `node:fs`, so
-// it has its own case (03) that only runs under node/bun/deno.
+// factory function. `sources/file` and `sources/shell` are excluded here —
+// they need `node:fs`/`node:child_process`, so each has its own case (03,
+// 16) that exercises real behavior instead of just an import check.
 import { envSource } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
@@ -504,11 +528,12 @@ assert(typeof fileSource === "function", "fileSource exported from sources/file"
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno test/cases/03-import-sources-file.ts`
+Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/03-import-sources-file.ts`
 
 ```
-[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
-(no output)
+[PASSED]
+ok - fileSource exported from sources/file
+ALL_CHECKS_PASSED
 ```
 
 ## case test/cases/03-import-sources-file.ts — browser
@@ -614,11 +639,12 @@ assert(typeof useConfig === "function", "useConfig exported from /react");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno test/cases/04-import-react.ts`
+Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/04-import-react.ts`
 
 ```
-[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
-(no output)
+[PASSED]
+ok - useConfig exported from /react
+ALL_CHECKS_PASSED
 ```
 
 ## case test/cases/04-import-react.ts — browser
@@ -765,11 +791,14 @@ assert(true, "cfg.close() resolves without throwing");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno test/cases/05-create-with-literal-source.ts`
+Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/05-create-with-literal-source.ts`
 
 ```
-[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
-(no output)
+[PASSED]
+ok - cfg.port.get() reads the literal value
+ok - cfg.host.get() reads the literal value
+ok - cfg.close() resolves without throwing
+ALL_CHECKS_PASSED
 ```
 
 ## case test/cases/05-create-with-literal-source.ts — browser
@@ -929,11 +958,13 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno test/cases/06-create-with-env-source.ts`
+Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/06-create-with-env-source.ts`
 
 ```
-[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
-(no output)
+[PASSED]
+ok - SERVER_PORT maps to server.port via snakeCase
+ok - SERVER_HOST maps to server.host via snakeCase
+ALL_CHECKS_PASSED
 ```
 
 ## case test/cases/06-create-with-env-source.ts — browser
@@ -1075,11 +1106,12 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno test/cases/07-fetch-source-data-url.ts`
+Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/07-fetch-source-data-url.ts`
 
 ```
-[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
-(no output)
+[PASSED]
+ok - fetchSource fetches a data: URL and applies treePath
+ALL_CHECKS_PASSED
 ```
 
 ## case test/cases/07-fetch-source-data-url.ts — browser
@@ -1250,11 +1282,25 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno test/cases/08-sse-source-connection-failure.ts`
+Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/08-sse-source-connection-failure.ts`
 
 ```
-[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
-(no output)
+[PASSED]
+ok - a failed sseSource connection leaves the field null instead of throwing
+ALL_CHECKS_PASSED
+
+sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): Fetch failed: Requests to port 9 are blocked
+    at downloadWithRetry (file:///home/user/configs/dist/configs.js:578:9)
+    at async t (file:///home/user/configs/dist/configs.js:612:20)
+    at async Object.start (file:///home/user/configs/dist/configs.js:873:51) {
+  [cause]: TypeError: Fetch failed: Requests to port 9 are blocked
+      at ext:deno_fetch/26_fetch.js:2:7096
+      at async fetch (ext:deno_fetch/26_fetch.js:2:7360)
+      at async download (file:///home/user/configs/dist/configs.js:553:20)
+      at async downloadWithRetry (file:///home/user/configs/dist/configs.js:568:14)
+      at async t (file:///home/user/configs/dist/configs.js:612:20)
+      at async Object.start (file:///home/user/configs/dist/configs.js:873:51)
+}
 ```
 
 ## case test/cases/08-sse-source-connection-failure.ts — browser
@@ -1288,9 +1334,9 @@ Compile: `$ bun build test/cases/08-sse-source-connection-failure.ts --target br
 [PASSED]
 Failed to load resource: net::ERR_UNSAFE_PORT
 sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): Failed to fetch
-    at downloadWithRetry (http://localhost:39721/:660:9)
-    at async t (http://localhost:39721/:106:20)
-    at async Object.start (http://localhost:39721/:746:51)
+    at downloadWithRetry (http://localhost:41649/:660:9)
+    at async t (http://localhost:41649/:106:20)
+    at async Object.start (http://localhost:41649/:746:51)
 ok - a failed sseSource connection leaves the field null instead of throwing
 ALL_CHECKS_PASSED
 RESULT: PASS
@@ -1430,11 +1476,14 @@ assert(cfg.rounds.get() === afterClose, "close() stops further polling");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno test/cases/09-pull-source-polls-and-closes.ts`
+Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/09-pull-source-polls-and-closes.ts`
 
 ```
-[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
-(no output)
+[PASSED]
+ok - the first pull() round runs before configs.create() resolves
+ok - later rounds keep polling on the given interval
+ok - close() stops further polling
+ALL_CHECKS_PASSED
 ```
 
 ## case test/cases/09-pull-source-polls-and-closes.ts — browser
@@ -1637,11 +1686,15 @@ assert(closed, "close() is safe to call more than once");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno test/cases/10-custom-source-lifecycle.ts`
+Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/10-custom-source-lifecycle.ts`
 
 ```
-[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
-(no output)
+[PASSED]
+ok - the store holds the first snapshot once open() resolves
+ok - a later control.set() call updates the same store live
+ok - close() runs the underlying close() hook
+ok - close() is safe to call more than once
+ALL_CHECKS_PASSED
 ```
 
 ## case test/cases/10-custom-source-lifecycle.ts — browser
@@ -1816,11 +1869,13 @@ await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno test/cases/11-source-reduce-patches.ts`
+Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/11-source-reduce-patches.ts`
 
 ```
-[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
-(no output)
+[PASSED]
+ok - the first patch is applied through reduce (previous is null)
+ok - the second patch merges onto the previously published value
+ALL_CHECKS_PASSED
 ```
 
 ## case test/cases/11-source-reduce-patches.ts — browser
@@ -1986,11 +2041,13 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno test/cases/12-nested-config-groups.ts`
+Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/12-nested-config-groups.ts`
 
 ```
-[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
-(no output)
+[PASSED]
+ok - a first-level nested field resolves
+ok - a second-level nested field resolves
+ALL_CHECKS_PASSED
 ```
 
 ## case test/cases/12-nested-config-groups.ts — browser
@@ -2192,11 +2249,17 @@ assert(
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno test/cases/13-mapkey-strategies.ts`
+Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/13-mapkey-strategies.ts`
 
 ```
-[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
-(no output)
+[PASSED]
+ok - mapKey.snakeCase splits on underscore
+ok - mapKey.snakeCase honors a custom separator
+ok - mapKey.identity keeps the key as a single segment
+ok - mapKey.camelCase maps to a single camelCase segment
+ok - mapKey.lookup maps a listed key to its explicit path
+ok - mapKey.lookup falls back to identity for an unlisted key
+ALL_CHECKS_PASSED
 ```
 
 ## case test/cases/13-mapkey-strategies.ts — browser
@@ -2427,11 +2490,13 @@ await cfg1.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno test/cases/14-shape-schema-required.ts`
+Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/14-shape-schema-required.ts`
 
 ```
-[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
-(no output)
+[PASSED]
+ok - reading a required shape field throws once its schema fails to parse the source value
+ok - the same failure on a non-required shape field is swallowed into null instead
+ALL_CHECKS_PASSED
 ```
 
 ## case test/cases/14-shape-schema-required.ts — browser
@@ -2628,11 +2693,12 @@ try {
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno test/cases/15-file-source-reads-json.ts`
+Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/15-file-source-reads-json.ts`
 
 ```
-[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
-(no output)
+[PASSED]
+ok - fileSource reads and parses a JSON file from disk
+ALL_CHECKS_PASSED
 ```
 
 ## case test/cases/15-file-source-reads-json.ts — browser
@@ -2679,4 +2745,144 @@ Compile: `$ bun build test/cases/15-file-source-reads-json.ts --target browser -
 ```
 [WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
 RESULT: FAIL: mkdtemp is not a function
+```
+
+## case test/cases/16-shell-source-runs-command.ts — node
+
+shellSource runs a command via node:child_process's spawn and publishes its parsed stdout as the config tree — node:child_process-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
+
+```ts
+// Case: shellSource runs a command via node:child_process's spawn and
+// publishes its parsed stdout as the config tree. node:child_process-backed,
+// so a browser bundle stubs it out (see manifest.ts's tolerateFailureEngines
+// for this case) — run there anyway to document the breakage instead of
+// skipping it, same as fileSource's node:fs case (15).
+import { configs, shellSource } from "@jondotsoy/configs";
+
+function assert(cond: unknown, message: string): void {
+  if (!cond) throw new Error("FAIL: " + message);
+  console.log("ok - " + message);
+}
+
+const source = shellSource<{ port: number }>(["echo", JSON.stringify({ port: 7070 })]);
+const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+
+assert(cfg.port.get() === 7070, "shellSource runs a command and parses its stdout as JSON");
+
+await cfg.close();
+console.log("ALL_CHECKS_PASSED");
+```
+
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/16-shell-source-runs-command.ts`
+
+```
+[PASSED]
+ok - shellSource runs a command and parses its stdout as JSON
+ALL_CHECKS_PASSED
+```
+
+## case test/cases/16-shell-source-runs-command.ts — bun
+
+shellSource runs a command via node:child_process's spawn and publishes its parsed stdout as the config tree — node:child_process-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
+
+```ts
+// Case: shellSource runs a command via node:child_process's spawn and
+// publishes its parsed stdout as the config tree. node:child_process-backed,
+// so a browser bundle stubs it out (see manifest.ts's tolerateFailureEngines
+// for this case) — run there anyway to document the breakage instead of
+// skipping it, same as fileSource's node:fs case (15).
+import { configs, shellSource } from "@jondotsoy/configs";
+
+function assert(cond: unknown, message: string): void {
+  if (!cond) throw new Error("FAIL: " + message);
+  console.log("ok - " + message);
+}
+
+const source = shellSource<{ port: number }>(["echo", JSON.stringify({ port: 7070 })]);
+const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+
+assert(cfg.port.get() === 7070, "shellSource runs a command and parses its stdout as JSON");
+
+await cfg.close();
+console.log("ALL_CHECKS_PASSED");
+```
+
+Compile: `$ bun test/cases/16-shell-source-runs-command.ts`
+
+```
+[PASSED]
+ok - shellSource runs a command and parses its stdout as JSON
+ALL_CHECKS_PASSED
+```
+
+## case test/cases/16-shell-source-runs-command.ts — deno
+
+shellSource runs a command via node:child_process's spawn and publishes its parsed stdout as the config tree — node:child_process-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
+
+```ts
+// Case: shellSource runs a command via node:child_process's spawn and
+// publishes its parsed stdout as the config tree. node:child_process-backed,
+// so a browser bundle stubs it out (see manifest.ts's tolerateFailureEngines
+// for this case) — run there anyway to document the breakage instead of
+// skipping it, same as fileSource's node:fs case (15).
+import { configs, shellSource } from "@jondotsoy/configs";
+
+function assert(cond: unknown, message: string): void {
+  if (!cond) throw new Error("FAIL: " + message);
+  console.log("ok - " + message);
+}
+
+const source = shellSource<{ port: number }>(["echo", JSON.stringify({ port: 7070 })]);
+const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+
+assert(cfg.port.get() === 7070, "shellSource runs a command and parses its stdout as JSON");
+
+await cfg.close();
+console.log("ALL_CHECKS_PASSED");
+```
+
+Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/16-shell-source-runs-command.ts`
+
+```
+[PASSED]
+ok - shellSource runs a command and parses its stdout as JSON
+ALL_CHECKS_PASSED
+```
+
+## case test/cases/16-shell-source-runs-command.ts — browser
+
+shellSource runs a command via node:child_process's spawn and publishes its parsed stdout as the config tree — node:child_process-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
+
+```ts
+// Case: shellSource runs a command via node:child_process's spawn and
+// publishes its parsed stdout as the config tree. node:child_process-backed,
+// so a browser bundle stubs it out (see manifest.ts's tolerateFailureEngines
+// for this case) — run there anyway to document the breakage instead of
+// skipping it, same as fileSource's node:fs case (15).
+import { configs, shellSource } from "@jondotsoy/configs";
+
+function assert(cond: unknown, message: string): void {
+  if (!cond) throw new Error("FAIL: " + message);
+  console.log("ok - " + message);
+}
+
+const source = shellSource<{ port: number }>(["echo", JSON.stringify({ port: 7070 })]);
+const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+
+assert(cfg.port.get() === 7070, "shellSource runs a command and parses its stdout as JSON");
+
+await cfg.close();
+console.log("ALL_CHECKS_PASSED");
+```
+
+Compile: `$ bun build test/cases/16-shell-source-runs-command.ts --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`
+
+```
+[WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
+shellSource: failed to run "echo {"port":7070}" AttemptsExhaustedError: shellSource: failed after 1 attempt(s): spawn is not a function
+    at runWithRetry (http://localhost:39005/:683:9)
+    at async t (http://localhost:39005/:106:20)
+    at async shellRound (http://localhost:39005/:687:37)
+    at async Object.start (http://localhost:39005/:737:21)
+RESULT: FAIL: FAIL: shellSource runs a command and parses its stdout as JSON
 ```

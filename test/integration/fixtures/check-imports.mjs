@@ -6,6 +6,7 @@ import { configs, envSource, literalSource, mapKey, Source, ConfigError } from "
 import { envSource as envSourceFromSubpath } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
+import { shellSource } from "@jondotsoy/configs/sources/shell";
 
 function assert(cond, message) {
   if (!cond) throw new Error("FAIL: " + message);
@@ -21,6 +22,7 @@ assert(typeof ConfigError === "function", "ConfigError exported from root");
 assert(typeof envSourceFromSubpath === "function", "envSource exported from /sources/env");
 assert(typeof fetchSource === "function", "fetchSource exported from /sources/fetch");
 assert(typeof sseSource === "function", "sseSource exported from /sources/sse");
+assert(typeof shellSource === "function", "shellSource exported from /sources/shell");
 
 const source = envSource({ mapKey: mapKey.snakeCase() });
 const cfg = await configs.create(

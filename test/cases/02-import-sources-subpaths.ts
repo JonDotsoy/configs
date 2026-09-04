@@ -1,6 +1,7 @@
 // Case: every browser-safe `sources/*` subpath resolves and exports its
-// factory function. `sources/file` is excluded here — it needs `node:fs`, so
-// it has its own case (03) that only runs under node/bun/deno.
+// factory function. `sources/file` and `sources/shell` are excluded here —
+// they need `node:fs`/`node:child_process`, so each has its own case (03,
+// 16) that exercises real behavior instead of just an import check.
 import { envSource } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
