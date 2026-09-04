@@ -2,17 +2,15 @@ name: Publish Package
 
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to publish (e.g. v1.2.0)'
-        required: true
+    branches:
+      - develop
+    paths:
+      - 'package.json'
+  workflow_dispatch: {}
 
 permissions:
   id-token: write  # Required for npm OIDC trusted publishing
-  contents: write  # Required to push the version bump commit
+  contents: write  # Required to create the GitHub release
 
 jobs:
   publish:
@@ -31,30 +29,40 @@ jobs:
           node-version: latest
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Bump package.json version to match the tag
+      - name: Read version from package.json
+        id: pkg
         run: |
-          version="${{ inputs.tag || github.ref_name }}"
-          version="${version#v}"
-          npm pkg set version="$version"
-          if git diff --quiet -- package.json; then
-            echo "package.json already at $version, nothing to commit"
+          version="$(node -p "require('./package.json').version")"
+          name="$(node -p "require('./package.json').name")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Check if this version was already released
+        id: check-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.pkg.outputs.version }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "package.json version v${{ steps.pkg.outputs.version }} already has a release, skipping publish"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
           else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add package.json
-            git commit -m "chore: bump version to $version"
-            git push origin HEAD:${{ github.event.repository.default_branch }}
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - run: bun install --frozen-lockfile
-      - run: bun run build
-      - run: bun test
-      - run: bun run test:pack
+      - if: steps.check-release.outputs.exists == 'false'
+        run: bun install --frozen-lockfile
+      - if: steps.check-release.outputs.exists == 'false'
+        run: bun run build
+      - if: steps.check-release.outputs.exists == 'false'
+        run: bun test
+      - if: steps.check-release.outputs.exists == 'false'
+        run: bun run test:pack
 
       - name: Determine npm dist-tag
         id: dist-tag
+        if: steps.check-release.outputs.exists == 'false'
         run: |
-          version="$(node -p "require('./package.json').version")"
+          version="${{ steps.pkg.outputs.version }}"
           prerelease="${version#*-}"
           if [ "$prerelease" = "$version" ]; then
             echo "tag=latest" >> "$GITHUB_OUTPUT"
@@ -62,4 +70,40 @@ jobs:
             echo "tag=${prerelease%%.*}" >> "$GITHUB_OUTPUT"
           fi
 
-      - run: npm publish --access public --tag ${{ steps.dist-tag.outputs.tag }}
+      - name: Publish to npm
+        id: npm-publish
+        if: steps.check-release.outputs.exists == 'false'
+        run: npm publish --access public --tag ${{ steps.dist-tag.outputs.tag }}
+
+      - name: Extract changelog notes for this version
+        id: changelog
+        if: steps.check-release.outputs.exists == 'false' && steps.npm-publish.outcome == 'success'
+        run: |
+          version="${{ steps.pkg.outputs.version }}"
+          notes="$(awk -v ver="$version" '
+            $0 ~ "^## \\[" ver "\\]" { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md)"
+          {
+            echo "notes<<CHANGELOG_EOF"
+            echo "$notes"
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        if: steps.check-release.outputs.exists == 'false' && steps.npm-publish.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ steps.changelog.outputs.notes }}
+        run: |
+          version="${{ steps.pkg.outputs.version }}"
+          pkg_name="${{ steps.pkg.outputs.name }}"
+          notes_file="$(mktemp)"
+          printf '%s\n\n[View %s@%s on npm](https://www.npmjs.com/package/%s/v/%s)\n' \
+            "$NOTES" "$pkg_name" "$version" "$pkg_name" "$version" > "$notes_file"
+          gh release create "v$version" \
+            --repo "${{ github.repository }}" \
+            --title "v$version" \
+            --target "${{ github.event.repository.default_branch }}" \
+            --notes-file "$notes_file"
