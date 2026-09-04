@@ -547,8 +547,11 @@ patches until the resource closes the stream.
 Reads a config tree from `path`, parsed by its extension: `.json` or `.env` (matched by extension,
 or by the bare `.env` filename itself — a `.env` file always parses to a flat string map, one
 entry per `KEY=VALUE` line, blank lines and `#`-comments skipped; anything else is parsed as JSON).
-`watch` defaults to `true`: the file is re-read and the store updated live on every change;
-`watch: false` reads it once. A missing file or a parse failure (including on a later watched
+`watch` defaults to `true`: the file is re-read and the store updated live on every change, using
+`fs.watch` under the hood; `watch: false` reads it once. Pass `watch: { interval: <ms> }` instead
+to poll the file on a timer and re-read it unconditionally rather than relying on `fs.watch` —
+useful where `fs.watch` doesn't fire reliably (e.g. some network mounts, containers, or editors
+that write via rename). A missing file or a parse failure (including on a later watched or polled
 change) is logged via `console.error` and leaves the store empty instead of throwing — a parse
 error on a later change keeps the last good value instead.
 
@@ -558,7 +561,7 @@ second (`FileSourceOptions`):
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `watch` | `boolean` | `true` | Republishes the config tree whenever the file changes on disk. `false` reads it once and closes. |
+| `watch` | `boolean \| { interval: number }` | `true` | Republishes the config tree whenever the file changes on disk, via `fs.watch`. `false` reads it once and closes. `{ interval: <ms> }` polls the file every `interval` milliseconds and re-reads it unconditionally, instead of using `fs.watch`. |
 | `treePath` | `string[]` | `[]` (whole file) | Selects a subtree of the parsed file to use as the config tree, e.g. `["containers", "settings"]`. |
 | `format` | `"json" \| "env"` | detected from `path`'s extension (`.env`, `"json"` otherwise) | Picks which built-in parser to use, overriding extension-based detection. Ignored once `parser` is set. |
 | `parser` | `(buffer: Uint8Array) => unknown` | decodes as UTF-8 and parses per `format`/detected format | Overrides the default parsing entirely — receives the file's raw bytes and returns the parsed tree, so `fileSource` can support formats it doesn't parse itself (like YAML). |
@@ -576,6 +579,17 @@ extension — handy for an extensionless path:
 
 ```ts
 const source = fileSource("./config", { format: "env" });
+```
+
+`watch: { interval: <ms> }` polls the file instead of using `fs.watch`, for filesystems (e.g. some
+network mounts) where `fs.watch` doesn't fire reliably:
+
+```ts
+import { fileSource } from "@jondotsoy/configs/sources/file";
+
+const source = fileSource<{ port: number }>("./config.json", {
+  watch: { interval: 2000 },
+});
 ```
 
 `parser` overrides the default parsing entirely: it receives the file's raw bytes and its return
