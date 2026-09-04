@@ -17,3 +17,4 @@ import { configs } from "@jondotsoy/configs";
 - [ ] `bun run test:pack`
 - [ ] `bun run test:browser`
 - [ ] `bun run test:integration`
+- [ ] `bun run test:cases`
