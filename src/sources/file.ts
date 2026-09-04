@@ -9,8 +9,15 @@ import { selectTreePath } from "../utils/tree-path.js";
 export type FileFormat = "json" | "env";
 
 export interface FileSourceOptions<T = unknown> {
-  /** Republishes the config tree whenever the file changes on disk. Defaults to `true`. */
-  watch?: boolean;
+  /**
+   * Republishes the config tree whenever the file changes on disk. Defaults to `true`, using
+   * `fs.watch` under the hood. `fs.watch` doesn't fire reliably on every platform/filesystem
+   * (e.g. some network mounts, containers, or editors that write via rename) — pass `{ interval:
+   * <ms> }` instead of `true` to poll the file every `interval` milliseconds and re-read it
+   * unconditionally, rather than relying on filesystem change events. `false` reads the file once
+   * and closes.
+   */
+  watch?: boolean | { interval: number };
   /**
    * Selects a subtree of the parsed file to use as the config tree, e.g. `["containers", "settings"]`
    * to use `{ containers: { settings: {...} } }`'s inner object and ignore the rest of the file.
@@ -114,7 +121,9 @@ function defaultParser(path: string | URL, format: FileFormat | undefined): (buf
  *
  * With `watch` (the default), the file is re-read on every change and the store updated live; a
  * parse error on one of those later reads is logged but keeps the last good value, same as
- * `sseSource` does for a bad SSE message. `watch: false` reads the file once and closes.
+ * `sseSource` does for a bad SSE message. `watch: false` reads the file once and closes. Pass
+ * `watch: { interval: <ms> }` to poll the file on a timer instead of using `fs.watch` — useful
+ * where `fs.watch` doesn't fire reliably (e.g. some network mounts).
  *
  * `reduce` combines each read with the previously published value instead of replacing it
  * outright — handy with `watch` when a later read is a partial update rather than a full
@@ -128,12 +137,13 @@ export function fileSource<T = unknown>(
   path: string | URL,
   options: FileSourceOptions<T> = {},
 ): Source<T> {
-  const shouldWatch = options.watch ?? true;
+  const watchOption = options.watch ?? true;
   const treePath = options.treePath ?? [];
   const parser = options.parser ?? defaultParser(path, options.format);
   const reduce = options.reduce;
   const metrics = createMetrics();
   let watcher: FSWatcher | undefined;
+  let pollTimer: ReturnType<typeof setInterval> | undefined;
 
   return new Source<T>({
     metrics,
@@ -177,8 +187,15 @@ export function fileSource<T = unknown>(
 
       await readOnce();
 
-      if (!shouldWatch) {
+      if (!watchOption) {
         control.close();
+        return;
+      }
+
+      if (typeof watchOption === "object") {
+        pollTimer = setInterval(() => {
+          void readOnce();
+        }, watchOption.interval);
         return;
       }
 
@@ -188,6 +205,7 @@ export function fileSource<T = unknown>(
     },
     close() {
       watcher?.close();
+      clearInterval(pollTimer);
     },
     reduce,
   });

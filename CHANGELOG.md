@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ETag`/`Last-Modified` back as `If-None-Match`/`If-Modified-Since`. A `304 Not Modified` reply is
   accepted and skipped, leaving the store at its last published value instead of being overwritten.
   Set it to `false` to always send a plain, unconditional GET.
+- **`fileSource`**'s `watch` option now also accepts `{ interval: <ms> }`, which polls the file on
+  a timer and re-reads it unconditionally instead of using `fs.watch`. Useful where `fs.watch`
+  doesn't fire reliably (e.g. some network mounts).
 
 ## [1.2.1] - 2026-09-04
 

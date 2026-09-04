@@ -557,6 +557,38 @@ describe("fileSource", () => {
       errorSpy.mockRestore();
     });
 
+    test("watch: { interval } polls the file on a timer instead of using fs.watch", async () => {
+      const path = join(dir, "config.json");
+      await Bun.write(path, JSON.stringify({ port: 3000 }));
+
+      const source = fileSource<{ port: number }>(path, { watch: { interval: 10 } });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: 3000 });
+
+      await Bun.write(path, JSON.stringify({ port: 4000 }));
+      await waitFor(() => store.get()?.port === 4000);
+
+      expect(store.get()).toEqual({ port: 4000 });
+
+      await source.close();
+    });
+
+    test("close() stops a watch: { interval } poll timer", async () => {
+      const path = join(dir, "config.json");
+      await Bun.write(path, JSON.stringify({ port: 3000 }));
+
+      const source = fileSource<{ port: number }>(path, { watch: { interval: 10 } });
+      const store = await source.open();
+
+      await source.close();
+
+      await Bun.write(path, JSON.stringify({ port: 9999 }));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(store.get()).toEqual({ port: 3000 });
+    });
+
     test("deleting the watched file is logged and keeps the last good value", async () => {
       const errorSpy = spyOn(console, "error").mockImplementation(() => {});
       const path = join(dir, "config.json");
