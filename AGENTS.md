@@ -122,10 +122,12 @@ When opening the PR itself, use the matching template under
 `feature.md` for new functionality (pick via GitHub's `?template=`
 query param, or `gh pr create --template`). Both share a `## Summary`
 of what changed and a `## Test plan` checklist covering `bun test`,
-`bunx tsc --noEmit -p tsconfig.json`, `bun run test:pack`, and
-`bun run test:integration` — check off what you ran, and note anything
-skipped (e.g. a runtime binary unavailable in the environment) instead
-of silently omitting it.
+`bunx tsc --noEmit -p tsconfig.json`, `bun run test:pack`,
+`bun run test:integration`, and `bun run test:cases` — check off what you
+ran, and note anything skipped (e.g. a runtime binary unavailable in the
+environment) instead of silently omitting it. `.github/workflows/pr-test-plan.yaml`
+runs the whole test plan (including `test:cases`) on every PR and reflects
+each step's real outcome back onto this checklist.
 
 ### Cross-runtime integration suite
 
@@ -143,6 +145,37 @@ BUN_LATEST_BIN=/path/to/bun \
 DENO_LATEST_BIN=/path/to/deno \
 bun run test:integration
 ```
+
+### Per-scenario engine coverage (`test/cases/`)
+
+`test/cases/` holds numbered, single-purpose scripts (`01-import-root.ts`,
+`02-import-sources-subpaths.ts`, ...), each exercising one specific piece of
+behavior — an import path, a source's happy/failure path, a lifecycle
+detail. `test/cases/manifest.ts` registers every case and which engines
+(`node`, `bun`, `deno`, `browser`) it's expected to run under; add both the
+script and its manifest entry together.
+
+`bun run test:cases` (`scripts/run-test-cases.ts`) runs every case under
+every engine it declares: node/bun/deno run the script directly against the
+built `dist/` (via each runtime's own package self-reference resolution —
+no packing/installing needed), while the browser engine bundles the same
+script with `Bun.build` (aliasing `@jondotsoy/configs` to its `src/*.ts`
+source, the same way `test/browser/app.tsx` does by hand) into a small page
+driven by Playwright's Chromium. A missing `node`/`bun`/`deno` binary skips
+that engine's row instead of failing the run (override with `NODE_BIN` /
+`BUN_BIN` / `DENO_BIN`).
+
+Every run writes `test-cases-report/report.md`: one section per
+case-and-engine combination, with the script's full source, the exact
+command used to run/compile it, and its captured output — generated, not
+hand-edited.
+
+Because a case script must run unmodified under a browser page too, keep
+new cases browser-safe by default (an explicit `env` object instead of
+`process.env`, a `data:` URL instead of a live server, an unreachable
+address instead of asserting on network internals) — mark a case
+node/bun/deno-only in the manifest only when it genuinely needs a Node API
+(`sources/file`'s `node:fs`, temp files on disk).
 
 ### Types-first development mode
 

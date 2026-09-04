@@ -92,7 +92,8 @@
     "build:types": "tsc -p tsconfig.build.json",
     "test:pack": "bun run scripts/manual-pack-test.ts",
     "test:integration": "bun test ./test/integration/runtime-imports.ts",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "test:cases": "bun run scripts/run-test-cases.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
