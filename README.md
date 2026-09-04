@@ -60,6 +60,7 @@ console.log(cfg.server.port.get());
   - [`sseSource` — live updates over Server-Sent Events](#ssesource--live-updates-over-server-sent-events)
   - [`fileSource` — a local `.json` or `.env` file](#filesource--a-local-json-or-env-file)
   - [`pullSource` — calling a function on an interval](#pullsource--calling-a-function-on-an-interval)
+  - [`shellSource` — running a command](#shellsource--running-a-command)
   - [`literalSource` — a static value](#literalsource--a-static-value)
   - [Reacting to changes — restarting a periodic task](#reacting-to-changes--restarting-a-periodic-task)
   - [`useConfig` — reading a field in React](#useconfig--reading-a-field-in-react)
@@ -271,8 +272,8 @@ const port2 = cfg2.port.get();
 
 ### `Source` — building a custom source
 
-The building block behind `envSource`, `fetchSource`, `sseSource`, `fileSource`, `pullSource`, and
-`literalSource`. It takes an
+The building block behind `envSource`, `fetchSource`, `sseSource`, `fileSource`, `pullSource`,
+`shellSource`, and `literalSource`. It takes an
 object with `start(control)` and an optional `close()`, mirroring `ReadableStream`'s
 `UnderlyingSource`: `start` runs once and pushes snapshots via `control.set(value)`, while `close`
 — called from within `start` via `control.close()`, or from the outside via the `Source`'s own
@@ -653,6 +654,61 @@ import { Temporal } from "temporal-polyfill";
 const source = pullSource<{ port: number }>({
   pull: async () => fetchPortFromSomewhere(),
   interval: Temporal.Duration.from({ seconds: 30 }).total("milliseconds"),
+});
+```
+
+### `shellSource` — running a command
+
+Runs `args` as a child process (via `node:child_process`'s `spawn`) and publishes its parsed stdout as the next
+snapshot — handy for pulling config out of a CLI you already trust, like `gh auth token` or a
+company-internal secrets tool. By default it decodes stdout as UTF-8 and parses it as JSON, runs
+once, and closes; a rejected exit code or a stdout that fails to parse is logged via
+`console.error` and swallowed instead of thrown, same as `fetchSource`.
+
+**Options (`ShellSourceOptions<T>`):**
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `cwd` | `string` | current process's cwd | Working directory for the spawned process. |
+| `env` | `Record<string, string \| undefined>` | current process's own env | Environment variables for the spawned process. |
+| `signal` | `AbortSignal` | — | Kills the in-flight run (and stops retrying it) when it fires. Only covers a single round — with `pollingInterval` set, later rounds still run. |
+| `attempts` | `number` | `1` | Runs to attempt before giving up. |
+| `stdoutParser` | `(stdout: string) => T \| Promise<T>` | `JSON.parse` | Turns the process's stdout (decoded as UTF-8) into `T`. |
+| `acceptExitCode` | `(exitCode: number) => boolean` | `(exitCode) => exitCode === 0` | Decides whether an exit code counts as accepted. |
+| `treePath` | `string[]` | `[]` (whole output) | Selects a subtree of the parsed stdout to use as the config tree, same as `fetchSource`'s `treePath`. |
+| `pollingInterval` | `number \| false` | `false` | Milliseconds between runs. `false` runs `args` once and closes; a number keeps re-running on that interval (each round retried up to `attempts` times) until the `Source` is closed. |
+| `reduce` | `(incoming: T, previous: T \| null) => T` | publishes `incoming` as-is (full replace) | Combines each run's output with the previously published value instead of replacing it outright. Especially useful with `pollingInterval`. |
+| `onRun` | `(event: ShellRunEvent) => void` | — | Called once per run (including every polled run) with timing and outcome data. |
+
+```ts
+import { shellSource } from "@jondotsoy/configs/sources/shell";
+
+const source = shellSource<{ token: string; expires_at: string }>([
+  "gh",
+  "auth",
+  "token",
+  "--format",
+  "json",
+]);
+```
+
+`pollingInterval` keeps re-running `args` — useful for a token that needs periodic refreshing:
+
+```ts
+import { shellSource } from "@jondotsoy/configs/sources/shell";
+
+const source = shellSource<{ token: string }>(["gh", "auth", "token", "--format", "json"], {
+  pollingInterval: 5 * 60_000, // refresh every 5 minutes
+});
+```
+
+`stdoutParser` overrides the default JSON parsing — for a command that prints a bare value:
+
+```ts
+import { shellSource } from "@jondotsoy/configs/sources/shell";
+
+const source = shellSource<string>(["git", "rev-parse", "HEAD"], {
+  stdoutParser: (stdout) => stdout.trim(),
 });
 ```
 

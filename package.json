@@ -76,6 +76,11 @@
       "types": "./dist/sources/pull.d.ts",
       "import": "./dist/sources/pull.js"
     },
+    "./sources/shell": {
+      "_entryPoint": "./src/sources/shell.ts",
+      "types": "./dist/sources/shell.d.ts",
+      "import": "./dist/sources/shell.js"
+    },
     "./react": {
       "_entryPoint": "./src/react.ts",
       "types": "./dist/react.d.ts",

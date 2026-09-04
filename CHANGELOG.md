@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`shellSource(args, options?)`** — a new `Source` that runs `args` as a child process (via
+  `node:child_process`'s `spawn`) and publishes its parsed stdout as the config tree, e.g.
+  `shellSource(["gh", "auth", "token", "--format", "json"])`. Supports `stdoutParser` (defaults to
+  `JSON.parse`), `acceptExitCode`, `attempts` retries, `treePath`, `pollingInterval`, `reduce`, and
+  an `onRun` callback, mirroring `fetchSource`'s shape. Exported from `@jondotsoy/configs` and as
+  the `@jondotsoy/configs/sources/shell` subpath.
 - **`fetchSource`** now accepts a `followCacheControl?: boolean` option: when `true`, each
   response's `Cache-Control` header decides the delay before the next poll (`max-age=<seconds>`
   schedules the next fetch that many seconds out, `no-store`/`no-cache` schedules it immediately),
