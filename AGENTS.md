@@ -88,6 +88,18 @@ When adding a new source, follow the existing shape:
   a matching `./sources/<name>` entry (with `_entryPoint`) to `package.json`'s
   `exports` map so it's a public subpath.
 
+### Keep the changelog up to date
+
+`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Whenever a change is user-facing (a new feature, a bug fix, a breaking
+change, a deprecation), add an entry under an `## [Unreleased]` section at
+the top of the file (create it above the newest version heading if it
+doesn't exist yet), using the standard subheadings (`### Added`,
+`### Changed`, `### Fixed`, `### Removed`, etc.). Do this as part of the same
+change, not as a follow-up — a PR that changes behavior without touching the
+`Unreleased` section is incomplete. Leave the version number and date to the
+release process; don't invent one yourself.
+
 ### Before opening a PR
 
 Run both, from the repo root, and make sure they pass before pushing:
