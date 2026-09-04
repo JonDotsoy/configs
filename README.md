@@ -389,6 +389,21 @@ fetching `url` on that interval (each round still retried up to `attempts` times
 store on every successful fetch, until the `Source` is closed. A failed round after the first one
 is logged and skipped, without closing the source or stopping the polling.
 
+Two options let the server drive that polling instead of a fixed interval:
+
+- `followCacheControl` reads the response's `Cache-Control` header to decide when to fetch again:
+  `max-age=<seconds>` schedules the next round that many seconds out, `no-store`/`no-cache`
+  schedules it immediately, and a response without either falls back to `pollingInterval` for that
+  round. Set alone (`pollingInterval` left `false`), it starts polling purely off what the server
+  reports.
+- `useConditionalRequests` — **on by default** — sends every round after the first as a
+  conditional GET, echoing the previous response's `ETag`/`Last-Modified` back as
+  `If-None-Match`/`If-Modified-Since`. A `304 Not Modified` reply is accepted and skipped, leaving
+  the store at its last published value instead of overwriting it with an empty body. Set it to
+  `false` to always send a plain, unconditional GET.
+
+They combine: a `304`'s own `Cache-Control` header still drives `followCacheControl`'s next delay.
+
 **Options (`FetchSourceOptions<T>`):**
 
 | Option | Type | Default | Description |
@@ -406,6 +421,8 @@ is logged and skipped, without closing the source or stopping the polling.
 | `bodyParser` | `(response: Response) => Promise<T>` | `(res) => res.json()` | Turns the fetched `Response` into `T`. |
 | `acceptStatus` | `(statusCode: number) => boolean` | 2xx: `(status) => status >= 200 && status < 300` | Decides whether a response's status code counts as accepted. A rejected status stops retrying immediately, same as a `bodyParser` failure. |
 | `pollingInterval` | `number \| false` | `false` (off) | Milliseconds between fetches. `false` fetches `url` once and closes; a number keeps fetching on that interval (each round retried up to `attempts` times) until the `Source` is closed. |
+| `followCacheControl` | `boolean` | `false` | Follows the response's `Cache-Control` header to decide when to fetch again, instead of (or as a fallback for) `pollingInterval`. `max-age=<seconds>` schedules the next fetch that many seconds out; `no-store`/`no-cache` schedules it immediately. Can be set alone to start polling purely off what the server reports. |
+| `useConditionalRequests` | `boolean` | `true` (on) | Sends a conditional GET on every round after the first, echoing the previous response's `ETag`/`Last-Modified` back as `If-None-Match`/`If-Modified-Since`. A `304 Not Modified` reply is accepted and skipped, leaving the store unchanged. Set to `false` for a plain, unconditional GET every round. |
 | `treePath` | `string[]` | `[]` (whole body) | Selects a subtree of the fetched body to use as the config tree, e.g. `["containers", "settings"]`. Applied on every round, including polled ones. Same behavior as `fileSource`'s option of the same name. |
 | `reduce` | `(incoming: T, previous: T \| null) => T` | publishes `incoming` as-is (full replace) | Combines each successful fetch with the previously published value instead of replacing it outright. Especially useful with `pollingInterval`, when a later round's response is a partial update. Receives the `treePath`-selected body. |
 
@@ -441,6 +458,18 @@ const source = fetchSource<{ port: number }>({
   url: "https://config-service.internal/app",
   credentials: { bearer: { token: process.env.CONFIG_TOKEN! } },
   acceptStatus: (status) => status === 200,
+});
+```
+
+```ts
+import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+
+// let the server drive the polling cadence instead of a fixed interval; useConditionalRequests
+// is on by default, so a 304 costs no bandwidth and doesn't touch the store
+const source = fetchSource<{ port: number }>({
+  url: "https://config-service.internal/app",
+  followCacheControl: true,
+  pollingInterval: 60_000, // fallback for a round whose response has no Cache-Control
 });
 ```
 
