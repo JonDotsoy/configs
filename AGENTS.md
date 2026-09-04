@@ -246,7 +246,7 @@ Default to using Bun instead of Node.js.
 
 ## Testing
 
-Use `bun test` to run tests. Specs live next to the module they cover as
+Unit tests use `bun test`. Specs live next to the module they cover as
 `*.spec.ts` (e.g. `src/utils/store.spec.ts`).
 
 ```ts#index.test.ts
@@ -271,6 +271,17 @@ test("port narrows to number when a default is set", () => {
   expectTypeOf(cfg.port.get()).toEqualTypeOf<number>();
 });
 ```
+
+Integration tests exercise the latest built implementation, not source via
+Bun's resolver: each is a single, self-contained script under
+`test/cases/` (e.g. `test/cases/16-shell-source-runs-command.ts`) that runs
+unmodified end-to-end against the built `dist/` output, registered in
+`test/cases/manifest.ts` with the engines (`node`/`bun`/`deno`/`browser`) it
+must pass under. Run them with `bun run test:cases` (see "Per-scenario
+engine coverage" below). `test/integration/runtime-imports.ts` covers the
+same "latest implementation" concern at the package level — the packed
+tarball imported fresh under Node LTS, Node latest, Bun latest, and Deno
+latest — run with `bun run test:integration`.
 
 ## Frontend
 
