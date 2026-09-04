@@ -1,4 +1,6 @@
 import { httpFetch, type HttpFetchCredentials, type HttpFetchRequest } from "../utils/http-fetch.js";
+import { CounterMetric, HistogramMetric, type Metric } from "../utils/metric.js";
+import { t } from "../utils/t.js";
 import { selectTreePath } from "../utils/tree-path.js";
 import { Source } from "./source.js";
 
@@ -56,17 +58,71 @@ export interface FetchSourceOptions<T = unknown> {
    * before the first round). Defaults to publishing `incoming` as-is — a full replace.
    */
   reduce?: (incoming: T, previous: T | null) => T;
+  /**
+   * Called once per fetch round (including every polled round) with timing and outcome data.
+   * A throwing `onFetched` is not caught: keep it side-effect-only (e.g. logging or metrics).
+   */
+  onFetched?: (event: FetchedEvent) => void;
+}
+
+/** Passed to `onFetched` once per fetch round, on both success and failure. */
+export interface FetchedEvent {
+  /** The `url` this round fetched. */
+  url: string | URL;
+  /** Whether the round succeeded (a response was accepted by `acceptStatus` and parsed). */
+  ok: boolean;
+  /** The response's status code. Absent when the round never reached a response (network failure). */
+  statusCode?: number;
+  /** Wall-clock time the round took, from just before its first attempt to its outcome, in milliseconds. */
+  durationMs: number;
+  /** The error that made the round fail. Only set when `ok` is `false`. */
+  error?: unknown;
+}
+
+/** The metrics `fetchSource` records, exposed as-is on the resulting `Source` via `source.metrics`. */
+type FetchSourceMetrics = Record<string, Metric> & {
+  /** Total fetch rounds run, labeled `ok` (`"true"` / `"false"`). */
+  requests: CounterMetric;
+  /** How long each round took, in seconds, labeled `ok` (`"true"` / `"false"`). */
+  duration: HistogramMetric;
+};
+
+function createMetrics(): FetchSourceMetrics {
+  return {
+    requests: new CounterMetric({
+      name: "fetch_source_requests_total",
+      help: "Total fetch rounds run by fetchSource, labeled by outcome.",
+      labelNames: ["ok"],
+    }),
+    duration: new HistogramMetric({
+      name: "fetch_source_request_duration_seconds",
+      help: "How long each fetchSource round took, in seconds, labeled by outcome.",
+      labelNames: ["ok"],
+    }),
+  };
 }
 
 /** Runs one `httpFetch` round, logging and swallowing any failure into `undefined`. */
-async function fetchRound<T>(req: HttpFetchRequest<T>): Promise<{ data: T } | undefined> {
-  try {
-    const result = await httpFetch<T>(req);
-    return { data: result.body };
-  } catch (error) {
+async function fetchRound<T>(
+  req: HttpFetchRequest<T>,
+  onFetched: ((event: FetchedEvent) => void) | undefined,
+  metrics: FetchSourceMetrics,
+): Promise<{ data: T } | undefined> {
+  const startedAt = performance.now();
+  const [ok, error, result] = await t(() => httpFetch<T>(req));
+  const durationMs = performance.now() - startedAt;
+  const labels = { ok: String(ok) };
+  metrics.requests.inc(labels);
+  metrics.duration.observe(labels, durationMs / 1000);
+
+  if (!ok) {
     console.error(`fetchSource: failed to fetch "${req.url}"`, error);
+    onFetched?.({ url: req.url, ok: false, durationMs, error });
     return undefined;
   }
+
+  onFetched?.({ url: req.url, ok: true, statusCode: result.statusCode, durationMs });
+  return { data: result.body };
 }
 
 /**
@@ -108,6 +164,14 @@ function applyTreePath<T>(url: string | URL, data: T, treePath: string[]): T {
  *
  * `reduce` combines each round's body with the previously published value instead of replacing
  * it outright — handy with `pollingInterval` when later rounds return partial updates.
+ *
+ * `onFetched` is called once per fetch round (the first round and, with `pollingInterval`, every
+ * polled round after it) with that round's outcome: whether it succeeded, its status code, and how
+ * long it took.
+ *
+ * Every round also bumps two built-in metrics, exposed on the returned `Source` via `source.metrics`:
+ * `requests` (a `CounterMetric`, one per round) and `duration` (a `HistogramMetric`, in seconds) —
+ * both labeled `ok` (`"true"` / `"false"`).
  */
 export function fetchSource<T = unknown>(options: FetchSourceOptions<T>): Source<T> {
   const {
@@ -126,6 +190,7 @@ export function fetchSource<T = unknown>(options: FetchSourceOptions<T>): Source
     pollingInterval = false,
     treePath = [],
     reduce,
+    onFetched,
   } = options;
   const req = {
     url,
@@ -141,11 +206,13 @@ export function fetchSource<T = unknown>(options: FetchSourceOptions<T>): Source
     bodyParser,
     acceptStatus,
   };
+  const metrics = createMetrics();
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   return new Source<T>({
+    metrics,
     async start(control) {
-      const first = await fetchRound<T>(req);
+      const first = await fetchRound<T>(req, onFetched, metrics);
       if (!first) {
         control.close();
         return;
@@ -160,7 +227,7 @@ export function fetchSource<T = unknown>(options: FetchSourceOptions<T>): Source
 
       const scheduleNext = () => {
         timer = setTimeout(async () => {
-          const result = await fetchRound<T>(req);
+          const result = await fetchRound<T>(req, onFetched, metrics);
           if (result) control.set(applyTreePath(url, result.data, treePath));
           scheduleNext();
         }, pollingInterval);

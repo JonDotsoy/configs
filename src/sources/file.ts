@@ -2,6 +2,7 @@ import { watch, type FSWatcher } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { Source } from "./source.js";
 import { DotEnv } from "../utils/dotenv.js";
+import { CounterMetric, HistogramMetric, type Metric } from "../utils/metric.js";
 import { t } from "../utils/t.js";
 import { selectTreePath } from "../utils/tree-path.js";
 
@@ -40,6 +41,29 @@ export interface FileSourceOptions<T = unknown> {
    * before the first read). Defaults to publishing `incoming` as-is — a full replace.
    */
   reduce?: (incoming: T, previous: T | null) => T;
+}
+
+/** The metrics `fileSource` records, exposed as-is on the resulting `Source` via `source.metrics`. */
+type FileSourceMetrics = Record<string, Metric> & {
+  /** Reads (the initial one, and every `watch`-triggered re-read), labeled `ok` (`"true"` / `"false"`). */
+  reads: CounterMetric;
+  /** How long each read+parse took, in seconds, labeled `ok` (`"true"` / `"false"`). */
+  readDuration: HistogramMetric;
+};
+
+function createMetrics(): FileSourceMetrics {
+  return {
+    reads: new CounterMetric({
+      name: "file_source_reads_total",
+      help: "Total reads run by fileSource (initial and watch-triggered), labeled by outcome.",
+      labelNames: ["ok"],
+    }),
+    readDuration: new HistogramMetric({
+      name: "file_source_read_duration_seconds",
+      help: "How long each fileSource read+parse took, in seconds, labeled by outcome.",
+      labelNames: ["ok"],
+    }),
+  };
 }
 
 /** Picks a format from the path's extension; a bare `.env` (no basename) counts as `.env` too. Defaults to `"json"`. */
@@ -95,6 +119,10 @@ function defaultParser(path: string | URL, format: FileFormat | undefined): (buf
  * `reduce` combines each read with the previously published value instead of replacing it
  * outright — handy with `watch` when a later read is a partial update rather than a full
  * snapshot.
+ *
+ * Every read (the initial one, and every `watch`-triggered re-read) bumps two built-in metrics,
+ * exposed on the returned `Source` via `source.metrics`: `reads` (a `CounterMetric`) and
+ * `readDuration` (a `HistogramMetric`, in seconds) — both labeled `ok` (`"true"` / `"false"`).
  */
 export function fileSource<T = unknown>(
   path: string | URL,
@@ -104,20 +132,31 @@ export function fileSource<T = unknown>(
   const treePath = options.treePath ?? [];
   const parser = options.parser ?? defaultParser(path, options.format);
   const reduce = options.reduce;
+  const metrics = createMetrics();
   let watcher: FSWatcher | undefined;
 
   return new Source<T>({
+    metrics,
     async start(control) {
       async function readOnce(): Promise<boolean> {
+        const startedAt = performance.now();
+        const recordRead = (ok: boolean) => {
+          const labels = { ok: String(ok) };
+          metrics.reads.inc(labels);
+          metrics.readDuration.observe(labels, (performance.now() - startedAt) / 1000);
+        };
+
         const [readOk, readErr, buffer] = await t(() => readFile(path));
         if (!readOk) {
           console.error(`fileSource: failed to read "${path}"`, readErr);
+          recordRead(false);
           return false;
         }
 
         const [parseOk, parseErr, parsed] = await t(() => parser(buffer));
         if (!parseOk) {
           console.error(`fileSource: failed to parse "${path}"`, parseErr);
+          recordRead(false);
           return false;
         }
 
@@ -127,10 +166,12 @@ export function fileSource<T = unknown>(
             `fileSource: treePath [${treePath.map((k) => JSON.stringify(k)).join(", ")}] did not resolve to anything in "${path}"`,
           );
           control.set({} as T);
+          recordRead(true);
           return true;
         }
 
         control.set(selected as T);
+        recordRead(true);
         return true;
       }
 

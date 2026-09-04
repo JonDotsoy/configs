@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import type { CounterMetric, HistogramMetric } from "../utils/metric";
 import type { Store } from "../utils/store";
 import { sseSource } from "./sse";
 
@@ -215,6 +216,64 @@ describe("sseSource", () => {
     expect(receivedSignal?.aborted).toBe(true);
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+
+  describe("metrics", () => {
+    test("bumps connections and connectionDuration, labeled ok=true, once connected", async () => {
+      globalThis.fetch = (async () => sseResponse([JSON.stringify({ port: 3000 })])) as unknown as typeof fetch;
+
+      const source = sseSource({ url: "https://example.com/events" });
+      await source.open();
+      const connections = source.metrics.connections as CounterMetric;
+      const connectionDuration = source.metrics.connectionDuration as HistogramMetric;
+
+      expect(connections.get({ ok: "true" })).toBe(1);
+      expect(connections.get({ ok: "false" })).toBe(0);
+      expect(connectionDuration.get({ ok: "true" }).count).toBe(1);
+    });
+
+    test("bumps connections, labeled ok=false, when the connection fails", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      globalThis.fetch = (async () => {
+        throw new Error("network down");
+      }) as unknown as typeof fetch;
+
+      const source = sseSource({ url: "https://example.com/events" });
+      await source.open();
+      const connections = source.metrics.connections as CounterMetric;
+      const connectionDuration = source.metrics.connectionDuration as HistogramMetric;
+
+      expect(connections.get({ ok: "false" })).toBe(1);
+      expect(connections.get({ ok: "true" })).toBe(0);
+      expect(connectionDuration.get({ ok: "false" }).count).toBe(1);
+      errorSpy.mockRestore();
+    });
+
+    test("bumps connections, labeled ok=false, on a non-ok response", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      globalThis.fetch = (async () => new Response(null, { status: 500 })) as unknown as typeof fetch;
+
+      const source = sseSource({ url: "https://example.com/events" });
+      await source.open();
+      const connections = source.metrics.connections as CounterMetric;
+
+      expect(connections.get({ ok: "false" })).toBe(1);
+      errorSpy.mockRestore();
+    });
+
+    test("bumps messages per event, labeled by whether it parsed to a valid patch", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      globalThis.fetch = (async () =>
+        sseResponse(["{not json", JSON.stringify({ port: 3000 })])) as unknown as typeof fetch;
+
+      const source = sseSource({ url: "https://example.com/events" });
+      await source.open();
+      const messages = source.metrics.messages as CounterMetric;
+
+      expect(messages.get({ ok: "true" })).toBe(1);
+      expect(messages.get({ ok: "false" })).toBe(1);
+      errorSpy.mockRestore();
+    });
   });
 
   describe("reduce", () => {

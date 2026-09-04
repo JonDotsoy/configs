@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { CounterMetric } from "../utils/metric";
 import { Source } from "./source";
 
 describe("Source reduce", () => {
@@ -59,5 +60,47 @@ describe("Source reduce", () => {
     const store = await source.open();
 
     expect(store.get()).toEqual({ port: 3000, host: "localhost" });
+  });
+});
+
+describe("Source metrics", () => {
+  test("defaults to an empty object when no metrics are given", () => {
+    const source = new Source<number>({
+      start(control) {
+        control.set(1);
+        control.close();
+      },
+    });
+
+    expect(source.metrics).toEqual({});
+  });
+
+  test("exposes the metrics passed to the constructor", () => {
+    const rounds = new CounterMetric({ name: "rounds_total" });
+    const source = new Source<number>({
+      metrics: { rounds },
+      start(control) {
+        rounds.inc();
+        control.set(1);
+        control.close();
+      },
+    });
+
+    expect(source.metrics.rounds).toBe(rounds);
+  });
+
+  test("start() can bump a metric through `this.metrics`, reachable via the underlying object", async () => {
+    const rounds = new CounterMetric({ name: "rounds_total" });
+    const source = new Source<number>({
+      metrics: { rounds },
+      start(control) {
+        (this.metrics?.rounds as CounterMetric | undefined)?.inc();
+        control.set(1);
+        control.close();
+      },
+    });
+    await source.open();
+
+    expect(rounds.get()).toBe(1);
   });
 });

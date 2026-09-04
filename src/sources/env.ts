@@ -1,3 +1,4 @@
+import { GaugeMetric, type Metric } from "../utils/metric.js";
 import { Source } from "./source.js";
 
 /** Maps an env var key to a path into the config tree, e.g. `mapKey("FOO_TAR")`. */
@@ -58,15 +59,38 @@ function setPath(target: Record<string, unknown>, path: string[], value: string)
   node[path[path.length - 1]!] = value;
 }
 
-/** A `Source` that snapshots `env` into a config tree, one field per key (as mapped by `mapKey`). */
+/** The metrics `envSource` records, exposed as-is on the resulting `Source` via `source.metrics`. */
+type EnvSourceMetrics = Record<string, Metric> & {
+  /** How many env vars ended up in the config tree, after `prefix`/`suffix` filtering. */
+  keys: GaugeMetric;
+};
+
+function createMetrics(): EnvSourceMetrics {
+  return {
+    keys: new GaugeMetric({
+      name: "env_source_keys",
+      help: "How many env vars envSource included in the config tree, after prefix/suffix filtering.",
+    }),
+  };
+}
+
+/**
+ * A `Source` that snapshots `env` into a config tree, one field per key (as mapped by `mapKey`).
+ *
+ * Records a `keys` `GaugeMetric` — how many env vars ended up in the tree after `prefix`/`suffix`
+ * filtering — exposed on the returned `Source` via `source.metrics`.
+ */
 export function envSource(options: EnvSourceOptions = {}): Source<Record<string, unknown>> {
   const env = options.env ?? process.env;
   const { prefix, suffix } = options;
   const mapKey = options.mapKey ?? ((key: string) => [key]);
+  const metrics = createMetrics();
 
   return new Source<Record<string, unknown>>({
+    metrics,
     start(control) {
       const tree: Record<string, unknown> = {};
+      let keyCount = 0;
       for (const [key, value] of Object.entries(env)) {
         if (value === undefined) continue;
         if (prefix !== undefined && !key.startsWith(prefix)) continue;
@@ -77,7 +101,9 @@ export function envSource(options: EnvSourceOptions = {}): Source<Record<string,
           suffix !== undefined ? key.length - suffix.length : key.length,
         );
         setPath(tree, mapKey(trimmedKey), value);
+        keyCount++;
       }
+      metrics.keys.set(keyCount);
       control.set(tree);
       control.close();
     },

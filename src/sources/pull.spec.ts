@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { configs } from "../configs";
+import type { CounterMetric, HistogramMetric } from "../utils/metric";
 import { pullSource } from "./pull";
 
 describe("pullSource", () => {
@@ -98,6 +99,55 @@ describe("pullSource", () => {
 
     await source.close();
     errorSpy.mockRestore();
+  });
+
+  describe("metrics", () => {
+    test("bumps pulls and pullDuration, labeled ok=true, on a successful round", async () => {
+      const source = pullSource({ pull: () => ({ ok: true }), interval: 1000 });
+      await source.open();
+      const pulls = source.metrics.pulls as CounterMetric;
+      const pullDuration = source.metrics.pullDuration as HistogramMetric;
+
+      expect(pulls.get({ ok: "true" })).toBe(1);
+      expect(pulls.get({ ok: "false" })).toBe(0);
+      expect(pullDuration.get({ ok: "true" }).count).toBe(1);
+
+      await source.close();
+    });
+
+    test("bumps pulls, labeled ok=false, when `pull` throws", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+
+      const source = pullSource({
+        pull: () => {
+          throw new Error("boom");
+        },
+        interval: 1000,
+      });
+      await source.open();
+      const pulls = source.metrics.pulls as CounterMetric;
+      const pullDuration = source.metrics.pullDuration as HistogramMetric;
+
+      expect(pulls.get({ ok: "false" })).toBe(1);
+      expect(pulls.get({ ok: "true" })).toBe(0);
+      expect(pullDuration.get({ ok: "false" }).count).toBe(1);
+      errorSpy.mockRestore();
+    });
+
+    test("bumps pulls again on every polled round", async () => {
+      let calls = 0;
+      const source = pullSource({
+        pull: () => ({ count: ++calls }),
+        interval: 5,
+      });
+      await source.open();
+      const pulls = source.metrics.pulls as CounterMetric;
+
+      await Bun.sleep(30);
+
+      expect(pulls.get({ ok: "true" })).toBe(calls);
+      await source.close();
+    });
   });
 
   describe("shape of the data returned by `pull`", () => {

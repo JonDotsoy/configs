@@ -18,7 +18,7 @@ export type {
 export type { SourceControl, UnderlyingSource } from "./types/index.js";
 export type { DataType, DataTypeName } from "./utils/data-types.js";
 export type { EnvSourceOptions, EnvKeyMapper } from "./sources/env.js";
-export type { FetchSourceOptions } from "./sources/fetch.js";
+export type { FetchSourceOptions, FetchedEvent } from "./sources/fetch.js";
 export type { SseSourceOptions } from "./sources/sse.js";
 export type { FileSourceOptions } from "./sources/file.js";
 export type { PullSourceOptions } from "./sources/pull.js";

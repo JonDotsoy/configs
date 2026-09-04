@@ -1,3 +1,4 @@
+import type { Metric } from "../utils/metric.js";
 import { Store } from "../utils/store.js";
 import type { SourceControl, UnderlyingSource } from "../types/index.js";
 
@@ -14,7 +15,11 @@ export class Source<T = unknown> {
   private closePromise: Promise<void> | undefined;
   private readonly startPromise: Promise<void>;
 
+  /** The `metrics` passed to `new Source({ metrics: {...}, ... })`, or `{}` when none were given. */
+  readonly metrics: Record<string, Metric>;
+
   constructor(private readonly underlying: UnderlyingSource<T>) {
+    this.metrics = underlying.metrics ?? {};
     const control: SourceControl<T> = {
       // Silently dropped once closed — `close()` can race a still-running `start()` (e.g. an
       // external close while a fetch is in flight), and that shouldn't make `open()` reject.

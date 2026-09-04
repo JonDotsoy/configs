@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import type { CounterMetric, HistogramMetric } from "../utils/metric";
 import { fetchSource } from "./fetch";
 
 const originalFetch = globalThis.fetch;
@@ -308,6 +309,115 @@ describe("fetchSource", () => {
       expect(calls).toBeGreaterThan(1);
       expect(store.get()).toEqual({ port: calls });
 
+      await source.close();
+    });
+  });
+
+  describe("onFetched", () => {
+    test("reports a successful round with its status code and duration", async () => {
+      globalThis.fetch = (async () => jsonResponse(JSON.stringify({ port: 3000 }))) as unknown as typeof fetch;
+
+      const events: Array<{ ok: boolean; statusCode?: number; durationMs: number; error?: unknown }> = [];
+      const source = fetchSource({
+        url: "https://example.com/config",
+        onFetched: (event) => events.push(event),
+      });
+      await source.open();
+
+      expect(events).toHaveLength(1);
+      expect(events[0]?.ok).toBe(true);
+      expect(events[0]?.statusCode).toBe(200);
+      expect(events[0]?.durationMs).toBeGreaterThanOrEqual(0);
+      expect(events[0]?.error).toBeUndefined();
+    });
+
+    test("reports a failed round with its error and no status code", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      globalThis.fetch = (async () => {
+        throw new Error("network down");
+      }) as unknown as typeof fetch;
+
+      const events: Array<{ ok: boolean; statusCode?: number; error?: unknown }> = [];
+      const source = fetchSource({
+        url: "https://example.com/config",
+        onFetched: (event) => events.push(event),
+      });
+      await source.open();
+
+      expect(events).toHaveLength(1);
+      expect(events[0]?.ok).toBe(false);
+      expect(events[0]?.statusCode).toBeUndefined();
+      expect(events[0]?.error).toBeInstanceOf(Error);
+      errorSpy.mockRestore();
+    });
+
+    test("reports one event per polled round", async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        return jsonResponse(JSON.stringify({ port: calls }));
+      }) as unknown as typeof fetch;
+
+      const events: unknown[] = [];
+      const source = fetchSource({
+        url: "https://example.com/config",
+        pollingInterval: 5,
+        onFetched: (event) => events.push(event),
+      });
+      await source.open();
+
+      await Bun.sleep(30);
+
+      expect(events.length).toBe(calls);
+      await source.close();
+    });
+  });
+
+  describe("metrics", () => {
+    test("bumps requests and duration, labeled ok=true, on a successful round", async () => {
+      globalThis.fetch = (async () => jsonResponse(JSON.stringify({ port: 3000 }))) as unknown as typeof fetch;
+
+      const source = fetchSource({ url: "https://example.com/config" });
+      await source.open();
+      const requests = source.metrics.requests as CounterMetric;
+      const duration = source.metrics.duration as HistogramMetric;
+
+      expect(requests.get({ ok: "true" })).toBe(1);
+      expect(requests.get({ ok: "false" })).toBe(0);
+      expect(duration.get({ ok: "true" }).count).toBe(1);
+    });
+
+    test("bumps requests and duration, labeled ok=false, on a failed round", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      globalThis.fetch = (async () => {
+        throw new Error("network down");
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource({ url: "https://example.com/config" });
+      await source.open();
+      const requests = source.metrics.requests as CounterMetric;
+      const duration = source.metrics.duration as HistogramMetric;
+
+      expect(requests.get({ ok: "false" })).toBe(1);
+      expect(requests.get({ ok: "true" })).toBe(0);
+      expect(duration.get({ ok: "false" }).count).toBe(1);
+      errorSpy.mockRestore();
+    });
+
+    test("accumulates one observation per polled round", async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        return jsonResponse(JSON.stringify({ port: calls }));
+      }) as unknown as typeof fetch;
+
+      const source = fetchSource({ url: "https://example.com/config", pollingInterval: 5 });
+      await source.open();
+      const requests = source.metrics.requests as CounterMetric;
+
+      await Bun.sleep(30);
+
+      expect(requests.get({ ok: "true" })).toBe(calls);
       await source.close();
     });
   });

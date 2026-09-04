@@ -102,7 +102,7 @@ interface Series<TState> {
   state: TState;
 }
 
-export abstract class Metric<TState> {
+export abstract class Metric<TState = unknown> {
   readonly name: string;
   readonly help: string;
   readonly labelNames: readonly string[];
