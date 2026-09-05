@@ -153,18 +153,57 @@ async function runCli(engine: CliEngine, scratchDir: string, caseFile: string): 
   return { compileCommand, output, passed };
 }
 
+/**
+ * Reads the installed package's own package.json "exports" map and resolves each subpath to its
+ * real file under the scratch directory's node_modules — e.g. "@jondotsoy/configs/sources/env" ->
+ * ".../node_modules/@jondotsoy/configs/dist/sources/env.js". Bundling against these resolved paths
+ * directly (rather than leaving `Bun.build` to walk node_modules and match exports conditions on
+ * its own for a `target: "browser"` build) sidesteps bundler-version quirks in that matching for a
+ * scoped package, while still exercising the exact files the installed tarball's own exports map
+ * points at.
+ */
+async function loadConfigsExportsMap(scratchDir: string): Promise<Record<string, string>> {
+  const pkgDir = join(scratchDir, "node_modules/@jondotsoy/configs");
+  const pkg = JSON.parse(await readFile(join(pkgDir, "package.json"), "utf8")) as {
+    exports: Record<string, { import?: string; default?: string }>;
+  };
+  const map: Record<string, string> = {};
+  for (const [subpath, conditions] of Object.entries(pkg.exports)) {
+    const target = conditions.import ?? conditions.default;
+    if (!target) continue;
+    const specifier = subpath === "." ? "@jondotsoy/configs" : `@jondotsoy/configs/${subpath.replace(/^\.\//, "")}`;
+    map[specifier] = join(pkgDir, target);
+  }
+  return map;
+}
+
+function configsExportsPlugin(exportsMap: Record<string, string>) {
+  return {
+    name: "configs-exports",
+    setup(build: Parameters<NonNullable<Parameters<typeof Bun.build>[0]["plugins"]>[number]["setup"]>[0]) {
+      build.onResolve({ filter: /^@jondotsoy\/configs(\/.*)?$/ }, (args: { path: string }) => {
+        const resolved = exportsMap[args.path];
+        if (!resolved) throw new Error(`configs-exports: "${args.path}" isn't in the installed package's exports map`);
+        return { path: resolved };
+      });
+    },
+  };
+}
+
 async function runBrowser(
   browser: Awaited<ReturnType<typeof chromium.launch>> | undefined,
   scratchDir: string,
   caseFile: string,
+  exportsMap: Record<string, string>,
 ): Promise<{ compileCommand: string; output: string; passed: boolean; skippedReason?: string }> {
   const relPath = `test/cases/${caseFile}`;
-  const compileCommand = `$ bun build ${relPath} --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's node_modules, inlined into an index.html, driven by Playwright's Chromium)`;
+  const compileCommand = `$ bun build ${relPath} --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`;
 
   const buildResult = await Bun.build({
     entrypoints: [join(scratchDir, caseFile)],
     target: "browser",
     format: "esm",
+    plugins: [configsExportsPlugin(exportsMap)],
   });
   if (!buildResult.success) {
     return { compileCommand, output: buildResult.logs.map(String).join("\n"), passed: false };
@@ -225,6 +264,7 @@ async function main() {
   await Bun.$`bun run build`.cwd(repoRoot).quiet();
 
   const scratchDir = await packAndInstall();
+  const exportsMap = await loadConfigsExportsMap(scratchDir);
 
   // Prefer the sandbox's pre-installed Chromium; elsewhere (e.g. GitHub Actions, after a plain
   // `bunx playwright install`), fall back to Playwright's own resolution. A launch that still fails
@@ -248,7 +288,7 @@ async function main() {
         console.log(`-- ${caseDef.file} (${engine}) --`);
         const tolerated = caseDef.tolerateFailureEngines?.includes(engine) ?? false;
         if (engine === "browser") {
-          const r = await runBrowser(browser, scratchDir, caseDef.file);
+          const r = await runBrowser(browser, scratchDir, caseDef.file, exportsMap);
           results.push({ caseDef, engine, tolerated, ...r });
         } else {
           const cliEngine = cliEngines.find((e) => e.name === engine)!;
