@@ -48,19 +48,6 @@ jobs:
         continue-on-error: true
         run: bunx tsc --noEmit -p tsconfig.json
 
-      - name: bun run test:pack
-        id: test_pack
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          bun run test:pack 2>&1 | tee test-pack-output.txt
-
-      - name: Summarize test:pack coverage
-        id: test_pack_summary
-        run: |
-          ok=$(grep -cE '^ok - ' test-pack-output.txt || true)
-          echo "ok=${ok:-0}" >> "$GITHUB_OUTPUT"
-
       - name: Install Playwright browsers
         run: bunx playwright install --with-deps chromium
 
@@ -83,41 +70,9 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: lts/*
-      - name: Record Node LTS binary
-        run: echo "NODE_LST_BIN=$(which node)" >> "$GITHUB_ENV"
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: latest
-      - name: Record Node latest binary
-        run: echo "NODE_LATEST_BIN=$(which node)" >> "$GITHUB_ENV"
-
       - uses: denoland/setup-deno@v2
         with:
           deno-version: latest
-      - name: Record Deno latest binary
-        run: echo "DENO_LATEST_BIN=$(which deno)" >> "$GITHUB_ENV"
-
-      - name: Record Bun latest binary
-        run: echo "BUN_LATEST_BIN=$(which bun)" >> "$GITHUB_ENV"
-
-      - name: bun run test:integration
-        id: test_integration
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          bun run test:integration 2>&1 | tee test-integration-output.txt
-
-      - name: Summarize test:integration coverage
-        id: test_integration_summary
-        run: |
-          pass=$(grep -oE '^[[:space:]]*[0-9]+ pass' test-integration-output.txt | grep -oE '[0-9]+' || echo 0)
-          skip=$(grep -oE '^[[:space:]]*[0-9]+ skip' test-integration-output.txt | grep -oE '[0-9]+' || echo 0)
-          fail=$(grep -oE '^[[:space:]]*[0-9]+ fail' test-integration-output.txt | grep -oE '[0-9]+' || echo 0)
-          total=$((pass + skip + fail))
-          echo "pass=$pass" >> "$GITHUB_OUTPUT"
-          echo "skip=$skip" >> "$GITHUB_OUTPUT"
-          echo "total=$total" >> "$GITHUB_OUTPUT"
 
       - name: Record CLI binaries for test:cases
         run: |
@@ -265,9 +220,7 @@ jobs:
             echo "| --- | --- | --- |"
             echo "| \`bun test\` | ${{ steps.bun_test.outcome == 'success' && '✅' || '❌' }} | ${{ steps.bun_test_summary.outputs.pass }}/${{ steps.bun_test_summary.outputs.total }} tests passed |"
             echo "| \`bunx tsc --noEmit -p tsconfig.json\` | ${{ steps.tsc.outcome == 'success' && '✅' || '❌' }} | — |"
-            echo "| \`bun run test:pack\` | ${{ steps.test_pack.outcome == 'success' && '✅' || '❌' }} | ${{ steps.test_pack_summary.outputs.ok }} import checks passed |"
             echo "| \`bun run test:browser\` | ${{ steps.test_browser.outcome == 'success' && '✅' || '❌' }} | ${{ steps.test_browser_summary.outputs.passed }}/${{ steps.test_browser_summary.outputs.total }} tests passed |"
-            echo "| \`bun run test:integration\` | ${{ steps.test_integration.outcome == 'success' && '✅' || '❌' }} | ${{ steps.test_integration_summary.outputs.pass }}/${{ steps.test_integration_summary.outputs.total }} runtimes verified (${{ steps.test_integration_summary.outputs.skip }} skipped) |"
             echo "| \`bun run test:cases\` | ${{ steps.test_cases.outcome == 'success' && '✅' || '❌' }} | ${{ steps.test_cases_summary.outputs.passed }}/${{ steps.test_cases_summary.outputs.total }} case runs passed (${{ steps.test_cases_summary.outputs.warned }} warned, ${{ steps.test_cases_summary.outputs.skipped }} skipped) |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -286,17 +239,9 @@ jobs:
               "`bunx tsc --noEmit -p tsconfig.json`": {
                 outcome: "${{ steps.tsc.outcome }}",
               },
-              "`bun run test:pack`": {
-                outcome: "${{ steps.test_pack.outcome }}",
-                coverage: "${{ steps.test_pack_summary.outputs.ok }} import checks passed",
-              },
               "`bun run test:browser`": {
                 outcome: "${{ steps.test_browser.outcome }}",
                 coverage: "${{ steps.test_browser_summary.outputs.passed }}/${{ steps.test_browser_summary.outputs.total }} tests passed",
-              },
-              "`bun run test:integration`": {
-                outcome: "${{ steps.test_integration.outcome }}",
-                coverage: "${{ steps.test_integration_summary.outputs.pass }}/${{ steps.test_integration_summary.outputs.total }} runtimes verified (${{ steps.test_integration_summary.outputs.skip }} skipped)",
               },
               "`bun run test:cases`": {
                 outcome: "${{ steps.test_cases.outcome }}",
@@ -330,8 +275,6 @@ jobs:
         if: |
           steps.bun_test.outcome == 'failure' ||
           steps.tsc.outcome == 'failure' ||
-          steps.test_pack.outcome == 'failure' ||
           steps.test_browser.outcome == 'failure' ||
-          steps.test_integration.outcome == 'failure' ||
           steps.test_cases.outcome == 'failure'
         run: exit 1

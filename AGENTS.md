@@ -34,7 +34,6 @@ src/
 
 scripts/
   build.sh                  # bun build (entry points read from package.json "exports")
-  manual-pack-test.ts       # bun run test:pack — see "Before opening a PR" below
 
 dist/                      # build output, gitignored, published via "files"/"exports"
 ```
@@ -102,49 +101,22 @@ release process; don't invent one yourself.
 
 ### Before opening a PR
 
-Run both, from the repo root, and make sure they pass before pushing:
+Run, from the repo root, and make sure it passes before pushing:
 
 ```sh
 bun test
-bun run test:pack
 ```
-
-`bun test` runs the unit specs. `bun run test:pack` builds the package,
-packs it with `bun pm pack`, installs the tarball into a scratch temp
-directory like a real consumer would, verifies every import path
-(`@jondotsoy/configs` and each `sources/*` subpath) actually resolves
-and works, and checks that no stray file leaked into the tarball beyond
-`dist/**` and the files npm/bun always include (`package.json`, `README.md`,
-`LICENSE`).
 
 When opening the PR itself, use the matching template under
 `.github/PULL_REQUEST_TEMPLATE/` — `bug_fix.md` for a fix,
 `feature.md` for new functionality (pick via GitHub's `?template=`
 query param, or `gh pr create --template`). Both share a `## Summary`
 of what changed and a `## Test plan` checklist covering `bun test`,
-`bunx tsc --noEmit -p tsconfig.json`, `bun run test:pack`,
-`bun run test:integration`, and `bun run test:cases` — check off what you
-ran, and note anything skipped (e.g. a runtime binary unavailable in the
-environment) instead of silently omitting it. `.github/workflows/pr-test-plan.yaml`
-runs the whole test plan (including `test:cases`) on every PR and reflects
-each step's real outcome back onto this checklist.
-
-### Cross-runtime integration suite
-
-`test/integration/runtime-imports.ts` verifies the packed tarball actually
-imports and works under Node LTS, Node latest, Bun latest, and Deno latest —
-not just under Bun via source resolution like the unit specs do. It isn't
-part of the default `bun test` sweep (its filename has no `.test`/`.spec`),
-so run it explicitly, pointing each env var at a runtime binary (any of the
-four may be omitted — that runtime is skipped, not failed):
-
-```sh
-NODE_LST_BIN=/path/to/node-lts \
-NODE_LATEST_BIN=/path/to/node-latest \
-BUN_LATEST_BIN=/path/to/bun \
-DENO_LATEST_BIN=/path/to/deno \
-bun run test:integration
-```
+`bunx tsc --noEmit -p tsconfig.json`, and `bun run test:cases` — check off
+what you ran, and note anything skipped instead of silently omitting it.
+`.github/workflows/pr-test-plan.yaml` runs the whole test plan (including
+`test:cases`) on every PR and reflects each step's real outcome back onto
+this checklist.
 
 ### Per-scenario engine coverage (`test/cases/`)
 
@@ -155,15 +127,20 @@ detail. `test/cases/manifest.ts` registers every case and which engines
 (`node`, `bun`, `deno`, `browser`) it's expected to run under; add both the
 script and its manifest entry together.
 
-`bun run test:cases` (`scripts/run-test-cases.ts`) runs every case under
-every engine it declares: node/bun/deno run the script directly against the
-built `dist/` (via each runtime's own package self-reference resolution —
-no packing/installing needed), while the browser engine bundles the same
-script with `Bun.build` (aliasing `@jondotsoy/configs` to its `src/*.ts`
-source, the same way `test/browser/app.tsx` does by hand) into a small page
-driven by Playwright's Chromium. A missing `node`/`bun`/`deno` binary skips
-that engine's row instead of failing the run (override with `NODE_BIN` /
-`BUN_BIN` / `DENO_BIN`).
+`bun run test:cases` (`scripts/run-test-cases.ts`) builds `dist/`, packs it
+with `bun pm pack` — the same packing a real `npm pack`/`npm publish` does —
+and installs the tarball with `npm install` into a scratch directory
+unrelated to this repo's own `package.json`. Each case is copied into that
+directory before running, so its `@jondotsoy/configs` imports can only
+resolve through the installed `node_modules`, never through Node/Bun's own
+self-reference (which would silently mask a packaging mistake — a missing
+export, a stray or omitted file — by falling back to the workspace source).
+node/bun/deno run the copied script directly with each runtime's own
+binary; the browser engine bundles it with `Bun.build`, resolving
+`@jondotsoy/configs` from that same scratch `node_modules`, into a small
+page driven by Playwright's Chromium. A missing `node`/`bun`/`deno` binary
+skips that engine's row instead of failing the run (override with
+`NODE_BIN` / `BUN_BIN` / `DENO_BIN`).
 
 Every run writes `test-cases-report/report.md`: one section per
 case-and-engine combination, with the script's full source, the exact
@@ -246,7 +223,7 @@ Default to using Bun instead of Node.js.
 
 ## Testing
 
-Use `bun test` to run tests. Specs live next to the module they cover as
+Unit tests use `bun test`. Specs live next to the module they cover as
 `*.spec.ts` (e.g. `src/utils/store.spec.ts`).
 
 ```ts#index.test.ts
@@ -271,6 +248,14 @@ test("port narrows to number when a default is set", () => {
   expectTypeOf(cfg.port.get()).toEqualTypeOf<number>();
 });
 ```
+
+Integration tests exercise the latest built implementation, not source via
+Bun's resolver: each is a single, self-contained script under
+`test/cases/` (e.g. `test/cases/16-shell-source-runs-command.ts`) that runs
+unmodified end-to-end against the built `dist/` output, registered in
+`test/cases/manifest.ts` with the engines (`node`/`bun`/`deno`/`browser`) it
+must pass under. Run them with `bun run test:cases` (see "Per-scenario
+engine coverage" below).
 
 ## Frontend
 

@@ -55,8 +55,6 @@ jobs:
         run: bun run build
       - if: steps.check-release.outputs.exists == 'false'
         run: bun test
-      - if: steps.check-release.outputs.exists == 'false'
-        run: bun run test:pack
 
       - name: Determine npm dist-tag
         id: dist-tag

@@ -69,8 +69,8 @@ como `test.ts` en cada paso que lo pida:
 - [ ] **Subpaths** — al menos un import de `sources/*` (`envSource`, `fetchSource`,
       `sseSource`, `fileSource` o `literalSource`) resuelto desde su propio subpath,
       no solo desde la raíz.
-- [ ] **`bun test` + `bun run test:pack`** en el repo, en verde, antes de subir la
-      versión ([detalle](#antes-de-publicar)).
+- [ ] **`bun test`** en el repo, en verde, antes de subir la versión
+      ([detalle](#antes-de-publicar)).
 
 Cualquier ítem que falle es motivo para no publicar (o para revertir) hasta
 entender la causa — ver la sección de cada entorno para el paso a paso completo.
@@ -110,12 +110,12 @@ Ejecutado con `SERVER_PORT=4000 SERVER_HOST=example.com`, `port` debe ser `4000`
 ### Caso de uso: verificación exhaustiva de exports (imports del repo)
 
 Para cubrir además `fetchSource`, `sseSource`, `literalSource`, `Source` y
-`ConfigError` del core, y `fetchSource`/`sseSource` como subpaths, el repo ya trae un
-fixture runtime-agnóstico que hace exactamente esto — reutilizable tal cual en
-cualquier entorno:
+`ConfigError` del core, y `fetchSource`/`sseSource` como subpaths, este fixture
+runtime-agnóstico hace exactamente eso — copiarlo tal cual como `check-imports.mjs`
+en cualquier entorno:
 
 ```js
-// test/integration/fixtures/check-imports.mjs
+// check-imports.mjs
 import { configs, envSource, literalSource, mapKey, Source, ConfigError } from "@jondotsoy/configs";
 import { envSource as envSourceFromSubpath } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
@@ -195,7 +195,7 @@ recibe un consumidor nuevo, y lo que hay que validar después de cada `npm publi
    node --experimental-strip-types test.ts
    ```
 
-Automatizado en el repo vía `bun run test:integration` (`test/integration/runtime-imports.ts`), aunque esa suite instala el tarball recién empaquetado (no la última de npm) con `npm install` y corre el fixture con binarios reales de `NODE_LST_BIN`/`NODE_LATEST_BIN` — solo valida runtime, no tipado.
+Cubierto parcialmente en el repo vía `bun run test:cases` (engine `node`) — empaqueta con `bun pm pack` e instala ese tarball con `npm install` en un directorio aparte antes de correr el caso, así que sí valida la instalación real del paquete empaquetado (no la última de npm, pero sí el mismo tarball que se publicaría); solo valida runtime, no tipado.
 
 ### Bun
 
@@ -230,7 +230,7 @@ Automatizado en el repo vía `bun run test:integration` (`test/integration/runti
    bun run test.ts
    ```
 
-Automatizado en el repo vía `bun run test:pack` (`scripts/manual-pack-test.ts`, empaqueta + instala + corre el fixture bajo Bun) y también por `bun run test:integration` vía `BUN_LATEST_BIN` — ambos usan el tarball recién construido, no la última de npm, y solo validan runtime, no tipado.
+Cubierto parcialmente en el repo vía `bun run test:cases` (engine `bun`) — mismo tarball empaquetado con `bun pm pack` e instalado con `npm install`, no la última versión de npm; solo valida runtime, no tipado.
 
 ### Deno
 
@@ -249,7 +249,7 @@ Automatizado en el repo vía `bun run test:pack` (`scripts/manual-pack-test.ts`,
    deno run --allow-env test.ts
    ```
 
-`deno check` corre el propio type-checker de Deno (basado en TSC) contra los mismos `.d.ts` publicados — una tercera validación independiente de la de `nodenext`. Automatizado en el repo vía `bun run test:integration` con `DENO_LATEST_BIN` (usa el tarball recién construido, solo runtime; `envSource()` sin `env` explícito lee todo `process.env`, por lo que Deno necesita `--allow-env` sin scope).
+`deno check` corre el propio type-checker de Deno (basado en TSC) contra los mismos `.d.ts` publicados — una tercera validación independiente de la de `nodenext`. Cubierto parcialmente en el repo vía `bun run test:cases` (engine `deno`, con `--node-modules-dir=auto` contra el mismo tarball empaquetado e instalado) — solo runtime; `envSource()` sin `env` explícito lee todo `process.env`, por lo que Deno necesita `--allow-env` sin scope.
 
 ### Bundlers de navegador (`bun build --target browser` / Vite)
 
@@ -372,7 +372,6 @@ Como mínimo:
 
 ```sh
 bun test
-bun run test:pack
 ```
 
 Si el cambio toca tipos públicos o algo en `src/sources/*`/`src/config.types.ts`,
