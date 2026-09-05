@@ -127,15 +127,20 @@ detail. `test/cases/manifest.ts` registers every case and which engines
 (`node`, `bun`, `deno`, `browser`) it's expected to run under; add both the
 script and its manifest entry together.
 
-`bun run test:cases` (`scripts/run-test-cases.ts`) runs every case under
-every engine it declares: node/bun/deno run the script directly against the
-built `dist/` (via each runtime's own package self-reference resolution —
-no packing/installing needed), while the browser engine bundles the same
-script with `Bun.build` (aliasing `@jondotsoy/configs` to its `src/*.ts`
-source, the same way `test/browser/app.tsx` does by hand) into a small page
-driven by Playwright's Chromium. A missing `node`/`bun`/`deno` binary skips
-that engine's row instead of failing the run (override with `NODE_BIN` /
-`BUN_BIN` / `DENO_BIN`).
+`bun run test:cases` (`scripts/run-test-cases.ts`) builds `dist/`, packs it
+with `bun pm pack` — the same packing a real `npm pack`/`npm publish` does —
+and installs the tarball with `npm install` into a scratch directory
+unrelated to this repo's own `package.json`. Each case is copied into that
+directory before running, so its `@jondotsoy/configs` imports can only
+resolve through the installed `node_modules`, never through Node/Bun's own
+self-reference (which would silently mask a packaging mistake — a missing
+export, a stray or omitted file — by falling back to the workspace source).
+node/bun/deno run the copied script directly with each runtime's own
+binary; the browser engine bundles it with `Bun.build`, resolving
+`@jondotsoy/configs` from that same scratch `node_modules`, into a small
+page driven by Playwright's Chromium. A missing `node`/`bun`/`deno` binary
+skips that engine's row instead of failing the run (override with
+`NODE_BIN` / `BUN_BIN` / `DENO_BIN`).
 
 Every run writes `test-cases-report/report.md`: one section per
 case-and-engine combination, with the script's full source, the exact

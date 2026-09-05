@@ -4,18 +4,23 @@
  * (node, bun, deno, browser), and writes a Markdown report to
  * test-cases-report/report.md.
  *
- * node/bun/deno cases run straight from source: `bun run build` first
- * produces dist/, and each runtime's own self-reference resolution (its
- * package.json's "name" + "exports" fields) resolves the bare
- * `@jondotsoy/configs` specifiers in test/cases/*.ts against that dist/ —
- * no packing/installing needed, since the cases run from inside this repo.
+ * Every case runs against the packed, installed tarball, not the repo's own
+ * source or dist/ via self-reference: `bun run build` produces dist/, `bun
+ * pm pack` packs it exactly like a real `npm pack`/`npm publish` would, and
+ * the resulting tarball is installed with `npm install` into a scratch
+ * directory that has no relation to this repo's own package.json. Each case
+ * file is copied into that scratch directory before running it, so its bare
+ * `@jondotsoy/configs` (and subpath) imports can only resolve through the
+ * installed `node_modules` — not through Node/Bun's own-package
+ * self-reference, which would silently mask a packaging mistake (a missing
+ * export, a stray/omitted file) by falling back to the workspace source.
  *
- * The browser case bundles the same case file with `Bun.build` (target:
- * "browser"), aliasing `@jondotsoy/configs` and its subpaths straight to
- * their `src/*.ts` source (mirroring test/browser/app.tsx, which does the
- * same by hand) since a browser page can't resolve a bare npm specifier on
- * its own. The bundle is inlined into a small HTML page and driven with
- * Playwright's Chromium, matching this repo's existing browser test setup
+ * The browser case bundles that same copied file with `Bun.build` (target:
+ * "browser"), letting it resolve `@jondotsoy/configs` from the scratch
+ * directory's `node_modules` too — so the browser bundle is built from the
+ * same packed `dist/**` output as the CLI engines, not from `src/*.ts`.
+ * The bundle is inlined into a small HTML page and driven with Playwright's
+ * Chromium, matching this repo's existing browser test setup
  * (playwright.config.ts).
  *
  * A case can list an engine in its `tolerateFailureEngines` (test/cases/manifest.ts) to say
@@ -30,8 +35,10 @@
  * PATH; a missing binary just skips that engine's rows in the report).
  */
 import { chromium } from "@playwright/test";
+import { $ } from "bun";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cases, type CaseDef, type Engine } from "../test/cases/manifest.js";
 
@@ -52,8 +59,13 @@ const cliEngines: CliEngine[] = [
   { name: "node", bin: process.env.NODE_BIN ?? Bun.which("node") ?? undefined, args: (f) => ["--experimental-strip-types", "--no-warnings", f] },
   { name: "bun", bin: process.env.BUN_BIN ?? Bun.which("bun") ?? undefined, args: (f) => [f] },
   // --allow-run: shellSource's test case spawns a real command via node:child_process, which
-  // Deno's permission system gates the same as its own Deno.Command.
-  { name: "deno", bin: process.env.DENO_BIN ?? Bun.which("deno") ?? undefined, args: (f) => ["run", "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--allow-run", f] },
+  // Deno's permission system gates the same as its own Deno.Command. --node-modules-dir=auto picks
+  // up the scratch directory's npm-installed node_modules instead of Deno's own npm cache/registry.
+  {
+    name: "deno",
+    bin: process.env.DENO_BIN ?? Bun.which("deno") ?? undefined,
+    args: (f) => ["run", "--node-modules-dir=auto", "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--allow-run", f],
+  },
 ];
 
 interface CaseResult {
@@ -67,7 +79,55 @@ interface CaseResult {
   tolerated: boolean;
 }
 
-async function runCli(engine: CliEngine, caseFile: string): Promise<{ compileCommand: string; output: string; passed: boolean; skippedReason?: string }> {
+/**
+ * Packs the current build (`bun run build` must have already run) with `bun pm pack` — the same
+ * packing bun/npm consumers get from `npm pack`/`npm publish` — and installs the tarball with
+ * `npm install` into a fresh scratch directory unrelated to this repo's own package.json, so
+ * nothing in it can resolve `@jondotsoy/configs` via workspace self-reference. Returns that
+ * directory; the caller is responsible for cleaning it up.
+ */
+async function packAndInstall(): Promise<string> {
+  console.log("== pack ==");
+  const packOutput = await $`bun pm pack`.cwd(repoRoot).quiet().text();
+  const tarballName = packOutput
+    .split("\n")
+    .map((line) => line.trim())
+    .findLast((line) => line.endsWith(".tgz"));
+  if (!tarballName) {
+    throw new Error(`Could not determine tarball name from pack output:\n${packOutput}`);
+  }
+  const tarballPath = join(repoRoot, tarballName);
+
+  try {
+    const scratchDir = await mkdtemp(join(tmpdir(), "jondotsoy-configs-test-cases-"));
+    console.log(`== installing packed tarball into ${scratchDir} ==`);
+    await writeFile(
+      join(scratchDir, "package.json"),
+      JSON.stringify({ name: "jondotsoy-configs-test-cases-scratch", type: "module", private: true }, null, 2),
+    );
+    await $`npm install ${tarballPath} --no-audit --no-fund`.cwd(scratchDir).quiet();
+
+    // `dist/react.js` imports `react` at the top level (a peer dependency, not bundled into the
+    // tarball), so the /react subpath case needs it resolvable too. A real consumer app already
+    // has it installed per the peerDependency; here, copy this repo's own devDependency install
+    // instead of fetching it fresh from the registry for every run.
+    await cp(join(repoRoot, "node_modules/react"), join(scratchDir, "node_modules/react"), { recursive: true });
+    const reactVersion = JSON.parse(await readFile(join(scratchDir, "node_modules/react/package.json"), "utf8")).version;
+    const manifestPath = join(scratchDir, "package.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    // `npm install` only records @jondotsoy/configs itself in "dependencies"; declaring react there
+    // too (even though it was copied in by hand, not installed) is what lets Deno's node_modules-dir
+    // resolution recognize it as a real dependency instead of stray content in node_modules/.
+    manifest.dependencies = { ...manifest.dependencies, react: reactVersion };
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+
+    return scratchDir;
+  } finally {
+    await rm(tarballPath, { force: true });
+  }
+}
+
+async function runCli(engine: CliEngine, scratchDir: string, caseFile: string): Promise<{ compileCommand: string; output: string; passed: boolean; skippedReason?: string }> {
   const relPath = `test/cases/${caseFile}`;
   if (!engine.bin) {
     return {
@@ -78,10 +138,11 @@ async function runCli(engine: CliEngine, caseFile: string): Promise<{ compileCom
     };
   }
 
-  const args = engine.args(join(casesDir, caseFile));
-  const compileCommand = `$ ${engine.bin === Bun.which(engine.name) ? engine.name : engine.bin} ${args.map((a) => (a.includes(casesDir) ? relPath : a)).join(" ")}`;
+  const scratchFile = join(scratchDir, caseFile);
+  const args = engine.args(scratchFile);
+  const compileCommand = `$ ${engine.bin === Bun.which(engine.name) ? engine.name : engine.bin} ${args.map((a) => (a === scratchFile ? relPath : a)).join(" ")} (running the copy installed against the packed tarball, not the repo's dist/)`;
 
-  const proc = Bun.spawn({ cmd: [engine.bin, ...args], cwd: repoRoot, stdout: "pipe", stderr: "pipe" });
+  const proc = Bun.spawn({ cmd: [engine.bin, ...args], cwd: scratchDir, stdout: "pipe", stderr: "pipe" });
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -92,46 +153,18 @@ async function runCli(engine: CliEngine, caseFile: string): Promise<{ compileCom
   return { compileCommand, output, passed };
 }
 
-// Aliases `@jondotsoy/configs` and its subpaths to their `src/*.ts` source, the same way
-// test/browser/app.tsx imports the library by hand — a browser page can't resolve a bare
-// npm specifier, so the case files' imports are rewritten at bundle time instead.
-const subpathAliases: Record<string, string> = {
-  "@jondotsoy/configs": "src/configs.ts",
-  "@jondotsoy/configs/sources/env": "src/sources/env.ts",
-  "@jondotsoy/configs/sources/fetch": "src/sources/fetch.ts",
-  "@jondotsoy/configs/sources/sse": "src/sources/sse.ts",
-  "@jondotsoy/configs/sources/file": "src/sources/file.ts",
-  "@jondotsoy/configs/sources/literal": "src/sources/literal.ts",
-  "@jondotsoy/configs/sources/pull": "src/sources/pull.ts",
-  "@jondotsoy/configs/sources/shell": "src/sources/shell.ts",
-  "@jondotsoy/configs/react": "src/react.ts",
-};
-
-function configsAliasPlugin() {
-  return {
-    name: "configs-alias",
-    setup(build: Parameters<NonNullable<Parameters<typeof Bun.build>[0]["plugins"]>[number]["setup"]>[0]) {
-      build.onResolve({ filter: /^@jondotsoy\/configs(\/.*)?$/ }, (args: { path: string }) => {
-        const rel = subpathAliases[args.path];
-        if (!rel) throw new Error(`configs-alias: no alias registered for "${args.path}"`);
-        return { path: join(repoRoot, rel) };
-      });
-    },
-  };
-}
-
 async function runBrowser(
   browser: Awaited<ReturnType<typeof chromium.launch>> | undefined,
+  scratchDir: string,
   caseFile: string,
 ): Promise<{ compileCommand: string; output: string; passed: boolean; skippedReason?: string }> {
   const relPath = `test/cases/${caseFile}`;
-  const compileCommand = `$ bun build ${relPath} --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`;
+  const compileCommand = `$ bun build ${relPath} --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's node_modules, inlined into an index.html, driven by Playwright's Chromium)`;
 
   const buildResult = await Bun.build({
-    entrypoints: [join(casesDir, caseFile)],
+    entrypoints: [join(scratchDir, caseFile)],
     target: "browser",
     format: "esm",
-    plugins: [configsAliasPlugin()],
   });
   if (!buildResult.success) {
     return { compileCommand, output: buildResult.logs.map(String).join("\n"), passed: false };
@@ -191,6 +224,8 @@ async function main() {
   console.log("== build ==");
   await Bun.$`bun run build`.cwd(repoRoot).quiet();
 
+  const scratchDir = await packAndInstall();
+
   // Prefer the sandbox's pre-installed Chromium; elsewhere (e.g. GitHub Actions, after a plain
   // `bunx playwright install`), fall back to Playwright's own resolution. A launch that still fails
   // (no browser installed anywhere) just skips the browser rows instead of failing the whole run.
@@ -205,21 +240,26 @@ async function main() {
 
   try {
     for (const caseDef of cases) {
+      // Copy fresh into the scratch dir right before running it: cheap, and keeps each engine run
+      // isolated from whatever a previous engine's run (or bundle) may have left behind there.
+      await cp(join(casesDir, caseDef.file), join(scratchDir, caseDef.file));
+
       for (const engine of caseDef.engines) {
         console.log(`-- ${caseDef.file} (${engine}) --`);
         const tolerated = caseDef.tolerateFailureEngines?.includes(engine) ?? false;
         if (engine === "browser") {
-          const r = await runBrowser(browser, caseDef.file);
+          const r = await runBrowser(browser, scratchDir, caseDef.file);
           results.push({ caseDef, engine, tolerated, ...r });
         } else {
           const cliEngine = cliEngines.find((e) => e.name === engine)!;
-          const r = await runCli(cliEngine, caseDef.file);
+          const r = await runCli(cliEngine, scratchDir, caseDef.file);
           results.push({ caseDef, engine, tolerated, ...r });
         }
       }
     }
   } finally {
     await browser?.close();
+    await rm(scratchDir, { recursive: true, force: true });
   }
 
   await mkdir(reportDir, { recursive: true });
@@ -250,9 +290,13 @@ async function renderReport(results: CaseResult[]): Promise<string> {
   lines.push(
     "Each case in `test/cases/` is a self-contained script exercising one specific",
     "piece of behavior, run under every engine it declares support for in",
-    "`test/cases/manifest.ts`. node/bun/deno run the script directly; the browser",
-    "engine bundles it (aliasing `@jondotsoy/configs` to its `src/` source) into a",
-    "small page driven by Playwright's Chromium. A case listed in its manifest",
+    "`test/cases/manifest.ts`, against a `bun pm pack` tarball installed with",
+    "`npm install` into a scratch directory — not this repo's own dist/ via",
+    "self-reference, so a packaging mistake (a missing export, a stray or",
+    "omitted file) actually surfaces here. node/bun/deno run the copied script",
+    "directly; the browser engine bundles it with `Bun.build`, resolving",
+    "`@jondotsoy/configs` from that same installed tarball, into a small page",
+    "driven by Playwright's Chromium. A case listed in its manifest",
     "entry's `tolerateFailureEngines` still runs on that engine, but a failure",
     "there is reported as a WARNING instead of a FAILED, and doesn't fail the run",
     "— use it to document expected breakage (e.g. a node:fs-backed source in a",

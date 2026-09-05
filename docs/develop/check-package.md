@@ -195,7 +195,7 @@ recibe un consumidor nuevo, y lo que hay que validar después de cada `npm publi
    node --experimental-strip-types test.ts
    ```
 
-Cubierto parcialmente en el repo vía `bun run test:cases` (engine `node`), que corre contra el `dist/` ya construido en el propio checkout — no instala la última versión de npm ni un tarball empaquetado, y solo valida runtime, no tipado.
+Cubierto parcialmente en el repo vía `bun run test:cases` (engine `node`) — empaqueta con `bun pm pack` e instala ese tarball con `npm install` en un directorio aparte antes de correr el caso, así que sí valida la instalación real del paquete empaquetado (no la última de npm, pero sí el mismo tarball que se publicaría); solo valida runtime, no tipado.
 
 ### Bun
 
@@ -230,7 +230,7 @@ Cubierto parcialmente en el repo vía `bun run test:cases` (engine `node`), que 
    bun run test.ts
    ```
 
-Cubierto parcialmente en el repo vía `bun run test:cases` (engine `bun`) — corre contra el `dist/` ya construido en el propio checkout, no un tarball empaquetado ni la última versión de npm, y solo valida runtime, no tipado.
+Cubierto parcialmente en el repo vía `bun run test:cases` (engine `bun`) — mismo tarball empaquetado con `bun pm pack` e instalado con `npm install`, no la última versión de npm; solo valida runtime, no tipado.
 
 ### Deno
 
@@ -249,7 +249,7 @@ Cubierto parcialmente en el repo vía `bun run test:cases` (engine `bun`) — co
    deno run --allow-env test.ts
    ```
 
-`deno check` corre el propio type-checker de Deno (basado en TSC) contra los mismos `.d.ts` publicados — una tercera validación independiente de la de `nodenext`. Cubierto parcialmente en el repo vía `bun run test:cases` (engine `deno`) contra el `dist/` ya construido — solo runtime; `envSource()` sin `env` explícito lee todo `process.env`, por lo que Deno necesita `--allow-env` sin scope.
+`deno check` corre el propio type-checker de Deno (basado en TSC) contra los mismos `.d.ts` publicados — una tercera validación independiente de la de `nodenext`. Cubierto parcialmente en el repo vía `bun run test:cases` (engine `deno`, con `--node-modules-dir=auto` contra el mismo tarball empaquetado e instalado) — solo runtime; `envSource()` sin `env` explícito lee todo `process.env`, por lo que Deno necesita `--allow-env` sin scope.
 
 ### Bundlers de navegador (`bun build --target browser` / Vite)
 
