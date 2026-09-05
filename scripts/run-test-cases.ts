@@ -59,12 +59,14 @@ const cliEngines: CliEngine[] = [
   { name: "node", bin: process.env.NODE_BIN ?? Bun.which("node") ?? undefined, args: (f) => ["--experimental-strip-types", "--no-warnings", f] },
   { name: "bun", bin: process.env.BUN_BIN ?? Bun.which("bun") ?? undefined, args: (f) => [f] },
   // --allow-run: shellSource's test case spawns a real command via node:child_process, which
-  // Deno's permission system gates the same as its own Deno.Command. --node-modules-dir=auto picks
-  // up the scratch directory's npm-installed node_modules instead of Deno's own npm cache/registry.
+  // Deno's permission system gates the same as its own Deno.Command. --node-modules-dir=manual
+  // resolves against the scratch directory's already npm-installed node_modules as-is; "auto"
+  // instead lets Deno manage (and rewrite) that folder itself, which corrupts it for the CLI/browser
+  // runs of other cases and engines still to come against that same shared scratch directory.
   {
     name: "deno",
     bin: process.env.DENO_BIN ?? Bun.which("deno") ?? undefined,
-    args: (f) => ["run", "--node-modules-dir=auto", "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--allow-run", f],
+    args: (f) => ["run", "--node-modules-dir=manual", "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--allow-run", f],
   },
 ];
 
