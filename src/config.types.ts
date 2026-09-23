@@ -3,7 +3,7 @@ import { Store, type Subscriber, type Unsubscribe } from "./utils/store.js";
 import { tSync } from "./utils/t.js";
 import { ConfigError } from "./errors.js";
 
-export type FieldType = "string" | "number" | "boolean" | "shape";
+export type FieldType = "string" | "number" | "boolean" | "url" | "shape";
 
 interface BaseFieldSchema {
   summary?: string;
@@ -61,17 +61,21 @@ interface UntaggedShapeFieldSchema<T> extends BaseFieldSchema {
 export type StringFieldSchema = BaseFieldSchema & { type: "string"; pattern?: RegExp; default?: string };
 export type NumberFieldSchema = BaseFieldSchema & { type: "number"; default?: number };
 export type BooleanFieldSchema = BaseFieldSchema & { type: "boolean"; default?: boolean };
+/** A `"url"` field parses a string value into a `URL` instance (and validates it's actually one), same as `numeric()` does for numbers. */
+export type UrlFieldSchema = BaseFieldSchema & { type: "url"; default?: URL };
 
 export type FieldSchema =
   | StringFieldSchema
   | NumberFieldSchema
   | BooleanFieldSchema
+  | UrlFieldSchema
   | ShapeFieldSchema<unknown>
   | UntaggedShapeFieldSchema<unknown>;
 
 export type StringFieldOptions = Omit<StringFieldSchema, "type">;
 export type NumberFieldOptions = Omit<NumberFieldSchema, "type">;
 export type BooleanFieldOptions = Omit<BooleanFieldSchema, "type">;
+export type UrlFieldOptions = Omit<UrlFieldSchema, "type">;
 
 /**
  * What `string()`/`numeric()`/`boolean()` build. Carries its field `type` plus the exact `options`
@@ -115,6 +119,11 @@ export function numeric<const O extends NumberFieldOptions = {}>(options?: O): C
 /** Builds a `"boolean"` field descriptor — same options as `{ type: "boolean", ... }`, returned as a `ConfigDescriptor` instead of a plain object. */
 export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): ConfigDescriptor<boolean, O> {
   return new ConfigDescriptor("boolean", (options ?? {}) as O);
+}
+
+/** Builds a `"url"` field descriptor — same options as `{ type: "url", ... }`, returned as a `ConfigDescriptor` instead of a plain object. Parses (and validates) a string value into a `URL` instance. */
+export function url<const O extends UrlFieldOptions = {}>(options?: O): ConfigDescriptor<URL, O> {
+  return new ConfigDescriptor("url", (options ?? {}) as O);
 }
 
 export interface CreateOptions {
@@ -172,13 +181,15 @@ type PrimitiveOfField<F extends FieldSchema> = F extends { type: "number" }
     ? string
     : F extends { type: "boolean" }
       ? boolean
-      : F extends { type: "shape"; schema: infer Z }
-        ? InferSchemaType<Z>
-        : F extends { type: "shape" }
-          ? unknown
-          : F extends { schema: infer Z }
-            ? InferSchemaType<Z>
-            : never;
+      : F extends { type: "url" }
+        ? URL
+        : F extends { type: "shape"; schema: infer Z }
+          ? InferSchemaType<Z>
+          : F extends { type: "shape" }
+            ? unknown
+            : F extends { schema: infer Z }
+              ? InferSchemaType<Z>
+              : never;
 
 /**
  * A field only ever resolves to `null` when no source has it and it has no `default` — data comes
@@ -335,6 +346,16 @@ function coerce(field: FieldSchema, raw: unknown, path: string[]): unknown {
     if (ok) return result;
     const message = err instanceof Error ? err.message : String(err);
     return shapeFailure(field, new ConfigError(`Value at "${path.join(".")}" failed schema validation: ${message}`));
+  }
+
+  if (field.type === "url") {
+    if (raw instanceof URL) return raw;
+    if (typeof raw !== "string") typeMismatch(field, raw, path);
+    try {
+      return new URL(raw);
+    } catch {
+      throw new ConfigError(`Value at "${path.join(".")}" is not a valid URL: ${JSON.stringify(raw)}`);
+    }
   }
 
   let value: unknown = raw;

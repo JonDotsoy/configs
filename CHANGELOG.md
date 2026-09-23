@@ -9,12 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`string()`, `numeric()`, `boolean()`** — field-schema builder functions exported from
-  `@jondotsoy/configs`, shorthand for `{ type: "string" | "number" | "boolean", ... }` object
-  literals (e.g. `numeric({ summary: "HTTP port", default: 3000 })` instead of
+- **`string()`, `numeric()`, `boolean()`, `url()`** — field-schema builder functions exported from
+  `@jondotsoy/configs`, shorthand for `{ type: "string" | "number" | "boolean" | "url", ... }`
+  object literals (e.g. `numeric({ summary: "HTTP port", default: 3000 })` instead of
   `{ type: "number", summary: "HTTP port", default: 3000 }`). Each accepts the same options as its
   `FieldSchema` variant, minus `type`, and now also a `key?: string | string[]` option (see below).
   They return a new exported `ConfigDescriptor<T>` instance instead of a plain object literal.
+- **`url()` / `{ type: "url" }`** — a new field type that parses a string value into a `URL`
+  instance (via the built-in `URL` constructor), throwing a `ConfigError` if it isn't a valid URL.
+  `url()` resolves to `URL | null` (or `URL` when given a `default`), same as every other field type.
 - **`key` field option** — every field (via `string()`/`numeric()`/`boolean()`, or the
   `key` property on an explicit `FieldSchema` object literal) can now set `key: "PORT"` (or a
   `string[]` path) to read from that exact path in each source's snapshot, instead of the field's

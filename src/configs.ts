@@ -20,6 +20,8 @@ export type {
   SchemaShape,
   StringFieldOptions,
   StringFieldSchema,
+  UrlFieldOptions,
+  UrlFieldSchema,
 } from "./config.types.js";
 export type { SourceControl, UnderlyingSource } from "./types/index.js";
 export type { DataType, DataTypeName } from "./utils/data-types.js";
@@ -38,7 +40,7 @@ export { fileSource } from "./sources/file.js";
 export { literalSource } from "./sources/literal.js";
 export { pullSource } from "./sources/pull.js";
 export { shellSource } from "./sources/shell.js";
-export { boolean, ConfigDescriptor, numeric, string } from "./config.types.js";
+export { boolean, ConfigDescriptor, numeric, string, url } from "./config.types.js";
 export { Store } from "./utils/store.js";
 export { DataTypes } from "./utils/data-types.js";
 export { DotEnv } from "./utils/dotenv.js";

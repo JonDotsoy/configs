@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, expectTypeOf, test } from "bun:test";
-import { boolean, ConfigDescriptor, create, numeric, string } from "./configs.js";
+import { boolean, ConfigDescriptor, create, numeric, string, url } from "./configs.js";
 import { envSource, mapKey } from "./sources/env.js";
 import { fetchSource } from "./sources/fetch.js";
+import { ConfigError } from "./errors.js";
 import type { ReadOnlyStore } from "./config.types.js";
 
 describe("string/numeric/boolean field builders", () => {
@@ -238,5 +239,84 @@ describe("ConfigDescriptor: implicit nested shape + key override", () => {
     );
 
     expect(cfg.server.port.get()).toBe(1111);
+  });
+});
+
+describe("url() field builder", () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) delete (process.env as Record<string, string | undefined>)[key];
+    }
+    Object.assign(process.env, originalEnv);
+  });
+
+  test("url() builds a ConfigDescriptor<URL> carrying a { type: \"url\" } schema", () => {
+    expect(url()).toBeInstanceOf(ConfigDescriptor);
+    expect(url()).toEqual(new ConfigDescriptor("url", {}));
+    expect(url({ key: "DATABASE_URL" })).toEqual(new ConfigDescriptor("url", { key: "DATABASE_URL" }));
+  });
+
+  test("parses DATABASE_URL into a URL instance via key", async () => {
+    process.env.DATABASE_URL = "postgres://user:pass@localhost:5432/app";
+
+    const cfg = await create(
+      {
+        datasource: {
+          uri: url({ key: "DATABASE_URL" }),
+        },
+      },
+      { sources: [envSource()] },
+    );
+
+    const uri = cfg.datasource.uri.get();
+    expect(uri).toBeInstanceOf(URL);
+    expect(uri).toEqual(new URL("postgres://user:pass@localhost:5432/app"));
+    expect(uri?.hostname).toBe("localhost");
+    expect(uri?.pathname).toBe("/app");
+
+    expectTypeOf(cfg.datasource.uri).toEqualTypeOf<ReadOnlyStore<URL | null>>();
+  });
+
+  test("rejects a value that isn't a valid URL", async () => {
+    process.env.DATABASE_URL = "not a url";
+
+    const cfg = await create(
+      {
+        datasource: { uri: url({ key: "DATABASE_URL" }) },
+      },
+      { sources: [envSource()] },
+    );
+
+    expect(() => cfg.get()).toThrow(ConfigError);
+  });
+
+  test("resolves to null when DATABASE_URL is unset and there's no default", async () => {
+    delete process.env.DATABASE_URL;
+
+    const cfg = await create(
+      {
+        datasource: { uri: url({ key: "DATABASE_URL" }) },
+      },
+      { sources: [envSource()] },
+    );
+
+    expect(cfg.datasource.uri.get()).toBeNull();
+  });
+
+  test("a default is used as-is (not re-parsed) when nothing resolves DATABASE_URL", async () => {
+    delete process.env.DATABASE_URL;
+    const fallback = new URL("postgres://localhost:5432/app");
+
+    const cfg = await create(
+      {
+        datasource: { uri: url({ key: "DATABASE_URL", default: fallback }) },
+      },
+      { sources: [envSource()] },
+    );
+
+    expect(cfg.datasource.uri.get()).toBe(fallback);
+    expectTypeOf(cfg.datasource.uri).toEqualTypeOf<ReadOnlyStore<URL>>();
   });
 });
