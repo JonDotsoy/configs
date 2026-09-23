@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, expectTypeOf, test } from "bun:test";
+import { afterEach, describe, expect, expectTypeOf, spyOn, test } from "bun:test";
 import { boolean, ConfigDescriptor, create, numeric, shape, string, url } from "./configs.js";
 import { envSource, mapKey } from "./sources/env.js";
 import { fetchSource } from "./sources/fetch.js";
 import { Source } from "./sources/source.js";
 import { ConfigError } from "./errors.js";
 import { z } from "zod";
+import { __resetDeprecatedFieldSchemaWarningForTests } from "./config.types.js";
 import type { ReadOnlyStore } from "./config.types.js";
 
 /** Builds a `Source` that immediately publishes `value` and closes. */
@@ -376,5 +377,100 @@ describe("shape() field builder", () => {
 
     expect(cfg.jwt.get()).toEqual(fallback);
     expectTypeOf(cfg.jwt).toEqualTypeOf<ReadOnlyStore<{ issuer: string; ttl: number }>>();
+  });
+});
+
+describe("{ type: \"...\" } object-literal fields are deprecated", () => {
+  afterEach(() => {
+    __resetDeprecatedFieldSchemaWarningForTests();
+  });
+
+  test("still resolves correctly (backward compatible)", async () => {
+    const cfg = await create(
+      { port: { type: "number", default: 3000 } },
+      { sources: [testSource({ port: 8080 })] },
+    );
+
+    expect(cfg.port.get()).toBe(8080);
+  });
+
+  test("logs a one-time console.warn pointing at the builder functions", async () => {
+    __resetDeprecatedFieldSchemaWarningForTests();
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      const cfg = await create({ port: { type: "number", default: 3000 } }, { sources: [] });
+      cfg.port.get();
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0]?.[0]).toContain('{ type: "...", ... }');
+      expect(warnSpy.mock.calls[0]?.[0]).toContain("string()/numeric()/boolean()/url()/shape()");
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  test("warns only once even across many literal fields and create() calls", async () => {
+    __resetDeprecatedFieldSchemaWarningForTests();
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      const cfg1 = await create(
+        { port: { type: "number" }, host: { type: "string" } },
+        { sources: [] },
+      );
+      cfg1.port.get();
+      cfg1.host.get();
+
+      const cfg2 = await create({ debug: { type: "boolean" } }, { sources: [] });
+      cfg2.debug.get();
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  test("string()/numeric()/boolean()/url()/shape() never trigger the warning", async () => {
+    __resetDeprecatedFieldSchemaWarningForTests();
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      const cfg = await create(
+        {
+          port: numeric({ default: 3000 }),
+          host: string({ default: "localhost" }),
+          debug: boolean({ default: false }),
+          site: url({ default: new URL("https://example.com") }),
+          meta: shape(),
+        },
+        { sources: [] },
+      );
+      cfg.get();
+
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  test("the untagged shape shorthands (bare schema, { schema } with no type) don't trigger the warning either", async () => {
+    __resetDeprecatedFieldSchemaWarningForTests();
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      const cfg = await create(
+        {
+          bare: z.number(),
+          untagged: { schema: z.number() },
+        },
+        { sources: [testSource({ bare: 1, untagged: 2 })] },
+      );
+      cfg.get();
+
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });

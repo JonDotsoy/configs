@@ -36,6 +36,9 @@ export interface Parseable<T> {
  * matching the caller's own literal shape structurally (see `PrimitiveOfField`), not from this
  * declared type. `schema` itself is optional: a `"shape"` field with no `schema` is passed through
  * as-is (only checked for `typeof value === "object"`), for callers who just want a free-form object.
+ *
+ * @deprecated Write `shape({ schema, ... })` instead of `{ type: "shape", schema, ... }` — same
+ * options, same inference, still fully supported, just no longer the recommended form.
  */
 interface ShapeFieldSchema<T> extends BaseFieldSchema {
   type: "shape";
@@ -58,12 +61,25 @@ interface UntaggedShapeFieldSchema<T> extends BaseFieldSchema {
   default?: T;
 }
 
+/** @deprecated Write `string({ ... })` instead of `{ type: "string", ... }` — same options, same inference, still fully supported, just no longer the recommended form. */
 export type StringFieldSchema = BaseFieldSchema & { type: "string"; pattern?: RegExp; default?: string };
+/** @deprecated Write `numeric({ ... })` instead of `{ type: "number", ... }` — same options, same inference, still fully supported, just no longer the recommended form. */
 export type NumberFieldSchema = BaseFieldSchema & { type: "number"; default?: number };
+/** @deprecated Write `boolean({ ... })` instead of `{ type: "boolean", ... }` — same options, same inference, still fully supported, just no longer the recommended form. */
 export type BooleanFieldSchema = BaseFieldSchema & { type: "boolean"; default?: boolean };
-/** A `"url"` field parses a string value into a `URL` instance (and validates it's actually one), same as `numeric()` does for numbers. */
+/**
+ * A `"url"` field parses a string value into a `URL` instance (and validates it's actually one), same as `numeric()` does for numbers.
+ * @deprecated Write `url({ ... })` instead of `{ type: "url", ... }` — same options, same inference, still fully supported, just no longer the recommended form.
+ */
 export type UrlFieldSchema = BaseFieldSchema & { type: "url"; default?: URL };
 
+/**
+ * The object-literal shape a field entry normalizes to — still what every builder
+ * (`string()`/`numeric()`/`boolean()`/`url()`/`shape()`) produces under the hood via
+ * `ConfigDescriptor`, and still what `toFieldSchema()` returns either way, so this type itself
+ * isn't deprecated. Writing one of its *tagged* members directly as an object literal
+ * (`{ type: "string", ... }` and friends) is what's deprecated — see each member's own tag.
+ */
 export type FieldSchema =
   | StringFieldSchema
   | NumberFieldSchema
@@ -466,13 +482,42 @@ function isBareParseable(node: SchemaNode | undefined): node is Parseable<unknow
   return proto !== Object.prototype && proto !== null;
 }
 
+let warnedAboutObjectLiteralFieldSchema = false;
+
+/**
+ * One-time, process-wide nudge off the deprecated `{ type: "...", ... }` object-literal field
+ * form (still fully supported — see each `Field*Schema` type's own `@deprecated` tag) toward its
+ * `ConfigDescriptor`-returning builder equivalent (`string()`/`numeric()`/`boolean()`/`url()`/
+ * `shape()`). Fires at most once per process no matter how many literal fields, across however
+ * many `create()` calls, actually use the old form — deprecation warnings are meant to be noticed
+ * once, not repeated on every field resolution.
+ */
+function warnDeprecatedFieldSchema(): void {
+  if (warnedAboutObjectLiteralFieldSchema) return;
+  warnedAboutObjectLiteralFieldSchema = true;
+  console.warn(
+    '[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use ' +
+      "string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.",
+  );
+}
+
+/**
+ * @internal Test-only: clears the one-time flag above so a spec can assert the warning fires
+ * again, independent of whichever other spec file already tripped it earlier in the same test
+ * run. Not part of the public API — never re-exported from `configs.ts`.
+ */
+export function __resetDeprecatedFieldSchemaWarningForTests(): void {
+  warnedAboutObjectLiteralFieldSchema = false;
+}
+
 /**
  * Normalizes a shape entry to a `FieldSchema`. Two shorthands both collapse to an explicit
  * `{ type: "shape", ... }`: a bare schema object (`port: z.number()`, see `isBareParseable`), and a
  * plain `FieldSchema`-shaped object that has `schema` but omits `type` entirely (`port: { schema:
  * z.number() }`) — the latter is only recognized when `type` is genuinely absent (an actual
- * `type: "string"`/`"number"`/`"boolean"`/`"shape"` object always passes through as itself). Only
- * called for entries that aren't nested groups (checked separately via `isEmbeddedNode`), so a
+ * `type: "string"`/`"number"`/`"boolean"`/`"shape"` object always passes through as itself, but logs
+ * the deprecation warning above — unlike these two `type`-less shorthands, which aren't deprecated).
+ * Only called for entries that aren't nested groups (checked separately via `isEmbeddedNode`), so a
  * `SchemaGroupNode` (no `schema` property) never reaches here.
  */
 function toFieldSchema(node: SchemaNode | undefined): FieldSchema {
@@ -484,6 +529,9 @@ function toFieldSchema(node: SchemaNode | undefined): FieldSchema {
   }
   if (typeof node === "object" && node !== null && !("type" in node) && "schema" in node) {
     return { ...(node as object), type: "shape" } as FieldSchema;
+  }
+  if (typeof node === "object" && node !== null && "type" in node) {
+    warnDeprecatedFieldSchema();
   }
   return node as FieldSchema;
 }

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Deprecated
+
+- **Defining a field as an object literal — `{ type: "string" | "number" | "boolean" | "url" |
+  "shape", ... }` — is deprecated** in favor of `string()`/`numeric()`/`boolean()`/`url()`/
+  `shape()`. It's still fully supported (nothing breaks, nothing is removed) but now logs a
+  one-time `console.warn` the first time a field is resolved from that form, and its
+  `StringFieldSchema`/`NumberFieldSchema`/`BooleanFieldSchema`/`UrlFieldSchema` types (and the
+  internal `"shape"` variant) now carry `@deprecated` JSDoc tags. The type-less shorthands (a bare
+  schema used directly, e.g. `port: z.number()`, and `{ schema: z.number() }` with no `type`) are
+  **not** affected — only the tagged form is.
+
 ### Added
 
 - **`string()`, `numeric()`, `boolean()`, `url()`, `shape()`** — field-schema builder functions

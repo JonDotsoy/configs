@@ -84,7 +84,14 @@ coerce and validate primitives (numeric/boolean-ish strings, an optional `patter
 `"url"` parses a string into a `URL` instance, throwing a `ConfigError` if it isn't a valid one.
 `"shape"` hands the raw value to a `schema` you provide — anything with a `parse(value: unknown): T`
 method, which is exactly the shape `zod`, `valibot`, and most other validation libraries already
-export — so there's no dependency on any specific one:
+export — so there's no dependency on any specific one.
+
+> [!WARNING]
+> **Writing a field as an object literal — `{ type: "string", ... }` and friends — is
+> deprecated.** It still works exactly as documented below (nothing breaks, nothing is removed),
+> but it now logs a one-time `console.warn` and its `Field*Schema` types carry `@deprecated` tags.
+> Use `string()`, `numeric()`, `boolean()`, `url()`, or `shape()` instead — same options, same
+> inference, just without repeating `type` yourself. See the next section.
 
 ```ts
 import { create } from "@jondotsoy/configs";
@@ -92,6 +99,7 @@ import { z } from "zod";
 
 const cfg = await create(
   {
+    // deprecated — prefer shape({ schema: ... }) below
     jwt: { type: "shape", schema: z.object({ issuer: z.string(), ttl: z.number() }) },
   },
   { sources: [/* ... */] },
@@ -101,9 +109,9 @@ const cfg = await create(
 // return type, no manual annotation needed.
 ```
 
-`string()`, `numeric()`, `boolean()`, `url()`, and `shape()` are shorthand builders for the
-`"string"`/`"number"`/`"boolean"`/`"url"`/`"shape"` field schemas above — `numeric({ default: 3000 })`
-is exactly `{ type: "number", default: 3000 }`, just without repeating `type` yourself. Each returns
+`string()`, `numeric()`, `boolean()`, `url()`, and `shape()` are the **recommended** way to write
+the field schemas above, superseding the object-literal form — `numeric({ default: 3000 })` is
+exactly `{ type: "number", default: 3000 }`, just without repeating `type` yourself. Each returns
 a `ConfigDescriptor` instance (also exported, for anyone writing a `numeric(...): ConfigDescriptor<number>`
 helper of their own) instead of a plain object, but it resolves and infers identically either way.
 They accept the same options as their object-literal form (`summary`, `required`, `readonly`,
@@ -160,19 +168,23 @@ const cfg = await create({ port: z.number() }, { sources: [/* ... */] });
 ```
 
 This shorthand has no room for `summary`/`required`/`readonly`/`default` — so a bad value here
-always logs and resolves to `null`. Reach for the explicit `{ type: "shape", schema }` form when
-you need `required: true` (or any of the others).
+always logs and resolves to `null`. Reach for `shape({ schema, ... })` when you need `required: true`
+(or any of the others).
 
-`type` can also just be omitted from that explicit form — `{ schema: z.number() }` behaves exactly
-like `{ type: "shape", schema: z.number() }`, `required` included:
+`type` can also just be omitted — `{ schema: z.number() }` behaves exactly like
+`shape({ schema: z.number() })`, `required` included:
 
 ```ts
 const cfg = await create(
   { port: { schema: z.number(), required: true } },
   { sources: [/* ... */] },
 );
-// same as { port: { type: "shape", schema: z.number(), required: true } }
+// same as { port: shape({ schema: z.number(), required: true }) }
 ```
+
+Neither of these two type-less shorthands (a bare schema, or `{ schema }` with no `type`) is
+affected by the deprecation above — only the *tagged* object-literal form (`{ type: "...", ... }`)
+is deprecated, since that's the one `string()`/`numeric()`/`boolean()`/`url()`/`shape()` replace.
 
 ### Nested groups
 
@@ -321,10 +333,11 @@ applies: no `default` means the type is `T | null` (a bad or missing value resol
 runtime — see [Field types](#field-types)), a `default` means the type is `T`:
 
 ```ts
+import { create, shape } from "@jondotsoy/configs";
 import { z } from "zod";
 
 const cfg = await create(
-  { jwt: { type: "shape", schema: z.object({ issuer: z.string(), ttl: z.number() }) } },
+  { jwt: shape({ schema: z.object({ issuer: z.string(), ttl: z.number() }) }) },
   { sources: [/* ... */] },
 );
 const jwt = cfg.jwt.get();
@@ -332,11 +345,10 @@ const jwt = cfg.jwt.get();
 
 const cfg2 = await create(
   {
-    jwt: {
-      type: "shape",
+    jwt: shape({
       schema: z.object({ issuer: z.string(), ttl: z.number() }),
       default: { issuer: "auth0", ttl: 3600 },
-    },
+    }),
   },
   { sources: [/* ... */] },
 );
@@ -352,25 +364,24 @@ is inferred as its output type:
 
 ```ts
 const parity = { parse: (value: unknown) => (Number(value) % 2 === 0 ? "even" : "odd") };
-const cfg = await create({ n: { type: "shape", schema: parity } }, { sources: [/* ... */] });
+const cfg = await create({ n: shape({ schema: parity }) }, { sources: [/* ... */] });
 const n = cfg.n.get();
 //    ^? const n: "even" | "odd" | null
 ```
 
-Omitting `schema` entirely (`{ type: "shape" }`) passes the raw value through untyped — the field
-is `unknown`, whether or not a source ever has it. `unknown | null` collapses to `unknown` in
+Omitting `schema` entirely (`shape()` alone) passes the raw value through untyped — the field is
+`unknown`, whether or not a source ever has it. `unknown | null` collapses to `unknown` in
 TypeScript, so there's no `| null` to see in the type here, unlike every other field:
 
 ```ts
-const cfg = await create({ metadata: { type: "shape" } }, { sources: [/* ... */] });
+const cfg = await create({ metadata: shape() }, { sources: [/* ... */] });
 const metadata = cfg.metadata.get();
 //    ^? const metadata: unknown
 ```
 
-Both shorthands for a shape field — a bare schema used directly (`port: z.number()`) and the
-untagged form (`port: { schema: z.number() }`) — infer identically to the explicit
-`{ type: "shape", schema: z.number() }`. The bare-schema shorthand just has no room for `default`,
-so it's always `T | null`:
+Both type-less shorthands for a shape field — a bare schema used directly (`port: z.number()`) and
+`{ schema: z.number() }` with no `type` — infer identically to `shape({ schema: z.number() })`.
+The bare-schema shorthand just has no room for `default`, so it's always `T | null`:
 
 ```ts
 const cfg = await create({ port: z.number() }, { sources: [/* ... */] });
