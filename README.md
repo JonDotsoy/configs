@@ -52,6 +52,8 @@ console.log(cfg.server.port.get());
 - [Install](#install)
 - [Guide](#guide)
   - [Field types](#field-types)
+  - [Nested groups](#nested-groups)
+  - [`key` — reading a field from an explicit path](#key--reading-a-field-from-an-explicit-path)
   - [TypeScript inference](#typescript-inference)
     - [Shape fields](#shape-fields)
   - [`Source` — building a custom source](#source--building-a-custom-source)
@@ -100,8 +102,11 @@ const cfg = await create(
 
 `string()`, `numeric()`, and `boolean()` are shorthand builders for the `"string"`/`"number"`/`"boolean"`
 field schemas above — `numeric({ default: 3000 })` is exactly `{ type: "number", default: 3000 }`,
-just without repeating `type` yourself. They accept the same options as their object-literal form
-(`summary`, `required`, `readonly`, `default`, and `pattern` for `string()`):
+just without repeating `type` yourself. Each returns a `ConfigDescriptor` instance (also exported,
+for anyone writing a `numeric(...): ConfigDescriptor<number>` helper of their own) instead of a
+plain object, but it resolves and infers identically either way. They accept the same options as
+their object-literal form (`summary`, `required`, `readonly`, `default`, `key`, and `pattern` for
+`string()`):
 
 ```ts
 import { create, boolean, numeric, string } from "@jondotsoy/configs";
@@ -158,6 +163,66 @@ const cfg = await create(
 );
 // same as { port: { type: "shape", schema: z.number(), required: true } }
 ```
+
+### Nested groups
+
+A shape property can be a plain object instead of wrapping it in `create({...})` — it's treated as
+an implicit nested group, sharing the parent's sources exactly like `server: create({...})` with no
+`options` does:
+
+```ts
+import { create, numeric, string } from "@jondotsoy/configs";
+import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
+
+// SERVER_PORT=3000 SERVER_HOST=localhost
+const cfg = await create(
+  {
+    server: {
+      port: numeric({ summary: "HTTP port", default: 3000 }),
+      host: string({ summary: "bind host", default: "localhost" }),
+    },
+  },
+  { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
+);
+
+cfg.server.port.get();
+// 3000
+```
+
+This is just a shorthand for `server: create({ port: numeric(...), host: string(...) })` — it never
+carries `sources` of its own (there's no `options` argument to give it any), so, like any
+non-owning nested group, it always resolves against whatever sources the enclosing `create()` call
+was given.
+
+### `key` — reading a field from an explicit path
+
+By default a field reads from its own position in the shape tree — `server.port`'s path is
+`["server", "port"]`. Set `key` (a string, or a `string[]` for a multi-segment path) to read from an
+explicit path instead, bypassing the field's nesting entirely. This is what lets a flat `envSource()`
+(the identity mapping, `"PORT" => ["PORT"]`) feed a nested shape directly:
+
+```ts
+import { create, numeric, string } from "@jondotsoy/configs";
+import { envSource } from "@jondotsoy/configs/sources/env";
+
+// PORT=3000 HOST=localhost
+const cfg = await create(
+  {
+    server: {
+      port: numeric({ summary: "HTTP port", default: 3000, key: "PORT" }),
+      host: string({ summary: "bind host", default: "localhost", key: "HOST" }),
+    },
+  },
+  { sources: [envSource()] },
+);
+
+cfg.server.port.get();
+// 3000 — read from the source's top-level "PORT", not "server.port"
+```
+
+`key` works the same way on an explicit `{ type: "number", key: "PORT" }` object literal, and on a
+top-level (non-nested) field — it's only useful there to alias a field to a differently-named source
+key.
 
 ### TypeScript inference
 
