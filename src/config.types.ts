@@ -51,12 +51,35 @@ interface UntaggedShapeFieldSchema<T> extends BaseFieldSchema {
   default?: T;
 }
 
+export type StringFieldSchema = BaseFieldSchema & { type: "string"; pattern?: RegExp; default?: string };
+export type NumberFieldSchema = BaseFieldSchema & { type: "number"; default?: number };
+export type BooleanFieldSchema = BaseFieldSchema & { type: "boolean"; default?: boolean };
+
 export type FieldSchema =
-  | (BaseFieldSchema & { type: "string"; pattern?: RegExp; default?: string })
-  | (BaseFieldSchema & { type: "number"; default?: number })
-  | (BaseFieldSchema & { type: "boolean"; default?: boolean })
+  | StringFieldSchema
+  | NumberFieldSchema
+  | BooleanFieldSchema
   | ShapeFieldSchema<unknown>
   | UntaggedShapeFieldSchema<unknown>;
+
+export type StringFieldOptions = Omit<StringFieldSchema, "type">;
+export type NumberFieldOptions = Omit<NumberFieldSchema, "type">;
+export type BooleanFieldOptions = Omit<BooleanFieldSchema, "type">;
+
+/** Builds a `{ type: "string", ... }` field schema — shorthand for that object literal. */
+export function string(options: StringFieldOptions = {}): StringFieldSchema {
+  return { type: "string", ...options };
+}
+
+/** Builds a `{ type: "number", ... }` field schema — shorthand for that object literal. */
+export function numeric(options: NumberFieldOptions = {}): NumberFieldSchema {
+  return { type: "number", ...options };
+}
+
+/** Builds a `{ type: "boolean", ... }` field schema — shorthand for that object literal. */
+export function boolean(options: BooleanFieldOptions = {}): BooleanFieldSchema {
+  return { type: "boolean", ...options };
+}
 
 export interface CreateOptions {
   sources?: Source<any>[];

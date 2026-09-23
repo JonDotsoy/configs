@@ -1,19 +1,25 @@
-import { createConfigNode } from "./config.types.js";
+import { boolean, createConfigNode, numeric, string } from "./config.types.js";
 import type { configs as ConfigsApi } from "./config.types.js";
 
 export type {
+  BooleanFieldOptions,
+  BooleanFieldSchema,
   ConfigNode,
   CreateOptions,
   FieldSchema,
   FieldType,
   InferReadOnlyAccessors,
   InferShape,
+  NumberFieldOptions,
+  NumberFieldSchema,
   Parseable,
   PendingConfigNode,
   ReadOnlyStore,
   SchemaGroup,
   SchemaNode,
   SchemaShape,
+  StringFieldOptions,
+  StringFieldSchema,
 } from "./config.types.js";
 export type { SourceControl, UnderlyingSource } from "./types/index.js";
 export type { DataType, DataTypeName } from "./utils/data-types.js";
@@ -32,6 +38,7 @@ export { fileSource } from "./sources/file.js";
 export { literalSource } from "./sources/literal.js";
 export { pullSource } from "./sources/pull.js";
 export { shellSource } from "./sources/shell.js";
+export { boolean, numeric, string } from "./config.types.js";
 export { Store } from "./utils/store.js";
 export { DataTypes } from "./utils/data-types.js";
 export { DotEnv } from "./utils/dotenv.js";

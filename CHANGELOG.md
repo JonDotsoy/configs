@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`string()`, `numeric()`, `boolean()`** — field-schema builder functions exported from
+  `@jondotsoy/configs`, shorthand for `{ type: "string" | "number" | "boolean", ... }` object
+  literals (e.g. `numeric({ summary: "HTTP port", default: 3000 })` instead of
+  `{ type: "number", summary: "HTTP port", default: 3000 }`). Each accepts the same options as its
+  `FieldSchema` variant, minus `type`.
 - **`shellSource(args, options?)`** — a new `Source` that runs `args` as a child process (via
   `node:child_process`'s `spawn`) and publishes its parsed stdout as the config tree, e.g.
   `shellSource(["gh", "auth", "token", "--format", "json"])`. Supports `stdoutParser` (defaults to
