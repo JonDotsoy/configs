@@ -1,40 +1,37 @@
-import { describe, expect, expectTypeOf, test } from "bun:test";
-import { boolean, create, numeric, string } from "./configs.js";
+import { afterEach, describe, expect, expectTypeOf, test } from "bun:test";
+import { boolean, ConfigDescriptor, create, numeric, string } from "./configs.js";
 import { envSource, mapKey } from "./sources/env.js";
 import { fetchSource } from "./sources/fetch.js";
 import type { ReadOnlyStore } from "./config.types.js";
 
 describe("string/numeric/boolean field builders", () => {
-  test("string() builds a { type: \"string\" } field schema", () => {
-    expect(string()).toEqual({ type: "string" });
-    expect(string({ summary: "bind host", default: "localhost" })).toEqual({
-      type: "string",
-      summary: "bind host",
-      default: "localhost",
-    });
+  test("string() builds a ConfigDescriptor<string> carrying a { type: \"string\" } schema", () => {
+    expect(string()).toBeInstanceOf(ConfigDescriptor);
+    expect(string()).toEqual(new ConfigDescriptor("string", {}));
+    expect(string({ summary: "bind host", default: "localhost" })).toEqual(
+      new ConfigDescriptor("string", { summary: "bind host", default: "localhost" }),
+    );
   });
 
-  test("numeric() builds a { type: \"number\" } field schema", () => {
-    expect(numeric()).toEqual({ type: "number" });
-    expect(numeric({ summary: "HTTP port", default: 3000 })).toEqual({
-      type: "number",
-      summary: "HTTP port",
-      default: 3000,
-    });
+  test("numeric() builds a ConfigDescriptor<number> carrying a { type: \"number\" } schema", () => {
+    expect(numeric()).toBeInstanceOf(ConfigDescriptor);
+    expect(numeric()).toEqual(new ConfigDescriptor("number", {}));
+    expect(numeric({ summary: "HTTP port", default: 3000 })).toEqual(
+      new ConfigDescriptor("number", { summary: "HTTP port", default: 3000 }),
+    );
   });
 
-  test("boolean() builds a { type: \"boolean\" } field schema", () => {
-    expect(boolean()).toEqual({ type: "boolean" });
-    expect(boolean({ summary: "enable the promo service", default: false })).toEqual({
-      type: "boolean",
-      summary: "enable the promo service",
-      default: false,
-    });
+  test("boolean() builds a ConfigDescriptor<boolean> carrying a { type: \"boolean\" } schema", () => {
+    expect(boolean()).toBeInstanceOf(ConfigDescriptor);
+    expect(boolean()).toEqual(new ConfigDescriptor("boolean", {}));
+    expect(boolean({ summary: "enable the promo service", default: false })).toEqual(
+      new ConfigDescriptor("boolean", { summary: "enable the promo service", default: false }),
+    );
   });
 
   test("string() carries a pattern through unchanged", () => {
     const pattern = /^[\w.-]+$/;
-    expect(string({ pattern })).toEqual({ type: "string", pattern });
+    expect(string({ pattern })).toEqual(new ConfigDescriptor("string", { pattern }));
   });
 
   test("resolve the same as their equivalent object-literal field schemas", async () => {
@@ -160,5 +157,86 @@ describe("README example: create() + string/numeric/boolean + envSource + fetchS
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+describe("ConfigDescriptor: implicit nested shape + key override", () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) delete (process.env as Record<string, string | undefined>)[key];
+    }
+    Object.assign(process.env, originalEnv);
+  });
+
+  test("a plain nested object (no create() wrapper) resolves fields via their own key against a flat envSource()", async () => {
+    process.env.PORT = "3000";
+    process.env.HOST = "localhost";
+
+    const cfg = await create(
+      {
+        server: {
+          port: numeric({ summary: "HTTP port", default: 3000, key: "PORT" }),
+          host: string({ summary: "bind host", default: "localhost", key: "HOST" }),
+        },
+      },
+      { sources: [envSource()] },
+    );
+
+    expect(cfg.get()).toEqual({ server: { port: 3000, host: "localhost" } });
+    expect(cfg.server.port.get()).toBe(3000);
+    expect(cfg.server.host.get()).toBe("localhost");
+
+    expectTypeOf(cfg.server.port).toEqualTypeOf<ReadOnlyStore<number>>();
+    expectTypeOf(cfg.server.host).toEqualTypeOf<ReadOnlyStore<string>>();
+  });
+
+  test("key reads straight from the env var, overriding the port/host nesting a plain envSource() would otherwise miss", async () => {
+    process.env.PORT = "4321";
+    process.env.HOST = "example.com";
+
+    const cfg = await create(
+      {
+        server: {
+          port: numeric({ default: 3000, key: "PORT" }),
+          host: string({ default: "localhost", key: "HOST" }),
+        },
+      },
+      { sources: [envSource()] },
+    );
+
+    expect(cfg.server.port.get()).toBe(4321);
+    expect(cfg.server.host.get()).toBe("example.com");
+  });
+
+  test("falls back to each field's default when the keyed env var is unset", async () => {
+    delete process.env.PORT;
+    delete process.env.HOST;
+
+    const cfg = await create(
+      {
+        server: {
+          port: numeric({ default: 3000, key: "PORT" }),
+          host: string({ default: "localhost", key: "HOST" }),
+        },
+      },
+      { sources: [envSource()] },
+    );
+
+    expect(cfg.get()).toEqual({ server: { port: 3000, host: "localhost" } });
+  });
+
+  test("a live update to the source is reflected on the nested plain-object field", async () => {
+    const cfg = await create(
+      {
+        server: {
+          port: numeric({ default: 3000, key: "PORT" }),
+        },
+      },
+      { sources: [envSource({ env: { PORT: "1111" } })] },
+    );
+
+    expect(cfg.server.port.get()).toBe(1111);
   });
 });

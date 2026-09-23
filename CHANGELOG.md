@@ -13,7 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `@jondotsoy/configs`, shorthand for `{ type: "string" | "number" | "boolean", ... }` object
   literals (e.g. `numeric({ summary: "HTTP port", default: 3000 })` instead of
   `{ type: "number", summary: "HTTP port", default: 3000 }`). Each accepts the same options as its
-  `FieldSchema` variant, minus `type`.
+  `FieldSchema` variant, minus `type`, and now also a `key?: string | string[]` option (see below).
+  They return a new exported `ConfigDescriptor<T>` instance instead of a plain object literal.
+- **`key` field option** — every field (via `string()`/`numeric()`/`boolean()`, or the
+  `key` property on an explicit `FieldSchema` object literal) can now set `key: "PORT"` (or a
+  `string[]` path) to read from that exact path in each source's snapshot, instead of the field's
+  own position in the shape tree. Lets a flat `envSource()` feed a nested shape directly, e.g.
+  `server: { port: numeric({ default: 3000, key: "PORT" }) }` reads the source's top-level `PORT`.
+- **Plain nested shapes** — a shape property can now be a plain object (`server: { port: ..., host:
+  ... }`) instead of requiring `create({...})`, and is treated as an implicit nested group that
+  shares its parent's sources, same as `server: create({...})` with no `options`.
 - **`shellSource(args, options?)`** — a new `Source` that runs `args` as a child process (via
   `node:child_process`'s `spawn`) and publishes its parsed stdout as the config tree, e.g.
   `shellSource(["gh", "auth", "token", "--format", "json"])`. Supports `stdoutParser` (defaults to
