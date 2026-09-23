@@ -12,7 +12,7 @@ the moment a source pushes a new value.
 - **Typed with TS check** — schemas are statically checked, so `cfg.port.get()` is inferred as `number | null` (or `number` when a `default` is set), not `any`.
 
 ```ts
-import { create } from "@jondotsoy/configs";
+import { create, numeric, string, boolean } from "@jondotsoy/configs";
 import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 
@@ -21,14 +21,14 @@ import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 const cfg = await create({
   server: create(
     {
-      port: { type: "number", summary: "HTTP port", default: 3000 },
-      host: { type: "string", summary: "bind host", default: "localhost" },
+      port: numeric({ summary: "HTTP port", default: 3000 }),
+      host: string({ summary: "bind host", default: "localhost" }),
     },
     { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
   ),
   features: create(
     {
-      promoService: { type: "boolean", summary: "enable the promo service", default: false },
+      promoService: boolean({ summary: "enable the promo service", default: false }),
     },
     { sources: [fetchSource({ url: "https://example.com/features", pollingInterval: 30_000 })] },
   ),
@@ -98,6 +98,24 @@ const cfg = await create(
 // return type, no manual annotation needed.
 ```
 
+`string()`, `numeric()`, and `boolean()` are shorthand builders for the `"string"`/`"number"`/`"boolean"`
+field schemas above — `numeric({ default: 3000 })` is exactly `{ type: "number", default: 3000 }`,
+just without repeating `type` yourself. They accept the same options as their object-literal form
+(`summary`, `required`, `readonly`, `default`, and `pattern` for `string()`):
+
+```ts
+import { create, boolean, numeric, string } from "@jondotsoy/configs";
+
+const cfg = await create(
+  {
+    port: numeric({ summary: "HTTP port", default: 3000 }),
+    host: string({ summary: "bind host", pattern: /^[\w.-]+$/, default: "localhost" }),
+    debug: boolean({ summary: "enable verbose logging", default: false }),
+  },
+  { sources: [/* ... */] },
+);
+```
+
 A value that fails to parse doesn't take down the whole config tree by default — data comes from
 sources outside this package's control, so a `schema.parse` failure (or, with no `schema`, any
 non-object value) is logged via `console.error` and the field resolves to `null`, same as a source
@@ -148,11 +166,11 @@ Every field's type is derived from its schema literal — `type: "number"` gives
 The only thing that changes whether `null` is in the type is **whether the field has a `default`**:
 
 ```ts
-const cfg = await create({ port: { type: "number" } }, { sources: [/* ... */] });
+const cfg = await create({ port: numeric() }, { sources: [/* ... */] });
 const port = cfg.port.get();
 //    ^? const port: number | null
 
-const cfg2 = await create({ port: { type: "number", default: 3000 } }, { sources: [/* ... */] });
+const cfg2 = await create({ port: numeric({ default: 3000 }) }, { sources: [/* ... */] });
 const port2 = cfg2.port.get();
 //    ^? const port2: number
 ```
@@ -163,7 +181,7 @@ control, so a `required` field with no `default` can still end up with nothing f
 resolve to `null` — the type stays `T | null` to reflect that honestly, `required` or not:
 
 ```ts
-const cfg = await create({ port: { type: "number", required: true } }, { sources: [/* ... */] });
+const cfg = await create({ port: numeric({ required: true }) }, { sources: [/* ... */] });
 const port = cfg.port.get();
 //    ^? const port: number | null   (required doesn't remove `null` — only `default` does)
 ```
@@ -173,7 +191,7 @@ data instead of a silent fallback:
 
 ```ts
 const cfg = await create(
-  { port: { type: "number", required: true, default: 3000 } },
+  { port: numeric({ required: true, default: 3000 }) },
   { sources: [/* a source publishing an invalid port throws instead of falling back */] },
 );
 const port = cfg.port.get();
@@ -188,7 +206,7 @@ without `type` — a bare `schema` — is inferred, and [Closing a config tree](
 for what `await`ing actually buys you):
 
 ```ts
-const pending = create({ port: { type: "number", default: 3000 } }, { sources: [/* ... */] });
+const pending = create({ port: numeric({ default: 3000 }) }, { sources: [/* ... */] });
 pending.port.get();
 //      ^? number  (already available before awaiting)
 
@@ -197,7 +215,7 @@ cfg.port.get();
 //  ^? number  (same type, now backed by the first resolved snapshot)
 ```
 
-A nested group (`server: create({ port: { type: "number" } })` embedded in a parent shape) infers
+A nested group (`server: create({ port: numeric() })` embedded in a parent shape) infers
 the same way, recursively — `cfg.server.port.get()` is `number | null` unless `server`'s `port`
 has a `default`.
 
@@ -722,14 +740,14 @@ single environment, or a stand-in source in a test.
 **Options:** none — `literalSource(value)` takes only the value to publish, as its single argument.
 
 ```ts
-import { configs } from "@jondotsoy/configs";
+import { configs, numeric, string } from "@jondotsoy/configs";
 import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
 import { literalSource } from "@jondotsoy/configs/sources/literal";
 
 const cfg = await configs.create(
   {
-    port: { type: "number", required: true },
-    host: { type: "string", required: true },
+    port: numeric({ required: true }),
+    host: string({ required: true }),
   },
   {
     sources: [
@@ -748,7 +766,7 @@ changes. This only really happens at runtime with a live source like `sseSource`
 `envSource` resolves once and never changes:
 
 ```ts
-import { configs } from "@jondotsoy/configs";
+import { configs, numeric } from "@jondotsoy/configs";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
 
 async function cleanupTempFiles() {
@@ -758,7 +776,7 @@ async function cleanupTempFiles() {
 const cfg = await configs.create(
   {
     service: configs.create({
-      cleanupIntervalMs: { type: "number", summary: "cleanup interval", default: 60_000 },
+      cleanupIntervalMs: numeric({ summary: "cleanup interval", default: 60_000 }),
     }),
   },
   { sources: [sseSource({ url: "https://config-service.internal/app/events" })] },
@@ -787,10 +805,10 @@ only needs it if you actually import this subpath, so it's never pulled into app
 React:
 
 ```tsx
-import { configs } from "@jondotsoy/configs";
+import { configs, boolean } from "@jondotsoy/configs";
 import { useConfig } from "@jondotsoy/configs/react";
 
-const cfg = configs.create({ bannerIsActive: { type: "boolean", default: false } });
+const cfg = configs.create({ bannerIsActive: boolean({ default: false }) });
 
 function App() {
   const bannerIsActive = useConfig(cfg.bannerIsActive);
@@ -806,11 +824,11 @@ source backing them — for `sseSource`, this aborts the live connection instead
 it open in the background:
 
 ```ts
-import { configs } from "@jondotsoy/configs";
+import { configs, numeric } from "@jondotsoy/configs";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
 
 const source = sseSource({ url: "https://config-service.internal/app/events" });
-const serverConfigs = await configs.create({ port: { type: "number" } }, { sources: [source] });
+const serverConfigs = await configs.create({ port: numeric() }, { sources: [source] });
 
 await serverConfigs.close();
 ```
@@ -819,12 +837,12 @@ It also implements `Symbol.asyncDispose`, so `await using` closes it automatical
 the scope — including when the scope throws:
 
 ```ts
-import { configs } from "@jondotsoy/configs";
+import { configs, numeric } from "@jondotsoy/configs";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
 
 async function run() {
   await using serverConfigs = await configs.create(
-    { port: { type: "number" } },
+    { port: numeric() },
     { sources: [sseSource({ url: "https://config-service.internal/app/events" })] },
   );
 
