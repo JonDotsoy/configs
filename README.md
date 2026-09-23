@@ -101,16 +101,17 @@ const cfg = await create(
 // return type, no manual annotation needed.
 ```
 
-`string()`, `numeric()`, `boolean()`, and `url()` are shorthand builders for the
-`"string"`/`"number"`/`"boolean"`/`"url"` field schemas above — `numeric({ default: 3000 })` is
-exactly `{ type: "number", default: 3000 }`, just without repeating `type` yourself. Each returns a
-`ConfigDescriptor` instance (also exported, for anyone writing a `numeric(...): ConfigDescriptor<number>`
+`string()`, `numeric()`, `boolean()`, `url()`, and `shape()` are shorthand builders for the
+`"string"`/`"number"`/`"boolean"`/`"url"`/`"shape"` field schemas above — `numeric({ default: 3000 })`
+is exactly `{ type: "number", default: 3000 }`, just without repeating `type` yourself. Each returns
+a `ConfigDescriptor` instance (also exported, for anyone writing a `numeric(...): ConfigDescriptor<number>`
 helper of their own) instead of a plain object, but it resolves and infers identically either way.
 They accept the same options as their object-literal form (`summary`, `required`, `readonly`,
-`default`, `key`, and `pattern` for `string()`):
+`default`, `key`, `pattern` for `string()`, and `schema` for `shape()`):
 
 ```ts
-import { create, boolean, numeric, string, url } from "@jondotsoy/configs";
+import { create, boolean, numeric, shape, string, url } from "@jondotsoy/configs";
+import { z } from "zod";
 
 const cfg = await create(
   {
@@ -118,12 +119,15 @@ const cfg = await create(
     host: string({ summary: "bind host", pattern: /^[\w.-]+$/, default: "localhost" }),
     debug: boolean({ summary: "enable verbose logging", default: false }),
     databaseUrl: url({ summary: "database connection string" }),
+    jwt: shape({ schema: z.object({ issuer: z.string(), ttl: z.number() }) }),
   },
   { sources: [/* ... */] },
 );
 
 // cfg.databaseUrl.get() is typed as URL | null — a valid URL string is parsed into an instance,
 // an invalid one throws a ConfigError, same as { type: "url" }.
+// cfg.jwt.get() is typed as { issuer: string; ttl: number } | null — inferred from `schema.parse`'s
+// return type, same as { type: "shape", schema: ... }.
 ```
 
 A value that fails to parse doesn't take down the whole config tree by default — data comes from
@@ -134,17 +138,18 @@ that simply doesn't have it. Set `required: true` to escalate that failure into 
 
 ```ts
 const cfg = await create(
-  { jwt: { type: "shape", schema: z.object({ issuer: z.string() }), required: true } },
+  { jwt: shape({ schema: z.object({ issuer: z.string() }), required: true }) },
   { sources: [/* a source publishing an invalid jwt throws instead of logging */] },
 );
+// same as { jwt: { type: "shape", schema: z.object({ issuer: z.string() }), required: true } }
 ```
 
-`schema` itself is optional — `{ type: "shape" }` alone just passes the raw value through as-is,
-rejecting (per the same log-or-throw rule above) anything that isn't an object:
+`schema` itself is optional — `shape()`/`{ type: "shape" }` alone just passes the raw value through
+as-is, rejecting (per the same log-or-throw rule above) anything that isn't an object:
 
 ```ts
-const cfg = await create({ metadata: { type: "shape" } }, { sources: [/* ... */] });
-// cfg.metadata.get() is typed as unknown | null
+const cfg = await create({ metadata: shape() }, { sources: [/* ... */] });
+// cfg.metadata.get() is typed as unknown | null — same as { metadata: { type: "shape" } }
 ```
 
 A schema can also be used directly as a shape entry, skipping `{ type: "shape", schema }`:
