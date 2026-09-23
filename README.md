@@ -79,11 +79,12 @@ npm install @jondotsoy/configs
 
 ### Field types
 
-A field's `type` is `"string"`, `"number"`, `"boolean"`, or `"shape"`. The first three coerce and
-validate primitives (numeric/boolean-ish strings, an optional `pattern` for strings). `"shape"`
-hands the raw value to a `schema` you provide — anything with a `parse(value: unknown): T` method,
-which is exactly the shape `zod`, `valibot`, and most other validation libraries already export —
-so there's no dependency on any specific one:
+A field's `type` is `"string"`, `"number"`, `"boolean"`, `"url"`, or `"shape"`. The first three
+coerce and validate primitives (numeric/boolean-ish strings, an optional `pattern` for strings).
+`"url"` parses a string into a `URL` instance, throwing a `ConfigError` if it isn't a valid one.
+`"shape"` hands the raw value to a `schema` you provide — anything with a `parse(value: unknown): T`
+method, which is exactly the shape `zod`, `valibot`, and most other validation libraries already
+export — so there's no dependency on any specific one:
 
 ```ts
 import { create } from "@jondotsoy/configs";
@@ -100,25 +101,29 @@ const cfg = await create(
 // return type, no manual annotation needed.
 ```
 
-`string()`, `numeric()`, and `boolean()` are shorthand builders for the `"string"`/`"number"`/`"boolean"`
-field schemas above — `numeric({ default: 3000 })` is exactly `{ type: "number", default: 3000 }`,
-just without repeating `type` yourself. Each returns a `ConfigDescriptor` instance (also exported,
-for anyone writing a `numeric(...): ConfigDescriptor<number>` helper of their own) instead of a
-plain object, but it resolves and infers identically either way. They accept the same options as
-their object-literal form (`summary`, `required`, `readonly`, `default`, `key`, and `pattern` for
-`string()`):
+`string()`, `numeric()`, `boolean()`, and `url()` are shorthand builders for the
+`"string"`/`"number"`/`"boolean"`/`"url"` field schemas above — `numeric({ default: 3000 })` is
+exactly `{ type: "number", default: 3000 }`, just without repeating `type` yourself. Each returns a
+`ConfigDescriptor` instance (also exported, for anyone writing a `numeric(...): ConfigDescriptor<number>`
+helper of their own) instead of a plain object, but it resolves and infers identically either way.
+They accept the same options as their object-literal form (`summary`, `required`, `readonly`,
+`default`, `key`, and `pattern` for `string()`):
 
 ```ts
-import { create, boolean, numeric, string } from "@jondotsoy/configs";
+import { create, boolean, numeric, string, url } from "@jondotsoy/configs";
 
 const cfg = await create(
   {
     port: numeric({ summary: "HTTP port", default: 3000 }),
     host: string({ summary: "bind host", pattern: /^[\w.-]+$/, default: "localhost" }),
     debug: boolean({ summary: "enable verbose logging", default: false }),
+    databaseUrl: url({ summary: "database connection string" }),
   },
   { sources: [/* ... */] },
 );
+
+// cfg.databaseUrl.get() is typed as URL | null — a valid URL string is parsed into an instance,
+// an invalid one throws a ConfigError, same as { type: "url" }.
 ```
 
 A value that fails to parse doesn't take down the whole config tree by default — data comes from
@@ -222,7 +227,26 @@ cfg.server.port.get();
 
 `key` works the same way on an explicit `{ type: "number", key: "PORT" }` object literal, and on a
 top-level (non-nested) field — it's only useful there to alias a field to a differently-named source
-key.
+key. Combined with `url()`, this is a common way to pull a connection string straight out of an env
+var into a nested group:
+
+```ts
+import { create, url } from "@jondotsoy/configs";
+import { envSource } from "@jondotsoy/configs/sources/env";
+
+// DATABASE_URL=postgres://user:pass@localhost:5432/app
+const cfg = await create(
+  {
+    datasource: {
+      uri: url({ key: "DATABASE_URL" }),
+    },
+  },
+  { sources: [envSource()] },
+);
+
+cfg.datasource.uri.get()?.hostname;
+// "localhost"
+```
 
 ### TypeScript inference
 
