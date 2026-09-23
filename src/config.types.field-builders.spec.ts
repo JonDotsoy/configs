@@ -1,9 +1,21 @@
 import { afterEach, describe, expect, expectTypeOf, test } from "bun:test";
-import { boolean, ConfigDescriptor, create, numeric, string, url } from "./configs.js";
+import { boolean, ConfigDescriptor, create, numeric, shape, string, url } from "./configs.js";
 import { envSource, mapKey } from "./sources/env.js";
 import { fetchSource } from "./sources/fetch.js";
+import { Source } from "./sources/source.js";
 import { ConfigError } from "./errors.js";
+import { z } from "zod";
 import type { ReadOnlyStore } from "./config.types.js";
+
+/** Builds a `Source` that immediately publishes `value` and closes. */
+function testSource<T>(value: T): Source<T> {
+  return new Source<T>({
+    async start(control) {
+      control.set(value);
+      control.close();
+    },
+  });
+}
 
 describe("string/numeric/boolean field builders", () => {
   test("string() builds a ConfigDescriptor<string> carrying a { type: \"string\" } schema", () => {
@@ -318,5 +330,51 @@ describe("url() field builder", () => {
 
     expect(cfg.datasource.uri.get()).toBe(fallback);
     expectTypeOf(cfg.datasource.uri).toEqualTypeOf<ReadOnlyStore<URL>>();
+  });
+});
+
+describe("shape() field builder", () => {
+  test("shape() builds a ConfigDescriptor carrying a { type: \"shape\" } schema", () => {
+    const schema = z.object({ issuer: z.string() });
+    expect(shape({ schema, required: true })).toBeInstanceOf(ConfigDescriptor);
+    expect(shape({ schema, required: true })).toEqual(new ConfigDescriptor("shape", { schema, required: true }));
+  });
+
+  test("required: true escalates an invalid value into a thrown ConfigError instead of logging", async () => {
+    const cfg = await create(
+      { jwt: shape({ schema: z.object({ issuer: z.string() }), required: true }) },
+      { sources: [testSource({ jwt: { issuer: 42 } })] },
+    );
+
+    expect(() => cfg.get()).toThrow(ConfigError);
+  });
+
+  test("parses a valid value via schema.parse, inferring the field's type from it", async () => {
+    const cfg = await create(
+      { jwt: shape({ schema: z.object({ issuer: z.string(), ttl: z.number() }) }) },
+      { sources: [testSource({ jwt: { issuer: "auth0", ttl: 3600 } })] },
+    );
+
+    expect(cfg.jwt.get()).toEqual({ issuer: "auth0", ttl: 3600 });
+    expectTypeOf(cfg.jwt).toEqualTypeOf<ReadOnlyStore<{ issuer: string; ttl: number } | null>>();
+  });
+
+  test("without schema, passes the raw value through untyped", async () => {
+    const cfg = await create({ metadata: shape() }, { sources: [testSource({ metadata: { any: "thing" } })] });
+
+    expect(cfg.metadata.get()).toEqual({ any: "thing" });
+    expectTypeOf(cfg.metadata).toEqualTypeOf<ReadOnlyStore<unknown>>();
+  });
+
+  test("a default is used as-is when nothing resolves the field", async () => {
+    const fallback = { issuer: "auth0", ttl: 3600 };
+
+    const cfg = await create(
+      { jwt: shape({ schema: z.object({ issuer: z.string(), ttl: z.number() }), default: fallback }) },
+      { sources: [testSource({})] },
+    );
+
+    expect(cfg.jwt.get()).toEqual(fallback);
+    expectTypeOf(cfg.jwt).toEqualTypeOf<ReadOnlyStore<{ issuer: string; ttl: number }>>();
   });
 });

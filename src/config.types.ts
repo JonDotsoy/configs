@@ -76,6 +76,7 @@ export type StringFieldOptions = Omit<StringFieldSchema, "type">;
 export type NumberFieldOptions = Omit<NumberFieldSchema, "type">;
 export type BooleanFieldOptions = Omit<BooleanFieldSchema, "type">;
 export type UrlFieldOptions = Omit<UrlFieldSchema, "type">;
+export type ShapeFieldOptions = Omit<ShapeFieldSchema<unknown>, "type">;
 
 /**
  * What `string()`/`numeric()`/`boolean()` build. Carries its field `type` plus the exact `options`
@@ -124,6 +125,26 @@ export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): 
 /** Builds a `"url"` field descriptor — same options as `{ type: "url", ... }`, returned as a `ConfigDescriptor` instead of a plain object. Parses (and validates) a string value into a `URL` instance. */
 export function url<const O extends UrlFieldOptions = {}>(options?: O): ConfigDescriptor<URL, O> {
   return new ConfigDescriptor("url", (options ?? {}) as O);
+}
+
+/**
+ * Extracts a `shape()` call's value type straight off the caller's own `options` — same source
+ * `{ type: "shape", schema: z.object(...) }` already infers from (see `InferSchemaType`/
+ * `PrimitiveOfField` below) — rather than from a separately-inferred type parameter, since `O` alone
+ * (captured via the `const` type parameter on `shape()`) already carries the caller's literal
+ * `schema`, unwidened.
+ */
+type InferShapeOptionValue<O> = O extends { schema: infer Z } ? (Z extends { parse(value: unknown): infer R } ? R : unknown) : unknown;
+
+/**
+ * Builds a `"shape"` field descriptor — same options as `{ type: "shape", ... }`, returned as a
+ * `ConfigDescriptor` instead of a plain object. Infers its value type from `schema`'s `parse`
+ * return type, same as the object-literal form; omitting `schema` (`shape()` alone) infers `unknown`.
+ */
+export function shape<const O extends ShapeFieldOptions = {}>(
+  options?: O,
+): ConfigDescriptor<InferShapeOptionValue<O>, O> {
+  return new ConfigDescriptor("shape", (options ?? {}) as O);
 }
 
 export interface CreateOptions {

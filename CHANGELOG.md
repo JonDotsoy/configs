@@ -9,12 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`string()`, `numeric()`, `boolean()`, `url()`** — field-schema builder functions exported from
-  `@jondotsoy/configs`, shorthand for `{ type: "string" | "number" | "boolean" | "url", ... }`
-  object literals (e.g. `numeric({ summary: "HTTP port", default: 3000 })` instead of
-  `{ type: "number", summary: "HTTP port", default: 3000 }`). Each accepts the same options as its
-  `FieldSchema` variant, minus `type`, and now also a `key?: string | string[]` option (see below).
-  They return a new exported `ConfigDescriptor<T>` instance instead of a plain object literal.
+- **`string()`, `numeric()`, `boolean()`, `url()`, `shape()`** — field-schema builder functions
+  exported from `@jondotsoy/configs`, shorthand for `{ type: "string" | "number" | "boolean" |
+  "url" | "shape", ... }` object literals (e.g. `numeric({ summary: "HTTP port", default: 3000 })`
+  instead of `{ type: "number", summary: "HTTP port", default: 3000 }`). Each accepts the same
+  options as its `FieldSchema` variant, minus `type`, and now also a `key?: string | string[]`
+  option (see below). They return a new exported `ConfigDescriptor<T>` instance instead of a plain
+  object literal; `shape()`'s value type is still inferred from its `schema` option's `parse`
+  return type, e.g. `shape({ schema: z.object({ issuer: z.string() }), required: true })`.
 - **`url()` / `{ type: "url" }`** — a new field type that parses a string value into a `URL`
   instance (via the built-in `URL` constructor), throwing a `ConfigError` if it isn't a valid URL.
   `url()` resolves to `URL | null` (or `URL` when given a `default`), same as every other field type.
