@@ -482,8 +482,17 @@ function isEmbeddedNode(value: unknown): value is object {
   return typeof value === "object" && value !== null && stateOf.has(value);
 }
 
+/**
+ * A genuine `ConfigDescriptor` needs both markers to count as one: the `CONFIG_DESCRIPTOR_TAG`
+ * symbol alone doesn't prove the rest of the contract (`.key`, `.parse()`) is actually there —
+ * every builder (`string()`/`numeric()`/`boolean()`/`url()`/`shape()`, and `file()` from
+ * `./node.js`) satisfies both by construction, since they all return a real `ConfigDescriptor`
+ * instance, but this check doesn't take that on faith.
+ */
 function isConfigDescriptor(node: unknown): node is ConfigDescriptor<unknown, object> {
-  return typeof node === "object" && node !== null && (node as Record<symbol, unknown>)[CONFIG_DESCRIPTOR_TAG] === true;
+  if (typeof node !== "object" || node === null) return false;
+  if ((node as Record<symbol, unknown>)[CONFIG_DESCRIPTOR_TAG] !== true) return false;
+  return typeof (node as { parse?: unknown }).parse === "function";
 }
 
 /**
