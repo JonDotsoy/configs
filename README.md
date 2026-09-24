@@ -12,7 +12,7 @@ the moment a source pushes a new value.
 - **Typed with TS check** — schemas are statically checked, so `cfg.port.get()` is inferred as `number | null` (or `number` when a `default` is set), not `any`.
 
 ```ts
-import { create } from "@jondotsoy/configs";
+import { create, numeric, string, boolean } from "@jondotsoy/configs";
 import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 
@@ -21,14 +21,14 @@ import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 const cfg = await create({
   server: create(
     {
-      port: { type: "number", summary: "HTTP port", default: 3000 },
-      host: { type: "string", summary: "bind host", default: "localhost" },
+      port: numeric({ summary: "HTTP port", default: 3000 }),
+      host: string({ summary: "bind host", default: "localhost" }),
     },
     { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
   ),
   features: create(
     {
-      promoService: { type: "boolean", summary: "enable the promo service", default: false },
+      promoService: boolean({ summary: "enable the promo service", default: false }),
     },
     { sources: [fetchSource({ url: "https://example.com/features", pollingInterval: 30_000 })] },
   ),
@@ -52,6 +52,9 @@ console.log(cfg.server.port.get());
 - [Install](#install)
 - [Guide](#guide)
   - [Field types](#field-types)
+  - [Nested groups](#nested-groups)
+  - [`key` — reading a field from an explicit path](#key--reading-a-field-from-an-explicit-path)
+  - [`load` — `create()` that defaults to `envSource()`](#load--create-that-defaults-to-envsource)
   - [TypeScript inference](#typescript-inference)
     - [Shape fields](#shape-fields)
   - [`Source` — building a custom source](#source--building-a-custom-source)
@@ -77,25 +80,62 @@ npm install @jondotsoy/configs
 
 ### Field types
 
-A field's `type` is `"string"`, `"number"`, `"boolean"`, or `"shape"`. The first three coerce and
-validate primitives (numeric/boolean-ish strings, an optional `pattern` for strings). `"shape"`
-hands the raw value to a `schema` you provide — anything with a `parse(value: unknown): T` method,
-which is exactly the shape `zod`, `valibot`, and most other validation libraries already export —
-so there's no dependency on any specific one:
+A field's `type` is `"string"`, `"number"`, `"boolean"`, `"url"`, or `"shape"`. The first three
+coerce and validate primitives (numeric/boolean-ish strings, an optional `pattern` for strings).
+`"url"` parses a string into a `URL` instance, throwing a `ConfigError` if it isn't a valid one.
+`"shape"` hands the raw value to a `schema` you provide — anything with a `parse(value: unknown): T`
+method, which is exactly the shape `zod`, `valibot`, and most other validation libraries already
+export — so there's no dependency on any specific one.
+
+> [!WARNING]
+> **Writing a field as an object literal — `{ type: "string", ... }` and friends — is
+> deprecated.** It still works exactly as documented below (nothing breaks, nothing is removed),
+> but it now logs a one-time `console.warn` and its `Field*Schema` types carry `@deprecated` tags.
+> Use `string()`, `numeric()`, `boolean()`, `url()`, or `shape()` instead — same options, same
+> inference, just without repeating `type` yourself. See the next section.
 
 ```ts
-import { create } from "@jondotsoy/configs";
+import { create, shape } from "@jondotsoy/configs";
 import { z } from "zod";
 
 const cfg = await create(
   {
-    jwt: { type: "shape", schema: z.object({ issuer: z.string(), ttl: z.number() }) },
+    jwt: shape({ schema: z.object({ issuer: z.string(), ttl: z.number() }) }),
   },
   { sources: [/* ... */] },
 );
 
 // cfg.jwt.get() is typed as { issuer: string; ttl: number } | null — inferred from `schema.parse`'s
 // return type, no manual annotation needed.
+```
+
+`string()`, `numeric()`, `boolean()`, `url()`, and `shape()` are the **recommended** way to write
+the field schemas above, superseding the object-literal form — `numeric({ default: 3000 })` is
+exactly `{ type: "number", default: 3000 }`, just without repeating `type` yourself. Each returns
+a `ConfigDescriptor` instance (also exported, for anyone writing a `numeric(...): ConfigDescriptor<number>`
+helper of their own) instead of a plain object, but it resolves and infers identically either way.
+They accept the same options as their object-literal form (`summary`, `required`, `readonly`,
+`default`, `key`, `pattern` for `string()`, and `schema` for `shape()`):
+
+```ts
+import { create, boolean, numeric, shape, string, url } from "@jondotsoy/configs";
+import { z } from "zod";
+
+const cfg = await create(
+  {
+    port: numeric({ summary: "HTTP port", default: 3000 }),
+    host: string({ summary: "bind host", pattern: /^[\w.-]+$/, default: "localhost" }),
+    debug: boolean({ summary: "enable verbose logging", default: false }),
+    databaseUrl: url({ summary: "database connection string" }),
+    jwt: shape({ schema: z.object({ issuer: z.string(), ttl: z.number() }) }),
+  },
+  { sources: [/* ... */] },
+);
+
+// cfg.databaseUrl.get() is typed as URL | null — a valid URL string is parsed into an instance,
+// an invalid one throws a ConfigError.
+// cfg.jwt.get() is typed as { issuer: string; ttl: number } | null — inferred from `schema.parse`'s
+// return type.
 ```
 
 A value that fails to parse doesn't take down the whole config tree by default — data comes from
@@ -106,39 +146,155 @@ that simply doesn't have it. Set `required: true` to escalate that failure into 
 
 ```ts
 const cfg = await create(
-  { jwt: { type: "shape", schema: z.object({ issuer: z.string() }), required: true } },
+  { jwt: shape({ schema: z.object({ issuer: z.string() }), required: true }) },
   { sources: [/* a source publishing an invalid jwt throws instead of logging */] },
 );
 ```
 
-`schema` itself is optional — `{ type: "shape" }` alone just passes the raw value through as-is,
-rejecting (per the same log-or-throw rule above) anything that isn't an object:
+`schema` itself is optional — `shape()` alone just passes the raw value through
+as-is, rejecting (per the same log-or-throw rule above) anything that isn't an object:
 
 ```ts
-const cfg = await create({ metadata: { type: "shape" } }, { sources: [/* ... */] });
+const cfg = await create({ metadata: shape() }, { sources: [/* ... */] });
 // cfg.metadata.get() is typed as unknown | null
 ```
 
-A schema can also be used directly as a shape entry, skipping `{ type: "shape", schema }`:
+A schema can also be used directly as a shape entry, skipping `shape({ schema })`:
 
 ```ts
 const cfg = await create({ port: z.number() }, { sources: [/* ... */] });
-// cfg.port.get() is typed as number | null — same as { port: { type: "shape", schema: z.number() } }
+// cfg.port.get() is typed as number | null — same as { port: shape({ schema: z.number() }) }
 ```
 
 This shorthand has no room for `summary`/`required`/`readonly`/`default` — so a bad value here
-always logs and resolves to `null`. Reach for the explicit `{ type: "shape", schema }` form when
-you need `required: true` (or any of the others).
+always logs and resolves to `null`. Reach for `shape({ schema, ... })` when you need `required: true`
+(or any of the others).
 
-`type` can also just be omitted from that explicit form — `{ schema: z.number() }` behaves exactly
-like `{ type: "shape", schema: z.number() }`, `required` included:
+`type` can also just be omitted — `{ schema: z.number() }` behaves exactly like
+`shape({ schema: z.number() })`, `required` included:
 
 ```ts
 const cfg = await create(
   { port: { schema: z.number(), required: true } },
   { sources: [/* ... */] },
 );
-// same as { port: { type: "shape", schema: z.number(), required: true } }
+// same as { port: shape({ schema: z.number(), required: true }) }
+```
+
+Neither of these two type-less shorthands (a bare schema, or `{ schema }` with no `type`) is
+affected by the deprecation above — only the *tagged* object-literal form (`{ type: "...", ... }`)
+is deprecated, since that's the one `string()`/`numeric()`/`boolean()`/`url()`/`shape()` replace.
+
+### Nested groups
+
+A shape property can be a plain object instead of wrapping it in `create({...})` — it's treated as
+an implicit nested group, sharing the parent's sources exactly like `server: create({...})` with no
+`options` does:
+
+```ts
+import { create, numeric, string } from "@jondotsoy/configs";
+import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
+
+// SERVER_PORT=3000 SERVER_HOST=localhost
+const cfg = await create(
+  {
+    server: {
+      port: numeric({ summary: "HTTP port", default: 3000 }),
+      host: string({ summary: "bind host", default: "localhost" }),
+    },
+  },
+  { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
+);
+
+cfg.server.port.get();
+// 3000
+```
+
+This is just a shorthand for `server: create({ port: numeric(...), host: string(...) })` — it never
+carries `sources` of its own (there's no `options` argument to give it any), so, like any
+non-owning nested group, it always resolves against whatever sources the enclosing `create()` call
+was given.
+
+### `key` — reading a field from an explicit path
+
+By default a field reads from its own position in the shape tree — `server.port`'s path is
+`["server", "port"]`. Set `key` (a string, or a `string[]` for a multi-segment path) to read from an
+explicit path instead, bypassing the field's nesting entirely. This is what lets a flat `envSource()`
+(the identity mapping, `"PORT" => ["PORT"]`) feed a nested shape directly:
+
+```ts
+import { create, numeric, string } from "@jondotsoy/configs";
+import { envSource } from "@jondotsoy/configs/sources/env";
+
+// PORT=3000 HOST=localhost
+const cfg = await create(
+  {
+    server: {
+      port: numeric({ summary: "HTTP port", default: 3000, key: "PORT" }),
+      host: string({ summary: "bind host", default: "localhost", key: "HOST" }),
+    },
+  },
+  { sources: [envSource()] },
+);
+
+cfg.server.port.get();
+// 3000 — read from the source's top-level "PORT", not "server.port"
+```
+
+`key` also works on a top-level (non-nested) field — it's only useful there to alias a field to a
+differently-named source key. Combined with `url()`, this is a common way to pull a connection
+string straight out of an env var into a nested group:
+
+```ts
+import { create, url } from "@jondotsoy/configs";
+import { envSource } from "@jondotsoy/configs/sources/env";
+
+// DATABASE_URL=postgres://user:pass@localhost:5432/app
+const cfg = await create(
+  {
+    datasource: {
+      uri: url({ key: "DATABASE_URL" }),
+    },
+  },
+  { sources: [envSource()] },
+);
+
+cfg.datasource.uri.get()?.hostname;
+// "localhost"
+```
+
+### `load` — `create()` that defaults to `envSource()`
+
+`load(shape, options?)` is identical to `create(shape, options?)`, except its `options.sources`
+defaults to `[envSource()]` instead of `[]`. Reaching for env vars is common enough that
+`load(shape)` alone — no `options` at all — reads straight from `process.env`:
+
+```ts
+import { load, numeric } from "@jondotsoy/configs";
+
+// PORT=8080
+const cfg = await load({
+  server: {
+    port: numeric({ key: "PORT" }),
+  },
+});
+
+cfg.server.port.get();
+// 8080
+```
+
+Passing an explicit `sources` array overrides the `envSource()` default entirely — it isn't merged
+with it — so `load()` then behaves exactly like `create()`:
+
+```ts
+import { load, numeric } from "@jondotsoy/configs";
+import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+
+const cfg = await load(
+  { promoService: numeric({ default: 0 }) },
+  { sources: [fetchSource({ url: "https://example.com/features" })] },
+);
+// same as create({ promoService: numeric({ default: 0 }) }, { sources: [fetchSource(...)] })
 ```
 
 ### TypeScript inference
@@ -148,11 +304,11 @@ Every field's type is derived from its schema literal — `type: "number"` gives
 The only thing that changes whether `null` is in the type is **whether the field has a `default`**:
 
 ```ts
-const cfg = await create({ port: { type: "number" } }, { sources: [/* ... */] });
+const cfg = await create({ port: numeric() }, { sources: [/* ... */] });
 const port = cfg.port.get();
 //    ^? const port: number | null
 
-const cfg2 = await create({ port: { type: "number", default: 3000 } }, { sources: [/* ... */] });
+const cfg2 = await create({ port: numeric({ default: 3000 }) }, { sources: [/* ... */] });
 const port2 = cfg2.port.get();
 //    ^? const port2: number
 ```
@@ -163,7 +319,7 @@ control, so a `required` field with no `default` can still end up with nothing f
 resolve to `null` — the type stays `T | null` to reflect that honestly, `required` or not:
 
 ```ts
-const cfg = await create({ port: { type: "number", required: true } }, { sources: [/* ... */] });
+const cfg = await create({ port: numeric({ required: true }) }, { sources: [/* ... */] });
 const port = cfg.port.get();
 //    ^? const port: number | null   (required doesn't remove `null` — only `default` does)
 ```
@@ -173,7 +329,7 @@ data instead of a silent fallback:
 
 ```ts
 const cfg = await create(
-  { port: { type: "number", required: true, default: 3000 } },
+  { port: numeric({ required: true, default: 3000 }) },
   { sources: [/* a source publishing an invalid port throws instead of falling back */] },
 );
 const port = cfg.port.get();
@@ -188,7 +344,7 @@ without `type` — a bare `schema` — is inferred, and [Closing a config tree](
 for what `await`ing actually buys you):
 
 ```ts
-const pending = create({ port: { type: "number", default: 3000 } }, { sources: [/* ... */] });
+const pending = create({ port: numeric({ default: 3000 }) }, { sources: [/* ... */] });
 pending.port.get();
 //      ^? number  (already available before awaiting)
 
@@ -197,7 +353,7 @@ cfg.port.get();
 //  ^? number  (same type, now backed by the first resolved snapshot)
 ```
 
-A nested group (`server: create({ port: { type: "number" } })` embedded in a parent shape) infers
+A nested group (`server: create({ port: numeric() })` embedded in a parent shape) infers
 the same way, recursively — `cfg.server.port.get()` is `number | null` unless `server`'s `port`
 has a `default`.
 
@@ -209,10 +365,11 @@ applies: no `default` means the type is `T | null` (a bad or missing value resol
 runtime — see [Field types](#field-types)), a `default` means the type is `T`:
 
 ```ts
+import { create, shape } from "@jondotsoy/configs";
 import { z } from "zod";
 
 const cfg = await create(
-  { jwt: { type: "shape", schema: z.object({ issuer: z.string(), ttl: z.number() }) } },
+  { jwt: shape({ schema: z.object({ issuer: z.string(), ttl: z.number() }) }) },
   { sources: [/* ... */] },
 );
 const jwt = cfg.jwt.get();
@@ -220,11 +377,10 @@ const jwt = cfg.jwt.get();
 
 const cfg2 = await create(
   {
-    jwt: {
-      type: "shape",
+    jwt: shape({
       schema: z.object({ issuer: z.string(), ttl: z.number() }),
       default: { issuer: "auth0", ttl: 3600 },
-    },
+    }),
   },
   { sources: [/* ... */] },
 );
@@ -240,25 +396,24 @@ is inferred as its output type:
 
 ```ts
 const parity = { parse: (value: unknown) => (Number(value) % 2 === 0 ? "even" : "odd") };
-const cfg = await create({ n: { type: "shape", schema: parity } }, { sources: [/* ... */] });
+const cfg = await create({ n: shape({ schema: parity }) }, { sources: [/* ... */] });
 const n = cfg.n.get();
 //    ^? const n: "even" | "odd" | null
 ```
 
-Omitting `schema` entirely (`{ type: "shape" }`) passes the raw value through untyped — the field
-is `unknown`, whether or not a source ever has it. `unknown | null` collapses to `unknown` in
+Omitting `schema` entirely (`shape()` alone) passes the raw value through untyped — the field is
+`unknown`, whether or not a source ever has it. `unknown | null` collapses to `unknown` in
 TypeScript, so there's no `| null` to see in the type here, unlike every other field:
 
 ```ts
-const cfg = await create({ metadata: { type: "shape" } }, { sources: [/* ... */] });
+const cfg = await create({ metadata: shape() }, { sources: [/* ... */] });
 const metadata = cfg.metadata.get();
 //    ^? const metadata: unknown
 ```
 
-Both shorthands for a shape field — a bare schema used directly (`port: z.number()`) and the
-untagged form (`port: { schema: z.number() }`) — infer identically to the explicit
-`{ type: "shape", schema: z.number() }`. The bare-schema shorthand just has no room for `default`,
-so it's always `T | null`:
+Both type-less shorthands for a shape field — a bare schema used directly (`port: z.number()`) and
+`{ schema: z.number() }` with no `type` — infer identically to `shape({ schema: z.number() })`.
+The bare-schema shorthand just has no room for `default`, so it's always `T | null`:
 
 ```ts
 const cfg = await create({ port: z.number() }, { sources: [/* ... */] });
@@ -722,14 +877,14 @@ single environment, or a stand-in source in a test.
 **Options:** none — `literalSource(value)` takes only the value to publish, as its single argument.
 
 ```ts
-import { configs } from "@jondotsoy/configs";
+import { configs, numeric, string } from "@jondotsoy/configs";
 import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
 import { literalSource } from "@jondotsoy/configs/sources/literal";
 
 const cfg = await configs.create(
   {
-    port: { type: "number", required: true },
-    host: { type: "string", required: true },
+    port: numeric({ required: true }),
+    host: string({ required: true }),
   },
   {
     sources: [
@@ -748,7 +903,7 @@ changes. This only really happens at runtime with a live source like `sseSource`
 `envSource` resolves once and never changes:
 
 ```ts
-import { configs } from "@jondotsoy/configs";
+import { configs, numeric } from "@jondotsoy/configs";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
 
 async function cleanupTempFiles() {
@@ -758,7 +913,7 @@ async function cleanupTempFiles() {
 const cfg = await configs.create(
   {
     service: configs.create({
-      cleanupIntervalMs: { type: "number", summary: "cleanup interval", default: 60_000 },
+      cleanupIntervalMs: numeric({ summary: "cleanup interval", default: 60_000 }),
     }),
   },
   { sources: [sseSource({ url: "https://config-service.internal/app/events" })] },
@@ -787,10 +942,10 @@ only needs it if you actually import this subpath, so it's never pulled into app
 React:
 
 ```tsx
-import { configs } from "@jondotsoy/configs";
+import { configs, boolean } from "@jondotsoy/configs";
 import { useConfig } from "@jondotsoy/configs/react";
 
-const cfg = configs.create({ bannerIsActive: { type: "boolean", default: false } });
+const cfg = configs.create({ bannerIsActive: boolean({ default: false }) });
 
 function App() {
   const bannerIsActive = useConfig(cfg.bannerIsActive);
@@ -806,11 +961,11 @@ source backing them — for `sseSource`, this aborts the live connection instead
 it open in the background:
 
 ```ts
-import { configs } from "@jondotsoy/configs";
+import { configs, numeric } from "@jondotsoy/configs";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
 
 const source = sseSource({ url: "https://config-service.internal/app/events" });
-const serverConfigs = await configs.create({ port: { type: "number" } }, { sources: [source] });
+const serverConfigs = await configs.create({ port: numeric() }, { sources: [source] });
 
 await serverConfigs.close();
 ```
@@ -819,12 +974,12 @@ It also implements `Symbol.asyncDispose`, so `await using` closes it automatical
 the scope — including when the scope throws:
 
 ```ts
-import { configs } from "@jondotsoy/configs";
+import { configs, numeric } from "@jondotsoy/configs";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
 
 async function run() {
   await using serverConfigs = await configs.create(
-    { port: { type: "number" } },
+    { port: numeric() },
     { sources: [sseSource({ url: "https://config-service.internal/app/events" })] },
   );
 
