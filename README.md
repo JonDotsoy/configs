@@ -94,13 +94,12 @@ export — so there's no dependency on any specific one.
 > inference, just without repeating `type` yourself. See the next section.
 
 ```ts
-import { create } from "@jondotsoy/configs";
+import { create, shape } from "@jondotsoy/configs";
 import { z } from "zod";
 
 const cfg = await create(
   {
-    // deprecated — prefer shape({ schema: ... }) below
-    jwt: { type: "shape", schema: z.object({ issuer: z.string(), ttl: z.number() }) },
+    jwt: shape({ schema: z.object({ issuer: z.string(), ttl: z.number() }) }),
   },
   { sources: [/* ... */] },
 );
@@ -133,9 +132,9 @@ const cfg = await create(
 );
 
 // cfg.databaseUrl.get() is typed as URL | null — a valid URL string is parsed into an instance,
-// an invalid one throws a ConfigError, same as { type: "url" }.
+// an invalid one throws a ConfigError.
 // cfg.jwt.get() is typed as { issuer: string; ttl: number } | null — inferred from `schema.parse`'s
-// return type, same as { type: "shape", schema: ... }.
+// return type.
 ```
 
 A value that fails to parse doesn't take down the whole config tree by default — data comes from
@@ -149,22 +148,21 @@ const cfg = await create(
   { jwt: shape({ schema: z.object({ issuer: z.string() }), required: true }) },
   { sources: [/* a source publishing an invalid jwt throws instead of logging */] },
 );
-// same as { jwt: { type: "shape", schema: z.object({ issuer: z.string() }), required: true } }
 ```
 
-`schema` itself is optional — `shape()`/`{ type: "shape" }` alone just passes the raw value through
+`schema` itself is optional — `shape()` alone just passes the raw value through
 as-is, rejecting (per the same log-or-throw rule above) anything that isn't an object:
 
 ```ts
 const cfg = await create({ metadata: shape() }, { sources: [/* ... */] });
-// cfg.metadata.get() is typed as unknown | null — same as { metadata: { type: "shape" } }
+// cfg.metadata.get() is typed as unknown | null
 ```
 
-A schema can also be used directly as a shape entry, skipping `{ type: "shape", schema }`:
+A schema can also be used directly as a shape entry, skipping `shape({ schema })`:
 
 ```ts
 const cfg = await create({ port: z.number() }, { sources: [/* ... */] });
-// cfg.port.get() is typed as number | null — same as { port: { type: "shape", schema: z.number() } }
+// cfg.port.get() is typed as number | null — same as { port: shape({ schema: z.number() }) }
 ```
 
 This shorthand has no room for `summary`/`required`/`readonly`/`default` — so a bad value here
@@ -242,10 +240,9 @@ cfg.server.port.get();
 // 3000 — read from the source's top-level "PORT", not "server.port"
 ```
 
-`key` works the same way on an explicit `{ type: "number", key: "PORT" }` object literal, and on a
-top-level (non-nested) field — it's only useful there to alias a field to a differently-named source
-key. Combined with `url()`, this is a common way to pull a connection string straight out of an env
-var into a nested group:
+`key` also works on a top-level (non-nested) field — it's only useful there to alias a field to a
+differently-named source key. Combined with `url()`, this is a common way to pull a connection
+string straight out of an env var into a nested group:
 
 ```ts
 import { create, url } from "@jondotsoy/configs";
