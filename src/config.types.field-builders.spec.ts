@@ -474,3 +474,108 @@ describe("{ type: \"...\" } object-literal fields are deprecated", () => {
     }
   });
 });
+
+describe("deeply nested plain-object shapes", () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) delete (process.env as Record<string, string | undefined>)[key];
+    }
+    Object.assign(process.env, originalEnv);
+  });
+
+  test("resolves a field 7 levels deep, via key, against a flat envSource()", async () => {
+    process.env.FOF = "42";
+
+    const cfg = await create(
+      {
+        foo: {
+          tar: {
+            biz: {
+              liz: {
+                lol: {
+                  flip: {
+                    fof: numeric({ key: "FOF" }),
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      { sources: [envSource()] },
+    );
+
+    const value = cfg.foo.tar.biz.liz.lol.flip.fof.get();
+
+    expect(typeof value).toBe("number");
+    expect(value).toBe(42);
+    expect(cfg.get()).toEqual({
+      foo: { tar: { biz: { liz: { lol: { flip: { fof: 42 } } } } } },
+    });
+
+    expectTypeOf(cfg.foo.tar.biz.liz.lol.flip.fof).toEqualTypeOf<ReadOnlyStore<number | null>>();
+  });
+
+  test("resolves to null at the same depth when FOF is unset and there's no default", async () => {
+    delete process.env.FOF;
+
+    const cfg = await create(
+      {
+        foo: {
+          tar: {
+            biz: {
+              liz: {
+                lol: {
+                  flip: {
+                    fof: numeric({ key: "FOF" }),
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      { sources: [envSource()] },
+    );
+
+    expect(cfg.foo.tar.biz.liz.lol.flip.fof.get()).toBeNull();
+  });
+
+  test("live updates at that depth are reflected without re-fetching the whole tree", async () => {
+    const source = new Source<{ FOF?: string }>({
+      start(control) {
+        control.set({ FOF: "1" });
+        setTimeout(() => control.set({ FOF: "2" }), 0);
+      },
+    });
+
+    const cfg = await create(
+      {
+        foo: { tar: { biz: { liz: { lol: { flip: { fof: numeric({ key: "FOF" }) } } } } } },
+      },
+      { sources: [source] },
+    );
+
+    expect(cfg.foo.tar.biz.liz.lol.flip.fof.get()).toBe(1);
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(cfg.foo.tar.biz.liz.lol.flip.fof.get()).toBe(2);
+  });
+
+  test("a typo'd path segment surfaces as undefined, not a crash", async () => {
+    process.env.FOF = "7";
+
+    const cfg = await create(
+      {
+        foo: { tar: { biz: { liz: { lol: { flip: { fof: numeric({ key: "FOF" }) } } } } } },
+      },
+      { sources: [envSource()] },
+    );
+
+    // @ts-expect-error "biiz" is not a key of this shape
+    expect(cfg.foo.tar.biiz).toBeUndefined();
+  });
+});
