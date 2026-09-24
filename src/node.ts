@@ -1,6 +1,20 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ConfigDescriptor, type Parseable, type ShapeFieldOptions } from "./config.types.js";
 import { ConfigError } from "./errors.js";
+
+/**
+ * Builds a `file:` `URL` from an absolute POSIX-style path, e.g. `/tmp/-Fasg42/file` — standing in
+ * for `node:url`'s `pathToFileURL` (not used here on purpose: a bundle targeting `browser`, like
+ * `bun run test:cases`'s browser engine produces from a package consuming `./node`, doesn't ship a
+ * `pathToFileURL` export in its `node:url` polyfill, and unlike a *runtime* gap elsewhere in this
+ * module that a browser bundle only trips over when actually called, an unresolved *import* like
+ * that one fails the bundle itself).
+ */
+function toFileURL(path: string): URL {
+  return new URL(`file://${path}`);
+}
 
 /** Extensions mapped to a MIME type for `FileBlob.type`, keyed lowercase including the leading dot. */
 const MIME_TYPES_BY_EXTENSION: Record<string, string> = {
@@ -49,7 +63,12 @@ export class FileBlob {
     this.#location = location;
   }
 
-  /** Where this file was loaded from on disk, e.g. `file:///tmp/-Fasg42/file.txt` — `undefined` when it came from an inline (non-`URL`) value instead. */
+  /**
+   * Where this file's content lives on disk, e.g. `file:///tmp/-Fasg42/file.txt`. For a `file:`
+   * `URL` default, this is that same `URL`; for any other value (a source's raw value, or a
+   * string `default`), the decoded content is written out to a fresh temp file (see `file()`) and
+   * this points at that copy — always set, never `undefined`.
+   */
   get location(): URL | undefined {
     return this.#location;
   }
@@ -159,6 +178,26 @@ function decodeValue(value: string, format: FileValueFormat | undefined): Uint8A
   return resolvedFormat === "base64" ? decodeBase64(value) : new TextEncoder().encode(value);
 }
 
+/**
+ * Writes `payload` out to a fresh file under the OS temp directory and returns its `file:` `URL`
+ * — `FileBlob.location` for any value that didn't already come from a real file on disk (a
+ * source's raw value, or a string `default`). Each call gets its own temp directory (via
+ * `mkdtempSync`), so concurrent/repeated resolutions never collide; nothing on this package's side
+ * cleans these up afterwards.
+ */
+function writeTempFileSync(payload: Uint8Array): URL {
+  const dir = mkdtempSync(join(tmpdir(), "configs-file-"));
+  const path = join(dir, "file");
+  writeFileSync(path, payload);
+  return toFileURL(path);
+}
+
+/** Decodes `value` (per `decodeValue`) and writes it out to a temp file, returning a `FileBlob` whose `.location` points at that copy. */
+function blobFromText(value: string, format: FileValueFormat | undefined): FileBlob {
+  const payload = decodeValue(value, format);
+  return new FileBlob(payload, writeTempFileSync(payload));
+}
+
 /** Reads `location` from disk synchronously; `undefined` (not thrown) when the file doesn't exist. */
 function readLocationSync(location: URL): Uint8Array | undefined {
   try {
@@ -176,16 +215,33 @@ function resolveDefault(defaultValue: string | URL | undefined, format: FileValu
     const payload = readLocationSync(defaultValue);
     return payload === undefined ? undefined : new FileBlob(payload, defaultValue);
   }
-  return new FileBlob(decodeValue(defaultValue, format));
+  return blobFromText(defaultValue, format);
 }
+
+/**
+ * `file()`'s return type: same as `ConfigDescriptor<FileBlob, O>`, except `required: true` also
+ * narrows `.get()` to `FileBlob` (never `null`) — same effect a real `default` has elsewhere,
+ * applied here from `required` instead since a `file()` field almost always wants "always
+ * present" enforced by `required`, not by a fallback value. Same caveat as `default` everywhere
+ * else in this package: this is a type-level promise, not a runtime guarantee — a `required`
+ * field with nothing from any source still resolves to `null` at runtime, it just isn't supposed
+ * to happen.
+ */
+type FileFieldReturn<O extends FileFieldOptions> = O extends { required: true }
+  ? ConfigDescriptor<FileBlob, O & { default: FileBlob }>
+  : ConfigDescriptor<FileBlob, O>;
 
 /**
  * Builds a field descriptor that loads its value as a file: a source's raw string value is
  * decoded (as base64 or text, per `format` or inferred — see `FileFieldOptions.format`) into a
  * `FileBlob`. `default` accepts the same string form, or a `file:` `URL` read from local disk
  * eagerly (see `FileFieldOptions.default`).
+ *
+ * `.location` is always set: a `file:` `URL` default is used as-is, and every other value (a
+ * source's raw value, or a string `default`) is written out to a fresh temp file whose `file:`
+ * `URL` becomes `.location`.
  */
-export function file<const O extends FileFieldOptions = {}>(options?: O): ConfigDescriptor<FileBlob, O> {
+export function file<const O extends FileFieldOptions = {}>(options?: O): FileFieldReturn<O> {
   const opts = options ?? ({} as O);
   const schema: Parseable<FileBlob> = {
     parse(raw: unknown): FileBlob {
@@ -193,7 +249,7 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): Config
       if (typeof raw !== "string") {
         throw new ConfigError(`file(): expected a string value, got ${JSON.stringify(raw)}`);
       }
-      return new FileBlob(decodeValue(raw, opts.format));
+      return blobFromText(raw, opts.format);
     },
   };
 
@@ -208,5 +264,5 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): Config
   const resolvedDefault = resolveDefault(opts.default, opts.format);
   if (resolvedDefault !== undefined) runtimeOptions.default = resolvedDefault;
 
-  return new ConfigDescriptor("shape", runtimeOptions) as unknown as ConfigDescriptor<FileBlob, O>;
+  return new ConfigDescriptor("shape", runtimeOptions) as unknown as FileFieldReturn<O>;
 }

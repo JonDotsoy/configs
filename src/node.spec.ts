@@ -1,9 +1,10 @@
-import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { describe, expect, expectTypeOf, test } from "bun:test";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { configs } from "./configs";
+import type { ReadOnlyStore } from "./config.types";
 import { literalSource } from "./sources/literal";
 import { FileBlob, file } from "./node";
 
@@ -201,10 +202,53 @@ describe("file()", () => {
       expect(await cfg.key.get().exists()).toBe(true);
     });
 
-    test(".location is undefined without a URL default/source path", async () => {
+    test(".location points at a temp file when the value came from a source, not a real file", async () => {
+      const cfg = await configs.create({ key: file() }, { sources: [literalSource({ key: "hello" })] });
+
+      const blob = cfg.key.get()!;
+      expect(blob.location).toBeInstanceOf(URL);
+      expect(blob.location!.protocol).toBe("file:");
+      expect(await readFile(blob.location!, "utf-8")).toBe("hello");
+    });
+
+    test(".location points at a temp file for a string default too", async () => {
       const cfg = await configs.create({ key: file({ default: "hello", format: "text" }) }, { sources: [] });
 
-      expect(cfg.key.get().location).toBeUndefined();
+      const blob = cfg.key.get();
+      expect(blob.location).toBeInstanceOf(URL);
+      expect(await readFile(blob.location!, "utf-8")).toBe("hello");
+    });
+
+    test(".location is the same URL given as a URL default", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "configs-file-field-"));
+      try {
+        const path = join(dir, "cert.pem");
+        await Bun.write(path, "-----BEGIN CERTIFICATE-----");
+
+        const cfg = await configs.create({ key: file({ default: pathToFileURL(path) }) }, { sources: [] });
+
+        expect(cfg.key.get().location?.toString()).toBe(pathToFileURL(path).toString());
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("required", () => {
+    test("required: true narrows .get()'s type to FileBlob, never null", async () => {
+      const cfg = await configs.create(
+        { key: file({ required: true }) },
+        { sources: [literalSource({ key: "hello" })] },
+      );
+
+      expectTypeOf(cfg.key).toEqualTypeOf<ReadOnlyStore<FileBlob>>();
+      expect(await cfg.key.get().text()).toBe("hello");
+    });
+
+    test("without required, .get()'s type stays FileBlob | null", async () => {
+      const cfg = await configs.create({ key: file() }, { sources: [] });
+
+      expectTypeOf(cfg.key).toEqualTypeOf<ReadOnlyStore<FileBlob | null>>();
     });
   });
 

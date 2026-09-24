@@ -3,7 +3,7 @@
 // node:fs-backed, so a browser bundle stubs it out (see manifest.ts's
 // tolerateFailureEngines for this case) — run there anyway to document the
 // breakage instead of skipping it.
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { configs, literalSource } from "@jondotsoy/configs";
@@ -23,7 +23,16 @@ const cfg1 = await configs.create({ key: file() }, { sources: [literalSource({ k
 const blob1 = cfg1.key.get();
 assert(blob1 instanceof FileBlob, "a source's text value resolves to a FileBlob");
 assert((await blob1!.text()) === "hello", "FileBlob.text() decodes the text value");
+assert(blob1!.location instanceof URL, "a source-derived FileBlob still has a .location");
+assert((await readFile(blob1!.location!, "utf-8")) === "hello", ".location points at a temp file holding the decoded content");
 await cfg1.close();
+
+const cfg1c = await configs.create(
+  { key: file({ required: true }) },
+  { sources: [literalSource({ key: "hello" })] },
+);
+assert((await cfg1c.key.get().text()) === "hello", "required: true still resolves normally when a source has the value");
+await cfg1c.close();
 
 const cfg1b = await configs.create(
   { key: file({ default: "foo=tar&biz=lol", format: "text" }) },

@@ -25,10 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inferred automatically, or forced via `file({ format: "text" | "base64" })`) into a `FileBlob`,
   exposing `.text()`, `.json()`, `.formData()` (parses `application/x-www-form-urlencoded` text
   like `foo=tar&biz=lol`), `.arrayBuffer()`, `.bytes()`, `.stream()`, `.exists()`, plus the
-  synchronous `.size`, `.type` (MIME type inferred from `.location`'s filename), and `.location`.
-  `file({ default })` accepts the same string form, or a `file:` `URL` read from local disk eagerly
-  when `file()` is called — a missing file's default resolves the field to `null`, same as any
-  other field with no default and nothing from a source.
+  synchronous `.size`, `.type` (MIME type inferred from `.location`'s filename), and `.location` —
+  always set: a `file:` `URL` default is used as-is, and any other value (a source's raw value, or
+  a string `default`) is written out to a fresh temp file whose `URL` becomes `.location`.
+  `file({ default })` accepts a string (same decoding as a source value) or a `file:` `URL` read
+  from local disk eagerly when `file()` is called — a missing file's default resolves the field to
+  `null`, same as any other field with no default and nothing from a source. `file({ required:
+  true })` additionally narrows `.get()`'s type to `FileBlob` (never `null`), same type-level
+  promise `default` makes elsewhere in this package.
 - **`load(shape, options?)`** — exported from `@jondotsoy/configs`, identical to `create()` except
   its `options.sources` defaults to `[envSource()]` instead of `[]`, so `load(shape)` alone reads
   straight from `process.env`. Passing an explicit `sources` array overrides that default entirely
