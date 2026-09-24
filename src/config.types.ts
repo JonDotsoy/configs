@@ -1,4 +1,5 @@
 import { Source } from "./sources/source.js";
+import { CONFIG_DESCRIPTOR_TAG } from "./utils/config-descriptor-tag.js";
 import { Store, type Subscriber, type Unsubscribe } from "./utils/store.js";
 import { tSync } from "./utils/t.js";
 import { ConfigError } from "./errors.js";
@@ -93,16 +94,6 @@ export type NumberFieldOptions = Omit<NumberFieldSchema, "type">;
 export type BooleanFieldOptions = Omit<BooleanFieldSchema, "type">;
 export type UrlFieldOptions = Omit<UrlFieldSchema, "type">;
 export type ShapeFieldOptions = Omit<ShapeFieldSchema<unknown>, "type">;
-
-/**
- * `Symbol.for` (the global symbol registry, keyed by string, shared across the whole JS realm)
- * rather than a plain `Symbol()` or an `instanceof` check — `bun build` bundles each public entry
- * point (`.`, `./node`, ...) independently, so a `ConfigDescriptor` built by one entry point's own
- * copy of this module (e.g. `file()` from `./node`) would fail an `instanceof ConfigDescriptor`
- * check done against another entry point's separately-bundled copy of the same class (e.g.
- * `configs.ts`'s own `isConfigDescriptor`). A registry symbol survives that duplication.
- */
-const CONFIG_DESCRIPTOR_TAG = Symbol.for("@jondotsoy/configs/ConfigDescriptor");
 
 /**
  * What `string()`/`numeric()`/`boolean()` build. Carries its field `type` plus the exact `options`
