@@ -54,6 +54,7 @@ console.log(cfg.server.port.get());
   - [Field types](#field-types)
   - [Nested groups](#nested-groups)
   - [`key` — reading a field from an explicit path](#key--reading-a-field-from-an-explicit-path)
+  - [`load` — `create()` that defaults to `envSource()`](#load--create-that-defaults-to-envsource)
   - [TypeScript inference](#typescript-inference)
     - [Shape fields](#shape-fields)
   - [`Source` — building a custom source](#source--building-a-custom-source)
@@ -260,6 +261,40 @@ const cfg = await create(
 
 cfg.datasource.uri.get()?.hostname;
 // "localhost"
+```
+
+### `load` — `create()` that defaults to `envSource()`
+
+`load(shape, options?)` is identical to `create(shape, options?)`, except its `options.sources`
+defaults to `[envSource()]` instead of `[]`. Reaching for env vars is common enough that
+`load(shape)` alone — no `options` at all — reads straight from `process.env`:
+
+```ts
+import { load, numeric } from "@jondotsoy/configs";
+
+// PORT=8080
+const cfg = await load({
+  server: {
+    port: numeric({ key: "PORT" }),
+  },
+});
+
+cfg.server.port.get();
+// 8080
+```
+
+Passing an explicit `sources` array overrides the `envSource()` default entirely — it isn't merged
+with it — so `load()` then behaves exactly like `create()`:
+
+```ts
+import { load, numeric } from "@jondotsoy/configs";
+import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+
+const cfg = await load(
+  { promoService: numeric({ default: 0 }) },
+  { sources: [fetchSource({ url: "https://example.com/features" })] },
+);
+// same as create({ promoService: numeric({ default: 0 }) }, { sources: [fetchSource(...)] })
 ```
 
 ### TypeScript inference

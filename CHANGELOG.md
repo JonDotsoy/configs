@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`load(shape, options?)`** — exported from `@jondotsoy/configs`, identical to `create()` except
+  its `options.sources` defaults to `[envSource()]` instead of `[]`, so `load(shape)` alone reads
+  straight from `process.env`. Passing an explicit `sources` array overrides that default entirely
+  (it does not merge with `envSource()`), at which point `load()` behaves exactly like `create()`.
 - **`string()`, `numeric()`, `boolean()`, `url()`, `shape()`** — field-schema builder functions
   exported from `@jondotsoy/configs`, shorthand for `{ type: "string" | "number" | "boolean" |
   "url" | "shape", ... }` object literals (e.g. `numeric({ summary: "HTTP port", default: 3000 })`

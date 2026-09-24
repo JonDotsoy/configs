@@ -1,5 +1,6 @@
 import { boolean, createConfigNode, numeric, string } from "./config.types.js";
-import type { configs as ConfigsApi } from "./config.types.js";
+import type { configs as ConfigsApi, CreateOptions, PendingConfigNode, SchemaShape } from "./config.types.js";
+import { envSource } from "./sources/env.js";
 
 export type {
   BooleanFieldOptions,
@@ -52,5 +53,15 @@ export const configs: ConfigsApi = {
 };
 
 export const create: ConfigsApi["create"] = createConfigNode;
+
+/**
+ * Same as `create()`, except it defaults `options.sources` to `[envSource()]` instead of `[]` —
+ * so `load(shape)` (no `options` at all, or `options` with no `sources`) reads straight from
+ * `process.env`. Passing an explicit `sources` array overrides that default entirely (it isn't
+ * merged with `envSource()`) and `load()` then behaves exactly like `create()`.
+ */
+export function load<S extends SchemaShape>(shape: S, options: CreateOptions = {}): PendingConfigNode<S> {
+  return createConfigNode(shape, { ...options, sources: options.sources ?? [envSource()] });
+}
 
 export default configs;

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, expectTypeOf, spyOn, test } from "bun:test";
-import { boolean, ConfigDescriptor, create, numeric, shape, string, url } from "./configs.js";
+import { boolean, ConfigDescriptor, create, load, numeric, shape, string, url } from "./configs.js";
 import { envSource, mapKey } from "./sources/env.js";
 import { fetchSource } from "./sources/fetch.js";
 import { Source } from "./sources/source.js";
@@ -577,5 +577,108 @@ describe("deeply nested plain-object shapes", () => {
 
     // @ts-expect-error "biiz" is not a key of this shape
     expect(cfg.foo.tar.biiz).toBeUndefined();
+  });
+});
+
+describe("load() — like create(), but defaults sources to [envSource()]", () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) delete (process.env as Record<string, string | undefined>)[key];
+    }
+    Object.assign(process.env, originalEnv);
+  });
+
+  test("with no options at all, reads straight from process.env", async () => {
+    process.env.PORT = "8080";
+
+    const cfg = await load({
+      server: {
+        port: numeric({ key: "PORT" }),
+      },
+    });
+
+    expect(cfg.server.port.get()).toBe(8080);
+  });
+
+  test("with options but no sources, still defaults to envSource()", async () => {
+    process.env.PORT = "9090";
+
+    const cfg = await load(
+      { server: { port: numeric({ key: "PORT" }) } },
+      {},
+    );
+
+    expect(cfg.server.port.get()).toBe(9090);
+  });
+
+  test("passing an explicit sources array overrides the envSource() default entirely", async () => {
+    process.env.PORT = "should be ignored";
+
+    const cfg = await load(
+      { server: { port: numeric({ key: "PORT" }) } },
+      { sources: [testSource({ PORT: 1234 })] },
+    );
+
+    expect(cfg.server.port.get()).toBe(1234);
+  });
+
+  test("with explicit sources, behaves exactly like create() — same resolved value either way", async () => {
+    const shapeDef = { port: numeric({ default: 3000 }) };
+    const sources = [testSource({ port: 7000 })];
+
+    const viaLoad = await load(shapeDef, { sources });
+    const viaCreate = await create(shapeDef, { sources });
+
+    expect(viaLoad.get()).toEqual(viaCreate.get());
+    expect(viaLoad.get()).toEqual({ port: 7000 });
+  });
+
+  test("with an empty sources array, no env var is read and defaults apply, same as create()", async () => {
+    process.env.PORT = "ignored too";
+
+    const cfg = await load(
+      { server: { port: numeric({ key: "PORT", default: 3000 }) } },
+      { sources: [] },
+    );
+
+    expect(cfg.server.port.get()).toBe(3000);
+  });
+
+  test("falls back to the field's own default when envSource() doesn't have the key", async () => {
+    delete process.env.PORT;
+
+    const cfg = await load({
+      server: { port: numeric({ key: "PORT", default: 3000 }) },
+    });
+
+    expect(cfg.server.port.get()).toBe(3000);
+  });
+
+  test("the exact requested syntax: deeply-typed key against a flat envSource()", async () => {
+    process.env.FOF = "42";
+
+    const cfg = await load({
+      foo: {
+        tar: {
+          biz: {
+            liz: {
+              lol: {
+                flip: {
+                  fof: numeric({ key: "FOF" }),
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const value = cfg.foo.tar.biz.liz.lol.flip.fof.get();
+
+    expect(typeof value).toBe("number");
+    expect(value).toBe(42);
+    expectTypeOf(cfg.foo.tar.biz.liz.lol.flip.fof).toEqualTypeOf<ReadOnlyStore<number | null>>();
   });
 });
