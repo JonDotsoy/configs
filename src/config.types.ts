@@ -113,6 +113,15 @@ export class ConfigDescriptor<T, O extends object = object> {
   ) {}
 
   /**
+   * This field's explicit path override, if any (`options.key`) — exposed directly so a
+   * `ConfigNode` can resolve this field's path itself (`key` as-is, or `[...basePath, key]`
+   * without one) without reaching into `options`/a reconstructed `FieldSchema` to find it.
+   */
+  get key(): string | string[] | undefined {
+    return (this.options as { key?: string | string[] }).key;
+  }
+
+  /**
    * Coerces/validates this field from `rawStore` — a `Store` already holding this field's own
    * merged raw value (or `undefined`/`null` when no source has it), built and kept live by
    * whichever `ConfigNode` owns the shape tree this descriptor sits in. The descriptor knows
@@ -562,12 +571,15 @@ function toFieldSchema(node: SchemaNode | undefined): FieldSchema {
   return node as FieldSchema;
 }
 
+/** An explicit `key` override (if set) is taken as-is instead of `[...basePath, key]`. */
+function pathFor(explicitKey: string | string[] | undefined, basePath: string[], key: string): string[] {
+  if (explicitKey !== undefined) return Array.isArray(explicitKey) ? explicitKey : [explicitKey];
+  return [...basePath, key];
+}
+
 /** A field's `key` (if set) is an explicit path, taken as-is instead of `[...basePath, key]`. */
 function resolvePath(schema: FieldSchema, basePath: string[], key: string): string[] {
-  if (schema.key !== undefined) {
-    return Array.isArray(schema.key) ? schema.key : [schema.key];
-  }
-  return [...basePath, key];
+  return pathFor(schema.key, basePath, key);
 }
 
 /**
@@ -675,8 +687,9 @@ class ConfigNodeState<S extends SchemaShape> {
 
   private refreshFields(): void {
     for (const [key, rawStore] of this.rawStores) {
-      const schema = toFieldSchema(this.shape[key]);
-      const path = resolvePath(schema, this.basePath, key);
+      // Every `this.rawStores` entry is a ConfigDescriptor-backed field (see `wireDescriptorField`) — path via its own `.key`.
+      const descriptor = this.shape[key] as ConfigDescriptor<any, object>;
+      const path = pathFor(descriptor.key, this.basePath, key);
       const next = resolveRawValue(this.rootStores, path);
       if (next !== rawStore.get()) rawStore.set(next);
     }
@@ -711,7 +724,10 @@ class ConfigNodeState<S extends SchemaShape> {
     if (!field) {
       const node = this.shape[key];
       const schema = toFieldSchema(node);
-      const path = resolvePath(schema, this.basePath, key);
+      // A ConfigDescriptor exposes its own `.key` directly — resolved via that, not by first
+      // building a full FieldSchema just to read `.key` back off it. A legacy (non-descriptor)
+      // shape entry has no such surface of its own, so it still goes through `schema.key`.
+      const path = isConfigDescriptor(node) ? pathFor(node.key, this.basePath, key) : resolvePath(schema, this.basePath, key);
       field = new ConfigField(this.resolveField(schema, path));
       this.fields.set(key, field);
       if (isConfigDescriptor(node)) this.wireDescriptorField(node, key, path, schema, field);
