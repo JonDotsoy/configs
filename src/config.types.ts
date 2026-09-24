@@ -111,6 +111,29 @@ export class ConfigDescriptor<T, O extends object = object> {
     readonly type: FieldType,
     readonly options: O,
   ) {}
+
+  /**
+   * Resolves this field from the merge of `sources` (already-opened root stores, in priority
+   * order): the descriptor itself works out its own path — `options.key` as an explicit
+   * override, else `basePath` + `key` — and coerces/validates the first source whose snapshot
+   * has a value there, falling back to `options.default`, else `null`. The returned `store`
+   * stays live: it re-resolves and updates itself whenever any of `sources` changes, so a
+   * caller only needs to read/subscribe to `store`, never call `parse()` again for the same
+   * field.
+   */
+  async parse(sources: Store<any>[], basePath: string[], key: string): Promise<{ store: Store<T> }> {
+    const schema = toFieldSchema(this);
+    const path = resolvePath(schema, basePath, key);
+    const resolve = (): T => resolveFieldValue(schema, sources, path) as T;
+    const store = new Store<T>(resolve());
+    for (const source of sources) {
+      source.listen(() => {
+        const next = resolve();
+        if (next !== store.get()) store.set(next);
+      });
+    }
+    return { store };
+  }
 }
 
 /**
@@ -548,6 +571,23 @@ function resolvePath(schema: FieldSchema, basePath: string[], key: string): stri
   return [...basePath, key];
 }
 
+/**
+ * Resolves `field`'s value from `sources` (in priority order): the first source whose snapshot
+ * has a value at `path` wins, coerced/validated via `coerce()`; falls back to `field.default`,
+ * else `null`. Shared by `ConfigNodeState.resolveField` (the synchronous engine driving every
+ * field, live or not) and `ConfigDescriptor.parse()` (the same resolution exposed as a public,
+ * self-refreshing capability on the descriptor itself).
+ */
+function resolveFieldValue(field: FieldSchema, sources: Store<any>[], path: string[]): unknown {
+  for (const source of sources) {
+    const raw = readNestedValue(source.get(), path);
+    if (raw !== undefined && raw !== null) {
+      return coerce(field, raw, path);
+    }
+  }
+  return field.default !== undefined ? field.default : null;
+}
+
 function collectEmbeddedStates(shape: SchemaShape): ConfigNodeState<any>[] {
   const result: ConfigNodeState<any>[] = [];
   for (const key of Object.keys(shape)) {
@@ -620,13 +660,7 @@ class ConfigNodeState<S extends SchemaShape> {
   }
 
   private resolveField(field: FieldSchema, path: string[]): unknown {
-    for (const rootStore of this.rootStores) {
-      const raw = readNestedValue(rootStore.get(), path);
-      if (raw !== undefined && raw !== null) {
-        return coerce(field, raw, path);
-      }
-    }
-    return field.default !== undefined ? field.default : null;
+    return resolveFieldValue(field, this.rootStores, path);
   }
 
   private refreshFields(): void {
@@ -654,12 +688,32 @@ class ConfigNodeState<S extends SchemaShape> {
   fieldFor(key: string): ConfigField<any> {
     let field = this.fields.get(key);
     if (!field) {
-      const schema = toFieldSchema(this.shape[key]);
+      const node = this.shape[key];
+      const schema = toFieldSchema(node);
       const path = resolvePath(schema, this.basePath, key);
       field = new ConfigField(this.resolveField(schema, path));
       this.fields.set(key, field);
+      if (isConfigDescriptor(node)) this.wireDescriptorField(node, key, field);
     }
     return field;
+  }
+
+  /**
+   * Hands this field's live refresh over to the descriptor's own `parse()`: once its
+   * self-updating `store` exists, every subsequent value it publishes (immediately, then on
+   * every change to `this.rootStores`) is mirrored onto `field` here. The generic
+   * `wireLiveUpdates()`/`refreshFields()` cascade still recomputes this same field in the
+   * meantime (e.g. while sources are still opening) — both converge on the same value via the
+   * shared `resolveFieldValue`, so this is purely `parse()` taking over as the field's live
+   * source of truth, not a competing one.
+   */
+  private wireDescriptorField(descriptor: ConfigDescriptor<any, object>, key: string, field: ConfigField<any>): void {
+    descriptor.parse(this.rootStores, this.basePath, key).then(({ store }) => {
+      store.subscribe((value) => {
+        if (value !== field.get()) field._update(value);
+        this.refreshSnapshot();
+      });
+    });
   }
 
   childNode(key: string): object {
