@@ -1,4 +1,5 @@
 import { Source } from "./sources/source.js";
+import { CONFIG_DESCRIPTOR_TAG } from "./utils/config-descriptor-tag.js";
 import { Store, type Subscriber, type Unsubscribe } from "./utils/store.js";
 import { tSync } from "./utils/t.js";
 import { ConfigError } from "./errors.js";
@@ -103,6 +104,9 @@ export type ShapeFieldOptions = Omit<ShapeFieldSchema<unknown>, "type">;
  * exactly when the caller's own call included a `default`, same as the object-literal form.
  */
 export class ConfigDescriptor<T, O extends object = object> {
+  /** @internal Tags instances for `isConfigDescriptor` — see `CONFIG_DESCRIPTOR_TAG`'s doc. */
+  readonly [CONFIG_DESCRIPTOR_TAG] = true;
+
   constructor(
     readonly type: FieldType,
     readonly options: O,
@@ -448,7 +452,7 @@ function isEmbeddedNode(value: unknown): value is object {
 }
 
 function isConfigDescriptor(node: unknown): node is ConfigDescriptor<unknown, object> {
-  return node instanceof ConfigDescriptor;
+  return typeof node === "object" && node !== null && (node as Record<symbol, unknown>)[CONFIG_DESCRIPTOR_TAG] === true;
 }
 
 /**
