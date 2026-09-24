@@ -113,25 +113,24 @@ export class ConfigDescriptor<T, O extends object = object> {
   ) {}
 
   /**
-   * Resolves this field from the merge of `sources` (already-opened root stores, in priority
-   * order): the descriptor itself works out its own path — `options.key` as an explicit
-   * override, else `basePath` + `key` — and coerces/validates the first source whose snapshot
-   * has a value there, falling back to `options.default`, else `null`. The returned `store`
-   * stays live: it re-resolves and updates itself whenever any of `sources` changes, so a
-   * caller only needs to read/subscribe to `store`, never call `parse()` again for the same
-   * field.
+   * Coerces/validates this field from `rawStore` — a `Store` already holding this field's own
+   * merged raw value (or `undefined`/`null` when no source has it), built and kept live by
+   * whichever `ConfigNode` owns the shape tree this descriptor sits in. The descriptor knows
+   * nothing about `sources`, sibling fields, or where in the tree it lives — only its own
+   * `options` (`default`, `pattern`, `required`, ...) and, for error messages, the `path` label
+   * the caller passes in. The returned `store` stays live: it re-derives from `rawStore` on
+   * every change, so a caller only needs to read/subscribe to it, never call `parse()` again for
+   * the same field.
    */
-  async parse(sources: Store<any>[], basePath: string[], key: string): Promise<{ store: Store<T> }> {
+  async parse(rawStore: Store<unknown>, path: string[] = []): Promise<{ store: Store<T> }> {
     const schema = toFieldSchema(this);
-    const path = resolvePath(schema, basePath, key);
-    const resolve = (): T => resolveFieldValue(schema, sources, path) as T;
-    const store = new Store<T>(resolve());
-    for (const source of sources) {
-      source.listen(() => {
-        const next = resolve();
-        if (next !== store.get()) store.set(next);
-      });
-    }
+    const compute = (raw: unknown): T =>
+      (raw === undefined || raw === null ? (schema.default !== undefined ? schema.default : null) : coerce(schema, raw, path)) as T;
+    const store = new Store<T>(compute(rawStore.get()));
+    rawStore.listen((raw) => {
+      const next = compute(raw);
+      if (next !== store.get()) store.set(next);
+    });
     return { store };
   }
 }
@@ -574,18 +573,27 @@ function resolvePath(schema: FieldSchema, basePath: string[], key: string): stri
 /**
  * Resolves `field`'s value from `sources` (in priority order): the first source whose snapshot
  * has a value at `path` wins, coerced/validated via `coerce()`; falls back to `field.default`,
- * else `null`. Shared by `ConfigNodeState.resolveField` (the synchronous engine driving every
- * field, live or not) and `ConfigDescriptor.parse()` (the same resolution exposed as a public,
- * self-refreshing capability on the descriptor itself).
+ * else `null`. Drives `ConfigNodeState.resolveField`, the synchronous engine behind every
+ * legacy (non-`ConfigDescriptor`) field, live or not.
  */
 function resolveFieldValue(field: FieldSchema, sources: Store<any>[], path: string[]): unknown {
+  const raw = resolveRawValue(sources, path);
+  if (raw === undefined) return field.default !== undefined ? field.default : null;
+  return coerce(field, raw, path);
+}
+
+/**
+ * The raw merge step alone, with no coercion/default applied: the first `source` whose snapshot
+ * has a value at `path` wins, `undefined` when none do. This is what a `ConfigNode` hands a
+ * `ConfigDescriptor` — as a live `Store` — for its own `parse()` to coerce/validate and default,
+ * since the descriptor itself has no notion of `sources` or where else in the tree it lives.
+ */
+function resolveRawValue(sources: Store<any>[], path: string[]): unknown {
   for (const source of sources) {
     const raw = readNestedValue(source.get(), path);
-    if (raw !== undefined && raw !== null) {
-      return coerce(field, raw, path);
-    }
+    if (raw !== undefined && raw !== null) return raw;
   }
-  return field.default !== undefined ? field.default : null;
+  return undefined;
 }
 
 function collectEmbeddedStates(shape: SchemaShape): ConfigNodeState<any>[] {
@@ -608,6 +616,8 @@ function collectEmbeddedStates(shape: SchemaShape): ConfigNodeState<any>[] {
 class ConfigNodeState<S extends SchemaShape> {
   private ownRootStores: Store<any>[] = [];
   private readonly fields = new Map<string, ConfigField<any>>();
+  /** One raw-value `Store` per non-`readonly` `ConfigDescriptor`-backed field, handed to that descriptor's own `parse()` — see `wireDescriptorField`. */
+  private readonly rawStores = new Map<string, Store<unknown>>();
   private readonly children = new Map<string, object>();
   private snapshotStore: Store<InferShape<S>> | undefined;
   readonly readyPromise: Promise<void>;
@@ -664,8 +674,19 @@ class ConfigNodeState<S extends SchemaShape> {
   }
 
   private refreshFields(): void {
-    for (const [key, field] of this.fields) {
+    for (const [key, rawStore] of this.rawStores) {
       const schema = toFieldSchema(this.shape[key]);
+      const path = resolvePath(schema, this.basePath, key);
+      const next = resolveRawValue(this.rootStores, path);
+      if (next !== rawStore.get()) rawStore.set(next);
+    }
+    for (const [key, field] of this.fields) {
+      const node = this.shape[key];
+      // A ConfigDescriptor-backed field is driven by its own rawStore above, feeding the
+      // descriptor's parse()-returned store, which mirrors onto `field` itself (see
+      // `wireDescriptorField`) — recomputing it again here would just duplicate that.
+      if (isConfigDescriptor(node)) continue;
+      const schema = toFieldSchema(node);
       if (schema.readonly) continue;
       const path = resolvePath(schema, this.basePath, key);
       const next = this.resolveField(schema, path);
@@ -693,22 +714,29 @@ class ConfigNodeState<S extends SchemaShape> {
       const path = resolvePath(schema, this.basePath, key);
       field = new ConfigField(this.resolveField(schema, path));
       this.fields.set(key, field);
-      if (isConfigDescriptor(node)) this.wireDescriptorField(node, key, field);
+      if (isConfigDescriptor(node)) this.wireDescriptorField(node, key, path, schema, field);
     }
     return field;
   }
 
   /**
-   * Hands this field's live refresh over to the descriptor's own `parse()`: once its
-   * self-updating `store` exists, every subsequent value it publishes (immediately, then on
-   * every change to `this.rootStores`) is mirrored onto `field` here. The generic
-   * `wireLiveUpdates()`/`refreshFields()` cascade still recomputes this same field in the
-   * meantime (e.g. while sources are still opening) — both converge on the same value via the
-   * shared `resolveFieldValue`, so this is purely `parse()` taking over as the field's live
-   * source of truth, not a competing one.
+   * This `ConfigNode`'s side of the split with `ConfigDescriptor.parse()`: builds the one raw
+   * `Store` for `path` — merged from `this.rootStores`, no coercion/defaulting, kept live by
+   * `refreshFields()` via `this.rawStores` (skipped for a `readonly` field, so it's built once
+   * and never updated again) — and hands it to `descriptor.parse()`. The descriptor knows
+   * nothing beyond that one `Store` and `path`; every subsequent value its own returned `store`
+   * publishes (immediately, then on every live update) is mirrored onto `field` here.
    */
-  private wireDescriptorField(descriptor: ConfigDescriptor<any, object>, key: string, field: ConfigField<any>): void {
-    descriptor.parse(this.rootStores, this.basePath, key).then(({ store }) => {
+  private wireDescriptorField(
+    descriptor: ConfigDescriptor<any, object>,
+    key: string,
+    path: string[],
+    schema: FieldSchema,
+    field: ConfigField<any>,
+  ): void {
+    const rawStore = new Store<unknown>(resolveRawValue(this.rootStores, path));
+    if (!schema.readonly) this.rawStores.set(key, rawStore);
+    descriptor.parse(rawStore, path).then(({ store }) => {
       store.subscribe((value) => {
         if (value !== field.get()) field._update(value);
         this.refreshSnapshot();
