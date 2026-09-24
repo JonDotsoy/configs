@@ -685,14 +685,16 @@ describe("load() — like create(), but defaults sources to [envSource()]", () =
 });
 
 describe("key option — string and string[] formats — with literalSource and fetchSource", () => {
-  function mockFetchJson(body: unknown): () => void {
+  function mockFetchJson(body: unknown): Disposable {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async () =>
       new Response(JSON.stringify(body), {
         headers: { "content-type": "application/json" },
       })) as unknown as typeof fetch;
-    return () => {
-      globalThis.fetch = originalFetch;
+    return {
+      [Symbol.dispose]() {
+        globalThis.fetch = originalFetch;
+      },
     };
   }
 
@@ -733,55 +735,43 @@ describe("key option — string and string[] formats — with literalSource and 
   });
 
   test("fetchSource: key as a string reads a top-level path from the fetched JSON", async () => {
-    const restoreFetch = mockFetchJson({ PORT: 5000 });
+    using restoreFetch = mockFetchJson({ PORT: 5000 });
 
-    try {
-      const cfg = await create(
-        { server: { port: numeric({ key: "PORT" }) } },
-        { sources: [fetchSource({ url: "https://example.com/config" })] },
-      );
+    const cfg = await create(
+      { server: { port: numeric({ key: "PORT" }) } },
+      { sources: [fetchSource({ url: "https://example.com/config" })] },
+    );
 
-      expect(cfg.server.port.get()).toBe(5000);
-    } finally {
-      restoreFetch();
-    }
+    expect(cfg.server.port.get()).toBe(5000);
   });
 
   test("fetchSource: key as a string[] reads a multi-segment path from the fetched JSON", async () => {
-    const restoreFetch = mockFetchJson({ network: { config: { hostname: "example.com" } } });
+    using restoreFetch = mockFetchJson({ network: { config: { hostname: "example.com" } } });
 
-    try {
-      const cfg = await create(
-        { server: { host: string({ key: ["network", "config", "hostname"] }) } },
-        { sources: [fetchSource({ url: "https://example.com/config" })] },
-      );
+    const cfg = await create(
+      { server: { host: string({ key: ["network", "config", "hostname"] }) } },
+      { sources: [fetchSource({ url: "https://example.com/config" })] },
+    );
 
-      expect(cfg.server.host.get()).toBe("example.com");
-    } finally {
-      restoreFetch();
-    }
+    expect(cfg.server.host.get()).toBe("example.com");
   });
 
   test("fetchSource: both string and string[] keys resolve together, pulled from unrelated paths in the same response", async () => {
-    const restoreFetch = mockFetchJson({
+    using restoreFetch = mockFetchJson({
       PORT: 8080,
       network: { config: { hostname: "api.example.com" } },
     });
 
-    try {
-      const cfg = await create(
-        {
-          server: {
-            port: numeric({ key: "PORT" }),
-            host: string({ key: ["network", "config", "hostname"] }),
-          },
+    const cfg = await create(
+      {
+        server: {
+          port: numeric({ key: "PORT" }),
+          host: string({ key: ["network", "config", "hostname"] }),
         },
-        { sources: [fetchSource({ url: "https://example.com/config" })] },
-      );
+      },
+      { sources: [fetchSource({ url: "https://example.com/config" })] },
+    );
 
-      expect(cfg.get()).toEqual({ server: { port: 8080, host: "api.example.com" } });
-    } finally {
-      restoreFetch();
-    }
+    expect(cfg.get()).toEqual({ server: { port: 8080, host: "api.example.com" } });
   });
 });
