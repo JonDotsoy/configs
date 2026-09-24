@@ -16,31 +16,35 @@ import { create, numeric, string, boolean } from "@jondotsoy/configs";
 import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 
-// SERVER_PORT=3000 SERVER_HOST=localhost → { server: { port: "3000", host: "localhost" } }
-// GET https://example.com/features → { promoService: true } (polled every 30s)
-const cfg = await create({
-  server: create(
-    {
-      port: numeric({ summary: "HTTP port", default: 3000 }),
-      host: string({ summary: "bind host", default: "localhost" }),
+// HOST=localhost PORT=3000 → { server: { host: "localhost", port: "3000" } }
+// GET https://example.com/features → { experimental: { home: { promotionalDialog: true } } } (polled every 30s)
+const cfg = await create(
+  {
+    server: {
+      host: string({ summary: "bind host", default: "localhost", key: "HOST" }),
+      port: numeric({ summary: "HTTP port", default: 3000, key: "PORT" }),
     },
-    { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
-  ),
-  features: create(
-    {
-      promoService: boolean({ summary: "enable the promo service", default: false }),
-    },
-    { sources: [fetchSource({ url: "https://example.com/features", pollingInterval: 30_000 })] },
-  ),
-});
+    features: create(
+      {
+        experimental: {
+          home: {
+            promotionalDialog: boolean({ summary: "show the promotional dialog", default: false }),
+          },
+        },
+      },
+      { sources: [fetchSource({ url: "https://example.com/features", pollingInterval: 30_000 })] },
+    ),
+  },
+  { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
+);
 
 // React to changes
 cfg.server.port.subscribe((port) => {
   console.log(`listening on port ${port}`);
 });
 
-cfg.features.promoService.subscribe((enabled) => {
-  console.log(`promo service ${enabled ? "enabled" : "disabled"}`);
+cfg.features.experimental.home.promotionalDialog.subscribe((enabled) => {
+  console.log(`promotional dialog ${enabled ? "enabled" : "disabled"}`);
 });
 
 console.log(cfg.server.port.get());
