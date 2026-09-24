@@ -25,6 +25,16 @@ assert(blob1 instanceof FileBlob, "a source's text value resolves to a FileBlob"
 assert((await blob1!.text()) === "hello", "FileBlob.text() decodes the text value");
 await cfg1.close();
 
+const cfg1b = await configs.create(
+  { key: file({ default: "foo=tar&biz=lol", format: "text" }) },
+  { sources: [] },
+);
+const formData = await cfg1b.key.get().formData();
+assert(formData instanceof FormData, "FileBlob.formData() returns a FormData");
+assert(formData.get("foo") === "tar", "FileBlob.formData() parses application/x-www-form-urlencoded pairs");
+assert(formData.get("biz") === "lol", "FileBlob.formData() parses every pair");
+await cfg1b.close();
+
 const dir = await mkdtemp(join(tmpdir(), "configs-node-file-case-"));
 try {
   const path = join(dir, "cert.pem");

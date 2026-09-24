@@ -90,6 +90,18 @@ export class FileBlob {
     return this.#payload.slice() as Uint8Array<ArrayBuffer>;
   }
 
+  /**
+   * The content decoded as UTF-8 text and parsed as `application/x-www-form-urlencoded`
+   * (`foo=bar&biz=lol`) into a `FormData` — handy for a `file()` field whose value is a query
+   * string rather than JSON.
+   */
+  async formData(): Promise<FormData> {
+    const params = new URLSearchParams(await this.text());
+    const form = new FormData();
+    for (const [key, value] of params) form.append(key, value);
+    return form;
+  }
+
   /** The content as a single-chunk `ReadableStream`. */
   stream(): ReadableStream<Uint8Array<ArrayBuffer>> {
     const bytes = this.#payload.slice() as Uint8Array<ArrayBuffer>;

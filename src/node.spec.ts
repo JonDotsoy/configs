@@ -129,6 +129,18 @@ describe("file()", () => {
       expect(await cfg.key.get().json()).toEqual({ a: 1 });
     });
 
+    test(".formData() parses the content as application/x-www-form-urlencoded", async () => {
+      const cfg = await configs.create(
+        { key: file({ default: "foo=tar&biz=lol", format: "text" }) },
+        { sources: [] },
+      );
+
+      const formData = await cfg.key.get().formData();
+      expect(formData).toBeInstanceOf(FormData);
+      expect(formData.get("foo")).toBe("tar");
+      expect(formData.get("biz")).toBe("lol");
+    });
+
     test(".text() returns the decoded string", async () => {
       const cfg = await configs.create({ key: file({ default: "hello", format: "text" }) }, { sources: [] });
 
