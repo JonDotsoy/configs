@@ -58,4 +58,10 @@ export const cases: CaseDef[] = [
     engines: allEngines,
     tolerateFailureEngines: ["browser"],
   },
+  {
+    file: "17-node-file-field.ts",
+    description: "@jondotsoy/configs/node's file() field decodes a source value into a FileBlob, and a URL default is read eagerly from disk — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.",
+    engines: allEngines,
+    tolerateFailureEngines: ["browser"],
+  },
 ];

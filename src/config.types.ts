@@ -95,6 +95,16 @@ export type UrlFieldOptions = Omit<UrlFieldSchema, "type">;
 export type ShapeFieldOptions = Omit<ShapeFieldSchema<unknown>, "type">;
 
 /**
+ * `Symbol.for` (the global symbol registry, keyed by string, shared across the whole JS realm)
+ * rather than a plain `Symbol()` or an `instanceof` check — `bun build` bundles each public entry
+ * point (`.`, `./node`, ...) independently, so a `ConfigDescriptor` built by one entry point's own
+ * copy of this module (e.g. `file()` from `./node`) would fail an `instanceof ConfigDescriptor`
+ * check done against another entry point's separately-bundled copy of the same class (e.g.
+ * `configs.ts`'s own `isConfigDescriptor`). A registry symbol survives that duplication.
+ */
+const CONFIG_DESCRIPTOR_TAG = Symbol.for("@jondotsoy/configs/ConfigDescriptor");
+
+/**
  * What `string()`/`numeric()`/`boolean()` build. Carries its field `type` plus the exact `options`
  * object the caller passed in, generic over both `T` (the field's value type) and `O` (the caller's
  * own literal `options` type — inferred via a `const` type parameter on each builder, the same way
@@ -103,6 +113,9 @@ export type ShapeFieldOptions = Omit<ShapeFieldSchema<unknown>, "type">;
  * exactly when the caller's own call included a `default`, same as the object-literal form.
  */
 export class ConfigDescriptor<T, O extends object = object> {
+  /** @internal Tags instances for `isConfigDescriptor` — see `CONFIG_DESCRIPTOR_TAG`'s doc. */
+  readonly [CONFIG_DESCRIPTOR_TAG] = true;
+
   constructor(
     readonly type: FieldType,
     readonly options: O,
@@ -448,7 +461,7 @@ function isEmbeddedNode(value: unknown): value is object {
 }
 
 function isConfigDescriptor(node: unknown): node is ConfigDescriptor<unknown, object> {
-  return node instanceof ConfigDescriptor;
+  return typeof node === "object" && node !== null && (node as Record<symbol, unknown>)[CONFIG_DESCRIPTOR_TAG] === true;
 }
 
 /**

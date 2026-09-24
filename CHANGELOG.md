@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`@jondotsoy/configs/node`'s `file()`/`FileBlob`** — a new field-schema builder for reading a
+  field's value as a file. A source's raw string value is decoded (as base64 or plain text,
+  inferred automatically, or forced via `file({ format: "text" | "base64" })`) into a `FileBlob`,
+  exposing `.text()`, `.json()`, `.arrayBuffer()`, `.bytes()`, `.stream()`, `.exists()`, plus the
+  synchronous `.size`, `.type` (MIME type inferred from `.location`'s filename), and `.location`.
+  `file({ default })` accepts the same string form, or a `file:` `URL` read from local disk eagerly
+  when `file()` is called — a missing file's default resolves the field to `null`, same as any
+  other field with no default and nothing from a source.
 - **`load(shape, options?)`** — exported from `@jondotsoy/configs`, identical to `create()` except
   its `options.sources` defaults to `[envSource()]` instead of `[]`, so `load(shape)` alone reads
   straight from `process.env`. Passing an explicit `sources` array overrides that default entirely

@@ -86,6 +86,11 @@
       "types": "./dist/react.d.ts",
       "import": "./dist/react.js"
     },
+    "./node": {
+      "_entryPoint": "./src/node.ts",
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
+    },
     "./utils/metrics": {
       "_entryPoint": "./src/utils/metric.ts",
       "types": "./dist/utils/metric.d.ts",
