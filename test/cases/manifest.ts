@@ -64,4 +64,9 @@ export const cases: CaseDef[] = [
     engines: allEngines,
     tolerateFailureEngines: ["browser"],
   },
+  {
+    file: "18-readme-first-example.ts",
+    description: "The README's first example: envSource with explicit keys for a flat group, plus a nested group with its own fetchSource.",
+    engines: allEngines,
+  },
 ];

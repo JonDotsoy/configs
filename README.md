@@ -13,7 +13,7 @@ the moment a source pushes a new value.
 
 ```ts
 import { create, numeric, string, boolean } from "@jondotsoy/configs";
-import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
+import { envSource } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 
 // HOST=localhost PORT=3000 → { server: { host: "localhost", port: "3000" } }
@@ -35,7 +35,7 @@ const cfg = await create(
       { sources: [fetchSource({ url: "https://example.com/features", pollingInterval: 30_000 })] },
     ),
   },
-  { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
+  { sources: [envSource()] },
 );
 
 // React to changes
