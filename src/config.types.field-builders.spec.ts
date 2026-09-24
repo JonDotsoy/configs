@@ -2,6 +2,7 @@ import { afterEach, describe, expect, expectTypeOf, spyOn, test } from "bun:test
 import { boolean, ConfigDescriptor, create, load, numeric, shape, string, url } from "./configs.js";
 import { envSource, mapKey } from "./sources/env.js";
 import { fetchSource } from "./sources/fetch.js";
+import { literalSource } from "./sources/literal.js";
 import { Source } from "./sources/source.js";
 import { ConfigError } from "./errors.js";
 import { z } from "zod";
@@ -680,5 +681,107 @@ describe("load() — like create(), but defaults sources to [envSource()]", () =
     expect(typeof value).toBe("number");
     expect(value).toBe(42);
     expectTypeOf(cfg.foo.tar.biz.liz.lol.flip.fof).toEqualTypeOf<ReadOnlyStore<number | null>>();
+  });
+});
+
+describe("key option — string and string[] formats — with literalSource and fetchSource", () => {
+  function mockFetchJson(body: unknown): () => void {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify(body), {
+        headers: { "content-type": "application/json" },
+      })) as unknown as typeof fetch;
+    return () => {
+      globalThis.fetch = originalFetch;
+    };
+  }
+
+  test("literalSource: key as a string reads a top-level path, ignoring the field's own nesting", async () => {
+    const cfg = await create(
+      { server: { port: numeric({ key: "PORT" }) } },
+      { sources: [literalSource({ PORT: 4000 })] },
+    );
+
+    expect(cfg.server.port.get()).toBe(4000);
+  });
+
+  test("literalSource: key as a string[] reads a multi-segment path", async () => {
+    const cfg = await create(
+      { server: { host: string({ key: ["network", "config", "hostname"] }) } },
+      { sources: [literalSource({ network: { config: { hostname: "10.0.0.1" } } })] },
+    );
+
+    expect(cfg.server.host.get()).toBe("10.0.0.1");
+  });
+
+  test("literalSource: falls back to default when a string key isn't present in the source", async () => {
+    const cfg = await create(
+      { server: { port: numeric({ key: "PORT", default: 3000 }) } },
+      { sources: [literalSource({})] },
+    );
+
+    expect(cfg.server.port.get()).toBe(3000);
+  });
+
+  test("literalSource: falls back to default when a string[] key path isn't present in the source", async () => {
+    const cfg = await create(
+      { server: { host: string({ key: ["network", "config", "hostname"], default: "localhost" }) } },
+      { sources: [literalSource({ network: {} })] },
+    );
+
+    expect(cfg.server.host.get()).toBe("localhost");
+  });
+
+  test("fetchSource: key as a string reads a top-level path from the fetched JSON", async () => {
+    const restoreFetch = mockFetchJson({ PORT: 5000 });
+
+    try {
+      const cfg = await create(
+        { server: { port: numeric({ key: "PORT" }) } },
+        { sources: [fetchSource({ url: "https://example.com/config" })] },
+      );
+
+      expect(cfg.server.port.get()).toBe(5000);
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test("fetchSource: key as a string[] reads a multi-segment path from the fetched JSON", async () => {
+    const restoreFetch = mockFetchJson({ network: { config: { hostname: "example.com" } } });
+
+    try {
+      const cfg = await create(
+        { server: { host: string({ key: ["network", "config", "hostname"] }) } },
+        { sources: [fetchSource({ url: "https://example.com/config" })] },
+      );
+
+      expect(cfg.server.host.get()).toBe("example.com");
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test("fetchSource: both string and string[] keys resolve together, pulled from unrelated paths in the same response", async () => {
+    const restoreFetch = mockFetchJson({
+      PORT: 8080,
+      network: { config: { hostname: "api.example.com" } },
+    });
+
+    try {
+      const cfg = await create(
+        {
+          server: {
+            port: numeric({ key: "PORT" }),
+            host: string({ key: ["network", "config", "hostname"] }),
+          },
+        },
+        { sources: [fetchSource({ url: "https://example.com/config" })] },
+      );
+
+      expect(cfg.get()).toEqual({ server: { port: 8080, host: "api.example.com" } });
+    } finally {
+      restoreFetch();
+    }
   });
 });
