@@ -775,3 +775,34 @@ describe("key option — string and string[] formats — with literalSource and 
     expect(cfg.get()).toEqual({ server: { port: 8080, host: "api.example.com" } });
   });
 });
+
+describe("a nested create() with its own sources scopes key lookups to those sources only", () => {
+  test("TAR present only in the outer create()'s source resolves to null, not the outer value", async () => {
+    const literalSource1 = literalSource({ TAR: 999 });
+    const literalSource2 = literalSource({});
+
+    const cfg = await create(
+      {
+        foo: create({ tar: numeric({ key: "TAR" }) }, { sources: [literalSource2] }),
+      },
+      { sources: [literalSource1] },
+    );
+
+    expect(cfg.foo.tar.get()).toBeNull();
+    expect(cfg.get()).toEqual({ foo: { tar: null } });
+  });
+
+  test("(control) TAR present in the inner create()'s own source resolves from there", async () => {
+    const literalSource1 = literalSource({ TAR: 999 });
+    const literalSource2 = literalSource({ TAR: 111 });
+
+    const cfg = await create(
+      {
+        foo: create({ tar: numeric({ key: "TAR" }) }, { sources: [literalSource2] }),
+      },
+      { sources: [literalSource1] },
+    );
+
+    expect(cfg.foo.tar.get()).toBe(111);
+  });
+});
