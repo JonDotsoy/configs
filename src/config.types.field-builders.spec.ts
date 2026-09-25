@@ -865,31 +865,38 @@ describe("a nested create() with its own sources scopes key lookups to those sou
 
 describe("ConfigDescriptor.reduce()", () => {
   test("falls back to options.default when raw is undefined/null, without running the parser", () => {
-    expect(numeric({ default: 3000 }).reduce(undefined).store.get()).toBe(3000);
-    expect(numeric({ default: 3000 }).reduce(null).store.get()).toBe(3000);
+    expect(numeric({ default: 3000 }).reduce(new Store<unknown>(undefined)).get()).toBe(3000);
+    expect(numeric({ default: 3000 }).reduce(new Store<unknown>(null)).get()).toBe(3000);
   });
 
   test("resolves to null when raw is missing and there is no default", () => {
-    expect(numeric().reduce(undefined).store.get()).toBeNull();
+    expect(numeric().reduce(new Store<unknown>(undefined)).get()).toBeNull();
   });
 
   test("runs raw through the field's own parser when present", () => {
-    expect(numeric().reduce("8080").store.get()).toBe(8080);
-    expect(string({ pattern: /^\w+$/ }).reduce("abc").store.get()).toBe("abc");
-    expect(() => string({ pattern: /^\w+$/ }).reduce("not valid")).toThrow(ConfigError);
+    expect(numeric().reduce(new Store<unknown>("8080")).get()).toBe(8080);
+    expect(string({ pattern: /^\w+$/ }).reduce(new Store<unknown>("abc")).get()).toBe("abc");
+    expect(() => string({ pattern: /^\w+$/ }).reduce(new Store<unknown>("not valid"))).toThrow(ConfigError);
   });
 
-  test("`ready` resolves to the same already-computed store as `store`", async () => {
-    const reduced = numeric().reduce("8080");
-    expect(await reduced.ready).toBe(reduced.store);
+  test("stays live: recomputes whenever rawStore changes", () => {
+    const rawStore = new Store<unknown>("8080");
+    const reduced = numeric().reduce(rawStore);
+    expect(reduced.get()).toBe(8080);
+
+    rawStore.set("9090");
+    expect(reduced.get()).toBe(9090);
+
+    rawStore.set(undefined);
+    expect(reduced.get()).toBeNull();
   });
 
-  test("returns an already-resolved, non-live store — same as .parse()'s synchronous compute step", async () => {
+  test("is what .parse() is now built on — same resolved value either way", async () => {
     const descriptor = numeric({ default: 3000 });
-    const reduced = descriptor.reduce("8080");
-    expect(reduced.store.get()).toBe(8080);
+    const reduced = descriptor.reduce(new Store<unknown>("8080"));
+    expect(reduced.get()).toBe(8080);
 
     const { store } = await descriptor.parse(new Store<unknown>("8080"));
-    expect(store.get()).toBe(reduced.store.get());
+    expect(store.get()).toBe(reduced.get());
   });
 });

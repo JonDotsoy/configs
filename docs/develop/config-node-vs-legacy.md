@@ -17,12 +17,12 @@ qué no, y por qué.
 | --- | --- | --- |
 | Nodo devuelto | `Proxy` sobre un objeto plano | Objeto plano, sin `Proxy` |
 | Raíz expone | `.get()`/`.subscribe()`/`.listen()`/`.close()`/`[Symbol.asyncDispose]` + cada campo | **solo** cada campo (ningún método de agregación en la raíz) |
-| Cálculo de campos | perezoso y cacheado (`fieldFor()`/`childNode()`, `Map`) | eager: recalcula **todo** el árbol en cada `sync()` |
-| Resolución de un campo | `ConfigDescriptor.parse()` (async, se suscribe a un `Store<unknown>` en vivo) | `ConfigDescriptor.reduce()` (sync, recibe el raw ya resuelto) |
+| Cálculo de campos | perezoso y cacheado (`fieldFor()`/`childNode()`, `Map`) | eager: todo el árbol se construye una vez, al llamar a `create()` — sin `Map` de caché, porque no hace falta decidir nada dos veces |
+| Resolución de un campo | `ConfigDescriptor.parse()` (async, se suscribe a un `Store<unknown>` en vivo) | `ConfigDescriptor.reduce()` (sync, recibe un `Store<unknown>` — la `KeyStore` de ese campo — y se suscribe a ella igual que `parse()`) |
 | Grupos anidados | `configs.create({...})` embebido — puede traer **sus propias `sources`**, independientes del padre | objeto plano anidado en el shape — **siempre comparte** las `sources` del `create()` raíz |
 | `key` (path override) | soportado (`descriptor.key`) | **no soportado** — el path de resolución es siempre la ruta de anidamiento del shape |
-| `freeze` | soportado (`wireDescriptorField` deja de escuchar tras el primer valor) | **no soportado** — cada `sync()` recalcula el campo igual, siempre |
-| Actualizaciones en vivo | por campo, vía suscripción a cada `Store` de origen | por *todo el árbol*, vía `rawSource.listen(() => sync(...))` global |
+| `freeze` | soportado (`wireDescriptorField` deja de escuchar tras el primer valor) | **no soportado** — cada campo se queda suscrito a su `KeyStore` para siempre |
+| Actualizaciones en vivo | por campo, vía suscripción a cada `Store` de origen | por campo también, pero vía una cadena `Source → KeyStore → FieldStore` propia de cada campo — sin recorrer el resto del árbol |
 | Cierre de fuentes | `.close()` en la raíz, recursivo sobre grupos embebidos | no expuesto — quien creó las `Source`s las cierra directamente |
 | Shape legado (`{ type: "string", ... }`) | soportado, con warning de deprecación | no soportado — solo `ConfigDescriptor` (`string()`/`numeric()`/...) |
 | Esquemas externos (`schema: z.object(...)`) sueltos como entrada de shape | soportado (`isBareParseable`) | no soportado directamente — hay que envolverlo en `shape({ schema })` |
@@ -45,22 +45,34 @@ path de lectura distinto al de su posición en el árbol, resuelto vía `pathFor
 y **`freeze`** (`wireDescriptorField` deja de agregar el campo a `rawStores`, así que
 `refreshFields()` ya no vuelve a tocarlo).
 
-### Nuevo: recursión plana, sin `Proxy`, sin caché de "qué es cada key"
+### Nuevo: sin `Proxy`, un pipeline reactivo por campo (`Source → KeyStore → FieldStore`)
 
-`create()` en `config-node.ts` no envuelve nada en un `Proxy`. `sync()` recorre el `shape`
-recursivamente y, para cada key, decide con `isConfigDescriptor()` si es una hoja o un grupo
-anidado — sin cachear esa decisión, porque el shape no cambia entre llamadas. Lo que sí se
-reutiliza (para que un `Store` ya entregado a quien llamó a `create()` no se reemplace) es el
-objeto de `Store`s en sí (`node[key]`), pasado por referencia en cada llamada recursiva y mutado
-in place. **No hay estado por-campo aparte del propio `Store`**: no hay `Map` de campos, no hay
-`readyPromise` por nodo, no hay distinción entre "nodo que posee su resolución" y "nodo que
-comparte la del padre" — todo el árbol comparte las mismas `rawSources` del `create()` raíz,
-siempre.
+`create()` en `config-node.ts` no envuelve nada en un `Proxy`, y tampoco recorre el árbol completo
+de nuevo cada vez que algo cambia. En su lugar, cada `Source` en `options.sources` recibe, al
+llamar a `create()`, un `Store<unknown>`
+*placeholder* propio (arrancando en `null`) — y `buildNode()` cablea, para cada campo hoja del
+shape, una cadena de tres pasos construida **una sola vez**, de forma completamente síncrona:
 
-La consecuencia práctica: cualquier cambio en cualquier fuente dispara un `sync()` que **recalcula
-el árbol completo**, no solo la rama afectada. Para el tamaño de shape típico de este paquete
-(decenas de campos, no miles) es intrascendente en performance, y es justo el tipo de complejidad
-que la nueva implementación decidió no cargar.
+1. **`Source`**: cada `Source` de `options.sources` ya sabe resolver su propio `Store<T | null>`
+   en vivo vía `source.open()` (ver `src/sources/source.ts`) — nada nuevo que construir ahí.
+2. **`KeyStore`** (`keyStore()`): un `Store<unknown>` por campo que, para su propio `path` de
+   anidamiento, recorre los *placeholders* en orden de prioridad y se queda con el primero que
+   tenga un valor ahí — recalculando cada vez que **cualquiera** de esos placeholders cambia
+   (`rawSource.listen(...)`).
+3. **`FieldStore`** (`descriptor.reduce(keyStore, path)`): el `Store<T>` final del campo — se
+   suscribe a su propia `KeyStore` y aplica `default`/`parser` en cada cambio (ver la sección de
+   abajo).
+
+Cuando la promesa de un `source.open()` resuelve, el valor que ya tenía (y cada valor que publique
+después) se reenvía al placeholder de esa fuente vía `opened.subscribe(...)` — lo que dispara, en
+cascada y de forma puramente síncrona, justo los `KeyStore`s y `FieldStore`s cuyo `path` esa fuente
+puede resolver. Un cambio en `server.tls.cert` nunca recalcula `port`: no hay ningún recorrido
+"global" del shape — cada campo es, literalmente, su propia cadena reactiva independiente.
+
+Sí se sigue reutilizando lo mismo de siempre para que un `Store` ya entregado a quien llamó a
+`create()` no se reemplace nunca: `buildNode()` construye el objeto de campos/grupos una única vez
+y ese mismo objeto (y cada `Store` dentro de él) es lo que `then()` termina resolviendo — no hay
+una "segunda pasada" que reconstruya nada.
 
 ## Resolución de un campo: `parse()` vs `reduce()`
 
@@ -68,16 +80,18 @@ El legado resuelve un campo llamando a `descriptor.parse(rawStore, path)` — as
 `Store<unknown>` **en vivo** y se suscribe a él (`rawStore.listen(...)`) para recalcular el valor
 cada vez que cambia, devolviendo `Promise<{ store: Store<T> }>`.
 
-La nueva implementación fue el motivo por el que `ConfigDescriptor` ganó `.reduce(raw, path?)`
-— **síncrono**, recibe el raw ya resuelto (no un `Store` para suscribirse) y devuelve
-`{ store: ReadOnlyStore<T>, ready: Promise<ReadOnlyStore<T>> }` (`ready` es solo `store` envuelto
-en una `Promise`, para quien migre desde el `await` de `.parse()`). `config-node.ts`'s `sync()`
-llama a `.reduce(...)` en cada pasada, para cada campo, con el raw que él mismo mergeó desde
-`rawSources` — la parte "en vivo" vive enteramente en `config-node.ts` (recalcular en cada
-`sync()`), no en el descriptor.
+`ConfigDescriptor` ganó `.reduce(rawStore, path?)` — misma idea que `parse()` (recibe un
+`Store<unknown>` en vivo, se suscribe a él, recalcula en cada cambio), pero **síncrona**: devuelve
+directamente el `Store<T>` ya inicializado con el valor actual de `rawStore`, sin ninguna
+`Promise` de por medio — no hay nada que esperar, porque `rawStore` ya existe en el momento en que
+se llama a `reduce()`. `parse()` sigue existiendo, pero ahora es un shim trivial sobre `reduce()`
+(`return { store: this.reduce(rawStore, path) }`) y quedó marcado `@deprecated`; sigue siendo lo
+único que usa el motor legado, que no fue tocado.
 
-`parse()` sigue existiendo — ahora implementado en términos de `reduce()` — y quedó marcado
-`@deprecated`; sigue siendo lo único que usa el motor legado, que no fue tocado.
+En `config-node.ts`, el `Store<unknown>` que cada campo le pasa a `.reduce()` es exactamente su
+propia `KeyStore` — así que "reactivo" no es una metáfora: literalmente es el mismo mecanismo de
+suscripción de `Store` (`.listen()`) encadenado tres veces (fuente → `KeyStore` → `FieldStore`),
+sin ningún `sync()`/recompute manual en el medio.
 
 ## Grupos anidados: sources independientes vs. sources siempre compartidas
 
@@ -106,8 +120,8 @@ objeto devuelto por `create()` (y por cada grupo anidado dentro de él) solo tie
 shape, cada una resuelta a un `Store` (o a otro objeto anidado) — más `then()` mientras está
 pendiente. No hay `.get()` de raíz (para leer el árbol completo hay que armar el objeto a mano
 recorriendo cada `Store`), no hay `.subscribe()`/`.listen()` agregados, y no hay `.close()`: quien
-crea las `Source`s es responsable de cerrarlas directamente (`source.close()`), `create()` no las
-retiene más allá de necesitarlas para `sync()`.
+crea las `Source`s es responsable de cerrarlas directamente (`source.close()`) — `create()` solo
+las usa para abrirlas y reenviar sus valores a cada `KeyStore`, nunca las retiene para más.
 
 ## Tipos
 

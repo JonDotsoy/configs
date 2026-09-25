@@ -26,70 +26,82 @@ export type ConfigsNodePending<T extends ConfigsShape> = ConfigsNode<T> & {
   ): PromiseLike<TResult1 | TResult2>;
 };
 
-/** Reads `path` out of the first `rawSource` snapshot that has it, in priority order. */
-function resolveRaw(rawSources: Store<unknown>[], path: string[]): unknown {
-  for (const rawSource of rawSources) {
-    let node: unknown = rawSource.get();
-    for (const key of path) {
-      if (node === null || typeof node !== "object") {
-        node = undefined;
-        break;
-      }
-      node = (node as Record<string, unknown>)[key];
-    }
-    if (node !== undefined && node !== null) return node;
+/** Walks `path` into `snapshot`, one key at a time; `undefined` if any segment is missing or not an object. */
+function readPath(snapshot: unknown, path: string[]): unknown {
+  let node = snapshot;
+  for (const key of path) {
+    if (node === null || typeof node !== "object") return undefined;
+    node = (node as Record<string, unknown>)[key];
   }
-  return undefined;
+  return node;
 }
 
 /**
- * Recomputes `shape` into `node` in place (reusing every already-built `Store`/nested node, so
- * live references handed out earlier stay valid), one level of `path` deeper per nested group.
+ * One field's raw value, live: the first `rawSources` entry (in priority order) whose snapshot
+ * has `path` wins. `rawSources` is a fixed array of per-source placeholder `Store`s (see
+ * `create()`) — this subscribes to every one of them up front, so it reacts the moment a source
+ * actually opens and starts forwarding into its placeholder, with no rewiring needed later.
  */
-function sync(shape: ConfigsShape, path: string[], rawSources: Store<unknown>[], node: Record<string, unknown>): void {
+function keyStore(rawSources: Store<unknown>[], path: string[]): Store<unknown> {
+  const compute = (): unknown => {
+    for (const rawSource of rawSources) {
+      const raw = readPath(rawSource.get(), path);
+      if (raw !== undefined && raw !== null) return raw;
+    }
+    return undefined;
+  };
+  const store = new Store<unknown>(compute());
+  for (const rawSource of rawSources) {
+    rawSource.listen(() => {
+      const next = compute();
+      if (next !== store.get()) store.set(next);
+    });
+  }
+  return store;
+}
+
+/**
+ * Recursively builds `shape` into a plain tree of `Store`s (leaves) and nested plain objects
+ * (groups) — each leaf wired as its own independent `Source → KeyStore → FieldStore` chain:
+ * `keyStore()` merges `rawSources` at that leaf's path, and `descriptor.reduce()` turns that into
+ * the field's own live, parsed `Store`. A leaf only recomputes when a source at its own path
+ * changes — there's no whole-tree recompute sweep.
+ */
+function buildNode(shape: ConfigsShape, path: string[], rawSources: Store<unknown>[]): Record<string, unknown> {
+  const node: Record<string, unknown> = {};
   for (const key of Object.keys(shape)) {
     const entry = shape[key]!;
     const entryPath = [...path, key];
-    if (isConfigDescriptor(entry)) {
-      const raw = resolveRaw(rawSources, entryPath);
-      const value = entry.reduce(raw, entryPath).store.get();
-      const store = node[key];
-      if (store instanceof Store) {
-        if (store.get() !== value) store.set(value);
-      } else {
-        node[key] = new Store(value);
-      }
-    } else {
-      const child = (node[key] as Record<string, unknown> | undefined) ?? {};
-      node[key] = child;
-      sync(entry as ConfigsShape, entryPath, rawSources, child);
-    }
+    node[key] = isConfigDescriptor(entry)
+      ? entry.reduce(keyStore(rawSources, entryPath), entryPath)
+      : buildNode(entry as ConfigsShape, entryPath, rawSources);
   }
+  return node;
 }
 
 /**
  * Builds a live, plain (non-proxy) `Store` per leaf shape key — recursing into nested groups as
- * plain nested objects — resolved from `options.sources` in priority order — the first source
- * whose snapshot has a field wins, falling back to the field's own `default`, else `null`. The
- * returned object is also `then`able: it resolves once every source has published its first
- * snapshot.
+ * plain nested objects. Each `options.sources` entry gets its own placeholder `Store`, wired up
+ * to every field's chain from the very start (see `buildNode()`/`keyStore()`): once that source's
+ * own `open()` resolves, its value — and every later update — forwards into the placeholder,
+ * which ripples reactively through to just the fields whose path it can resolve. The returned
+ * object is also `then`able: it resolves once every source has published its first snapshot.
  */
 export function create<T extends ConfigsShape>(configShape: T, options: Options = {}): ConfigsNodePending<T> {
   const sources = options.sources ?? [];
-  const rawSources: Store<unknown>[] = [];
-  const stores: Record<string, unknown> = {};
+  const rawSources = sources.map(() => new Store<unknown>(null));
 
-  sync(configShape, [], rawSources, stores);
+  const node = buildNode(configShape, [], rawSources) as ConfigsNode<T>;
 
-  const ready = Promise.all(sources.map((source) => source.open())).then((openedSources) => {
-    rawSources.push(...openedSources);
-    sync(configShape, [], rawSources, stores);
-    for (const rawSource of openedSources) rawSource.listen(() => sync(configShape, [], rawSources, stores));
-  });
+  const ready = Promise.all(
+    sources.map((source, index) =>
+      source.open().then((opened) => {
+        opened.subscribe((value) => rawSources[index]!.set(value));
+      }),
+    ),
+  ).then(() => node);
 
-  const node = stores as unknown as ConfigsNode<T>;
-
-  return Object.assign({ ...stores }, {
+  return Object.assign({ ...node }, {
     then<TResult1 = ConfigsNode<T>, TResult2 = never>(
       onfulfilled?: ((value: ConfigsNode<T>) => TResult1 | PromiseLike<TResult1>) | undefined | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | undefined | null,

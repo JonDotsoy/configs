@@ -17,23 +17,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolved from each source's own matching nested path. The returned object is also `then`able:
   `await`ing it resolves once every source in `options.sources` has published its first snapshot,
   into the same plain shape (no longer `then`able).
-- **`ConfigDescriptor.reduce(raw, path?)`**: a synchronous counterpart to `.parse()` — computes a
-  field's value directly from an already-merged `raw` value (falling back to `options.default`,
-  then running it through the field's own `parser`) with no `Store<unknown>` to subscribe to.
-  Returns `{ store: ReadOnlyStore<T>, ready: Promise<ReadOnlyStore<T>> }`: `store` is the
-  already-resolved value, `ready` is that same `store` wrapped in a `Promise`, for callers
-  migrating off `.parse()`'s `await`ed shape. Available on every descriptor built by
-  `string()`/`numeric()`/`boolean()`/`url()`/`shape()`/`choice()` (and `file()`, from `./node.js`),
-  since it lives on the shared `ConfigDescriptor` base class. The new `create()`
-  (`src/config-node.ts`) always resolves a field's value through `.reduce(...).store`.
+
+  Internally, each leaf field is its own independent reactive chain — `Source → KeyStore →
+  FieldStore` — instead of one global recompute sweep over the whole shape on every change: each
+  `options.sources` entry gets a placeholder `Store`, wired into every field it could resolve from
+  the moment `create()` is called; once that source's own `open()` resolves, its value (and every
+  later update) forwards into the placeholder and ripples through only the fields whose path it
+  can affect.
+- **`ConfigDescriptor.reduce(rawStore, path?)`**: the reactive counterpart to `.parse()`, and what
+  it's now built on. Takes a live `Store<unknown>` (not a bare raw value) and returns a live
+  `Store<T>` that recomputes on every `rawStore` change — falling back to `options.default` when
+  raw is missing, else running it through the field's own `parser` — synchronously, with no
+  `Promise` to await (`rawStore` is expected to already exist). Available on every descriptor
+  built by `string()`/`numeric()`/`boolean()`/`url()`/`shape()`/`choice()` (and `file()`, from
+  `./node.js`), since it lives on the shared `ConfigDescriptor` base class. The new `create()`
+  (`src/config-node.ts`) builds each field's `rawStore` from its own `KeyStore` and hands it
+  straight to `.reduce()`.
 
 ### Deprecated
 
 - **`configs` (the default-export-backing namespace object in `src/configs.ts`) is deprecated** in
   favor of `create()` from `./config-node.js`.
-- **`ConfigDescriptor.parse()` is deprecated** in favor of `.reduce()` — same default-then-parser
-  logic, just synchronous and driven by the caller re-invoking it with a fresh raw value, instead
-  of subscribing to a live `Store<unknown>` itself. Still fully supported.
+- **`ConfigDescriptor.parse()` is deprecated** in favor of `.reduce()` — same behavior, now just a
+  thin `Promise`-wrapping shim over it, kept only for the legacy `configs.create()` engine. Still
+  fully supported.
 
 ## [1.2.6] - 2026-09-25
 

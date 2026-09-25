@@ -1,5 +1,5 @@
 import { CONFIG_DESCRIPTOR_TAG } from "./utils/config-descriptor-tag.js";
-import { Store, type ReadOnlyStore } from "./utils/store.js";
+import { Store } from "./utils/store.js";
 import { tSync } from "./utils/t.js";
 import { ConfigError } from "./errors.js";
 
@@ -182,38 +182,40 @@ export class ConfigDescriptor<T, O extends object = object> {
   /**
    * Runs this field's own `parser` against `rawStore` — a `Store` already holding this field's
    * merged raw value (or `undefined`/`null` when no source has it), built and kept live by
-   * whichever `ConfigNode` owns the shape tree this descriptor sits in. The descriptor knows
-   * nothing about `sources`, sibling fields, or where in the tree it lives — only its own
+   * whichever engine owns the shape tree this descriptor sits in. The descriptor knows nothing
+   * about `sources`, sibling fields, or where in the tree it lives — only its own
    * `parser`/`options.default` and, for error messages, the `path` label the caller passes in.
    * The returned `store` stays live: it re-derives from `rawStore` on every change, so a caller
    * only needs to read/subscribe to it, never call `parse()` again for the same field.
    *
-   * @deprecated Use `.reduce()` instead — synchronous, and takes the already-merged raw value
-   * directly instead of a live `Store<unknown>` to subscribe to.
+   * @deprecated A thin `Promise`-wrapping shim over `.reduce()`, kept only for the legacy
+   * `configs.create()` engine (`./config.types.js`). Call `.reduce()` directly instead — same
+   * behavior, synchronous, no `Promise` to await.
    */
   async parse(rawStore: Store<unknown>, path: string[] = []): Promise<{ store: Store<T> }> {
-    const store = new Store<T>(this.reduce(rawStore.get(), path).store.get());
-    rawStore.listen((raw) => {
-      const next = this.reduce(raw, path).store.get();
-      if (next !== store.get()) store.set(next);
-    });
-    return { store };
+    return { store: this.reduce(rawStore, path) };
   }
 
   /**
-   * Synchronous counterpart to `.parse()`: computes this field's value straight from `raw` — the
-   * merged raw value from wherever a caller resolves it from `sources` (or `undefined`/`null` when
-   * none has it) — falling back to `options.default` when `raw` is missing, else running it
-   * through this field's own `parser`. `store` is that value, already resolved; `ready` is the
-   * same store, wrapped in a `Promise` so a caller migrating off `.parse()`'s `await`ed shape
-   * doesn't have to change how it reads the result. Neither is kept live — a caller re-invokes
-   * `reduce()` with a fresh `raw` whenever the input changes (see `create()` in `./config-node.js`).
+   * Reactive counterpart to `.parse()`, and what it's now built on: given `rawStore` — already
+   * holding this field's merged raw value (or `undefined`/`null` when no source has it) and kept
+   * live by whoever resolves it (e.g. one field's `Source → KeyStore` chain in
+   * `create()`/`./config-node.js`) — returns a live `Store<T>` that recomputes on every `rawStore`
+   * change: falling back to `options.default` when raw is missing, else running it through this
+   * field's own `parser`. Synchronous — `rawStore` is expected to already exist, so there's
+   * nothing to await; the returned store is already initialized off `rawStore`'s current value.
    */
-  reduce(raw: unknown, path: string[] = []): { store: ReadOnlyStore<T>; ready: Promise<ReadOnlyStore<T>> } {
-    const defaultValue = (this.options as { default?: T }).default;
-    const value = raw === undefined || raw === null ? (defaultValue !== undefined ? defaultValue : (null as T)) : this.parser(raw, path);
-    const store = new Store<T>(value);
-    return { store, ready: Promise.resolve(store) };
+  reduce(rawStore: Store<unknown>, path: string[] = []): Store<T> {
+    const compute = (raw: unknown): T => {
+      const defaultValue = (this.options as { default?: T }).default;
+      return raw === undefined || raw === null ? (defaultValue !== undefined ? defaultValue : (null as T)) : this.parser(raw, path);
+    };
+    const store = new Store<T>(compute(rawStore.get()));
+    rawStore.listen((raw) => {
+      const next = compute(raw);
+      if (next !== store.get()) store.set(next);
+    });
+    return store;
   }
 }
 
