@@ -1,5 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { boolean, choice, ConfigDescriptor, numeric, shape, string, url, type FieldType } from "./config-descriptor.js";
+import {
+  boolean,
+  choice,
+  CONFIG_DESCRIPTOR_TAG,
+  ConfigDescriptor,
+  isConfigDescriptor,
+  numeric,
+  shape,
+  string,
+  url,
+  type FieldType,
+} from "./config-descriptor.js";
 import { ConfigError } from "./errors.js";
 import { Store } from "./utils/store.js";
 import { z } from "zod";
@@ -125,5 +136,73 @@ describe("ConfigDescriptor.reduce()", () => {
 
     rawStore.set(undefined);
     expect(reduced.get()).toBeNull();
+  });
+});
+
+describe("isConfigDescriptor()", () => {
+  test("recognizes a real ConfigDescriptor built by every field builder", () => {
+    expect(isConfigDescriptor(string())).toBe(true);
+    expect(isConfigDescriptor(numeric())).toBe(true);
+    expect(isConfigDescriptor(boolean())).toBe(true);
+    expect(isConfigDescriptor(url())).toBe(true);
+    expect(isConfigDescriptor(choice({ options: ["a", "b"] }))).toBe(true);
+    expect(isConfigDescriptor(shape())).toBe(true);
+  });
+
+  test("recognizes a directly-constructed ConfigDescriptor instance", () => {
+    expect(isConfigDescriptor(new ConfigDescriptor("csv", (raw) => String(raw).split(","), {}))).toBe(true);
+  });
+
+  test("recognizes a hand-written object carrying the tag plus a callable reduce()", () => {
+    const handWritten = {
+      [CONFIG_DESCRIPTOR_TAG]: true as const,
+      reduce: (rawStore: Store<unknown>) => new Store(String(rawStore.get())),
+    };
+    expect(isConfigDescriptor(handWritten)).toBe(true);
+  });
+
+  test("rejects an object carrying the tag but no reduce()", () => {
+    expect(isConfigDescriptor({ [CONFIG_DESCRIPTOR_TAG]: true })).toBe(false);
+  });
+
+  test("rejects a plain shape entry (nested group, or an unrelated object)", () => {
+    expect(isConfigDescriptor({ port: numeric() })).toBe(false);
+    expect(isConfigDescriptor({})).toBe(false);
+  });
+
+  test("rejects null and primitives", () => {
+    expect(isConfigDescriptor(null)).toBe(false);
+    expect(isConfigDescriptor(undefined)).toBe(false);
+    expect(isConfigDescriptor(42)).toBe(false);
+    expect(isConfigDescriptor("string")).toBe(false);
+  });
+});
+
+describe("writing a custom ConfigDescriptor by hand (CONFIG_DESCRIPTOR_TAG contract)", () => {
+  test("a hand-written descriptor (tag + key + reduce()) behaves like a real one", () => {
+    function csv(options: { key?: string | string[] } = {}) {
+      const parse = (raw: unknown) => (typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
+
+      return {
+        [CONFIG_DESCRIPTOR_TAG]: true as const,
+        key: options.key,
+        reduce(rawStore: Store<unknown>) {
+          const store = new Store<string[]>(parse(rawStore.get()));
+          rawStore.listen((raw) => store.set(parse(raw)));
+          return store;
+        },
+      };
+    }
+
+    const descriptor = csv({ key: "ALLOWED_ORIGINS" });
+    expect(isConfigDescriptor(descriptor)).toBe(true);
+    expect(descriptor.key).toBe("ALLOWED_ORIGINS");
+
+    const rawStore = new Store<unknown>("a.com, b.com, c.com");
+    const reduced = descriptor.reduce(rawStore);
+    expect(reduced.get()).toEqual(["a.com", "b.com", "c.com"]);
+
+    rawStore.set("d.com");
+    expect(reduced.get()).toEqual(["d.com"]);
   });
 });
