@@ -293,13 +293,11 @@ export function __resetDeprecatedFieldSchemaWarningForTests(): void {
  * z.number() }`) — the latter is only recognized when `type` is genuinely absent (an actual
  * `type: "string"`/`"number"`/`"boolean"`/`"shape"` object always passes through as itself, but logs
  * the deprecation warning above — unlike these two `type`-less shorthands, which aren't deprecated).
- * Only called for entries that aren't nested groups (checked separately via `isEmbeddedNode` in
- * `./config.types.js`), so a `SchemaGroupNode` (no `schema` property) never reaches here.
+ * Only ever called for a legacy (non-`ConfigDescriptor`) shape entry — `./config.types.js` checks
+ * `isConfigDescriptor()`/`isEmbeddedNode()` first and never reaches here for either, since a real
+ * descriptor resolves through its own `.parser`/`.parse()` instead.
  */
 export function toFieldSchema(node: unknown): FieldSchema {
-  if (isConfigDescriptor(node)) {
-    return { type: node.type, ...(node.options as object) } as FieldSchema;
-  }
   if (isBareParseable(node)) {
     return { type: "shape", schema: node };
   }
@@ -321,11 +319,8 @@ function typeMismatch(type: FieldType, value: unknown, path: string[]): never {
  * default — data comes from sources outside this package's control, so a malformed value is
  * logged via `console.error` and the field resolves to `null`, same as a source that simply
  * doesn't have it. Only an explicit `required: true` escalates that failure into a thrown
- * `ConfigError`.
- */
-/**
- * Exported so any field type whose `Parser<T>` needs the same "log unless `required`" rule (e.g.
- * `file()`'s own `fileParser`, in `./node.js`) doesn't have to reimplement it.
+ * `ConfigError`. Exported so any field type whose `Parser<T>` needs this same rule (e.g. `file()`'s
+ * own `fileParser`, in `./node.js`) doesn't have to reimplement it.
  */
 export function shapeFailure(required: boolean | undefined, error: ConfigError): unknown {
   if (required) throw error;

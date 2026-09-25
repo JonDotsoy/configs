@@ -75,18 +75,15 @@ interface SchemaGroupNode {
 }
 
 /**
- * A schema object used directly as a shape entry — `port: z.number()` instead of the explicit
- * `port: { type: "shape", schema: z.number() }`. Flattened to `Parseable<unknown>` here for the
- * same reason `ShapeFieldSchema` is flattened to `unknown` in `FieldSchema`: `SchemaNode` isn't
- * generic, so the real per-field type still comes from matching the caller's own literal type
- * structurally (see `PrimitiveOfField`/`InferField`), not from this declared member. `unknown`
- * rather than `any` avoids the literal-widening poisoning `SchemaGroupNode`'s doc above warns about.
- */
-/**
- * A plain object used directly as a nested group's shape (`server: { port: numeric(...) } }`),
- * instead of wrapping it in `create({...})`. Recursive through `SchemaShape` — safe here (unlike
- * `SchemaGroupNode`/`ConfigDescriptorNode`'s `any`-avoidance concern above) since neither this alias
- * nor `SchemaShape` itself is generic, so nothing here ever resolves to `any`.
+ * `Parseable<unknown>` covers a schema object used directly as a shape entry — `port: z.number()`
+ * instead of the explicit `port: { type: "shape", schema: z.number() }`. Flattened to `unknown`
+ * here for the same reason `ShapeFieldSchema` is flattened to `unknown` in `FieldSchema`:
+ * `SchemaNode` isn't generic, so the real per-field type still comes from matching the caller's
+ * own literal type structurally (see `PrimitiveOfField`/`InferField`), not from this declared
+ * member. `SchemaShape` covers a plain object used directly as a nested group's shape (`server: {
+ * port: numeric(...) } }`), instead of wrapping it in `create({...})` — recursive here safely
+ * (unlike `SchemaGroupNode`/`ConfigDescriptorNode`'s `any`-avoidance concern above) since neither
+ * this alias nor `SchemaShape` itself is generic, so nothing here ever resolves to `any`.
  */
 export type SchemaNode = FieldSchema | SchemaGroupNode | Parseable<unknown> | ConfigDescriptorNode | SchemaShape;
 /**
@@ -293,12 +290,6 @@ function resolvePath(schema: FieldSchema, basePath: string[], key: string): stri
 }
 
 /**
- * Resolves `field`'s value from `sources` (in priority order): the first source whose snapshot
- * has a value at `path` wins, coerced/validated via `parseLegacyField()`; falls back to
- * `field.default`, else `null`. Drives `ConfigNodeState.resolveField`, the synchronous engine
- * behind every legacy (non-`ConfigDescriptor`) field, live or not.
- */
-/**
  * Dispatches `field` to the matching per-type `Parser<T>` (`stringParser`/`numberParser`/
  * `booleanParser`/`urlParser`/`shapeParser`, from `./config-descriptor.js`) — the same coercion
  * rules every `ConfigDescriptor` runs via its own `parser`, just reached by `field.type` here
@@ -314,6 +305,12 @@ function parseLegacyField(field: FieldSchema, raw: unknown, path: string[]): unk
   return stringParser(field as StringFieldSchema)(raw, path);
 }
 
+/**
+ * Resolves `field`'s value from `sources` (in priority order): the first source whose snapshot
+ * has a value at `path` wins, coerced/validated via `parseLegacyField()`; falls back to
+ * `field.default`, else `null`. Drives `ConfigNodeState.resolveField`, the synchronous engine
+ * behind every legacy (non-`ConfigDescriptor`) field, live or not.
+ */
 function resolveFieldValue(field: FieldSchema, sources: Store<any>[], path: string[]): unknown {
   const raw = resolveRawValue(sources, path);
   if (raw === undefined) return field.default !== undefined ? field.default : null;
@@ -399,7 +396,7 @@ class ConfigNodeState<S extends SchemaShape> {
     /** The node this shares its `rootStores` with, when it doesn't own its own resolution. `undefined` at the root. */
     private readonly parent: ConfigNodeState<any> | undefined,
     private readonly basePath: string[],
-    private readonly ownSources: Source<any>[],
+    ownSources: Source<any>[],
     readonly ownsResolution: boolean,
     /** The sources this node's (or an ancestor's) `close()` actually closes. */
     private readonly closableSources: Source<any>[],
