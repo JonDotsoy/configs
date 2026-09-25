@@ -40,14 +40,16 @@ new Descriptor<T>({
 ```
 
 `start(raw, path): T` replaces the old `parser` — `create()`/`load()` now build and own each
-field's `Store` themselves, calling `.start()` to seed it and again on every raw-value change,
-instead of the descriptor building and live-updating its own `Store` via `.reduce()`. The hand-
-written `CONFIG_DESCRIPTOR_TAG` contract changes to match: a descriptor written by hand now needs a
-callable `.start()` (not `.reduce()`) to be recognized by `isConfigDescriptor()`. `.reduce(rawStore,
-path)` is now optional and, when given, returns `Promise<Store<T>>` instead: its promise is folded
-into `create()`'s own readiness, and the `Store<T>` it resolves to takes over as the field's live
-value — for fields whose value can only be produced asynchronously. See the README's "Writing a
-custom `Descriptor`" section.
+field's `Store` themselves, seeding it with one, one-time call to `.start()`. Every live update
+from then on comes exclusively from `.reduce(rawStore, path)`, which returns `Promise<Store<T>>`:
+its promise is folded into `create()`'s own readiness, and the `Store<T>` it resolves to becomes
+the field's live value going forward — `.start()` is never called again. Omitting `reduce` gets a
+default one for free, built from `start` itself (re-run on every raw change), so built-in fields
+stay reactive with no extra code. The hand-written `CONFIG_DESCRIPTOR_TAG` contract changes to
+match: a descriptor written by hand now needs a callable `.start()` (not `.reduce()`) to be
+recognized by `isConfigDescriptor()` — but without its own `.reduce()` too, it only ever gets that
+one `start()`-seeded value, never a live update. See the README's "Writing a custom `Descriptor`"
+section.
 
 ### Changed — BREAKING: new `create()`/`load()` engine, legacy engine removed
 

@@ -106,12 +106,14 @@ function resolveFieldPath(descriptor: Descriptor<unknown, object>, entryPath: st
 }
 
 /**
- * Builds one field's own live `Store<T>`: seeded off `rawStore`'s current value via
- * `descriptor.start()`, then recomputed the same way every time `rawStore` changes — the
- * descriptor itself holds no `Store`; this is the only place one gets created for it. When the
- * descriptor also has an (optional) `reduce`, its promise is folded into `embeddedReady` (so
- * `create()`'s own readiness waits on it, same as a source's `open()`), and the `Store<T>` it
- * resolves to takes over as this field's value, staying live off its own updates.
+ * Builds one field's own live `Store<T>`: seeded, once, off `rawStore`'s current value via
+ * `descriptor.start()` — the descriptor itself holds no `Store`; this is the only place one gets
+ * created for it, and `start()` is never called again after this. Every live update from then on
+ * comes from `descriptor.reduce()`: its promise is folded into `embeddedReady` (so `create()`'s
+ * own readiness waits on it, same as a source's `open()`), and the `Store<T>` it resolves to takes
+ * over as this field's value, staying live off its own updates. A hand-written descriptor with no
+ * `.reduce()` at all (the `CONFIG_DESCRIPTOR_TAG` contract only requires `.start()`) just keeps
+ * its one seeded value — real `Descriptor` instances always have a `.reduce()` (see its own doc).
  */
 function buildField(
   descriptor: Descriptor<unknown, object>,
@@ -120,10 +122,6 @@ function buildField(
   embeddedReady: PromiseLike<unknown>[],
 ): Store<unknown> {
   const fieldStore = new Store<unknown>(descriptor.start(rawStore.get(), path));
-  rawStore.listen((raw) => {
-    const next = descriptor.start(raw, path);
-    if (next !== fieldStore.get()) fieldStore.set(next);
-  });
 
   const reducePromise = typeof descriptor.reduce === "function" ? descriptor.reduce(rawStore, path) : undefined;
   if (reducePromise) {

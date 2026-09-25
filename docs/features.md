@@ -63,15 +63,21 @@ El punto de entrada público (`src/config-node.ts`, re-exportado desde
 
 - **`Descriptor<T, O>`** — la clase base. Expone `.key`, `.start(raw,
   path?)` (síncrono: cae a `options.default` cuando no hay valor, o corre
-  el `start` propio del campo — es `create()` quien crea y mantiene vivo
-  el `Store` del campo, volviendo a llamar `.start()` en cada cambio), un
-  `.reduce(rawStore, path?)` opcional que devuelve `Promise<Store<T>>`
-  para campos que solo pueden resolverse de forma asíncrona, y un
-  `.close()` (siempre presente, no-op si el constructor no dio `close`)
-  que `create()` llama una vez por campo desde el `.close()` del nodo.
+  el `start` propio del campo — `create()` lo llama **una sola vez**, para
+  sembrar el `Store` del campo antes de que `.reduce()` resuelva) y
+  `.reduce(rawStore, path?)`, que devuelve `Promise<Store<T>>` y es de
+  donde viene **toda** actualización en vivo de ahí en adelante — si el
+  constructor no da un `reduce` propio, se usa uno por defecto construido
+  a partir de `start` (reejecutándolo en cada cambio de `rawStore`), así
+  que casi nadie necesita escribir el suyo. También expone `.close()`
+  (siempre presente, no-op si el constructor no dio `close`) que
+  `create()` llama una vez por campo desde el `.close()` del nodo.
   Extensible a mano (`new Descriptor({ type, options, start, reduce?,
   close? })`, o el contrato completo vía `CONFIG_DESCRIPTOR_TAG` +
-  `.start()` — **deprecado**, preferir siempre `new Descriptor(...)`).
+  `.start()` — **deprecado**, preferir siempre `new Descriptor(...)`; sin
+  un `.reduce()` propio, un descriptor hecho a mano solo con `.start()`
+  se queda pegado en su valor inicial, nunca recibe el valor real de la
+  fuente).
 - **`string(options?)`** — coerción a `string`; `pattern` opcional
   (`RegExp`) para validar el valor.
 - **`numeric(options?)`** — coerciona un string numérico (o `number`

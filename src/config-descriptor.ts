@@ -76,15 +76,17 @@ export type Parser<T> = (raw: unknown, path: string[]) => T;
 
 /**
  * What `new Descriptor(...)` takes: `type`/`options` are purely descriptive (read by `.key`,
- * `.freeze`, `.options.default`, ...); `start` is this field's synchronous parser, run against one
- * already-resolved raw value every time it changes — the engine (`create()`, in `./config-node.js`)
- * owns building and live-updating the field's own `Store`, calling `start` again on every raw
- * change instead of `start` managing a `Store` itself. `reduce`, when given, is an optional async
- * escape hatch: it receives the field's live raw `Store` directly and resolves to the `Store<T>`
- * that then takes over as this field's value — its promise is folded into `create()`'s own
- * readiness, same as a source's `open()`. `close`, when given, releases whatever `start`/`reduce`
- * set up (a connection, a timer, ...) — `create()`'s own `close()` (`./config-node.js`) calls every
- * field's `close` once, same as `Source.close()` does for its own `underlying.close`.
+ * `.freeze`, `.options.default`, ...); `start` is this field's synchronous parser, run **once**
+ * against the raw value already present when the field is built, to seed its `Store` before
+ * anything asynchronous has had a chance to run — it is never called again after that. Every live
+ * update from then on comes exclusively from `reduce`: given the field's live raw `Store`, it
+ * resolves to the `Store<T>` that becomes (and stays) this field's value — its promise is folded
+ * into `create()`'s own readiness, same as a source's `open()`. Omitting `reduce` gets a default
+ * one for free, built from `start` itself (re-running it on every raw change, same as `start`
+ * alone used to before this became a two-step contract) — so most callers never need to write
+ * their own `reduce`. `close`, when given, releases whatever `start`/`reduce` set up (a connection,
+ * a timer, ...) — `create()`'s own `close()` (`./config-node.js`) calls every field's `close` once,
+ * same as `Source.close()` does for its own `underlying.close`.
  */
 export interface DescriptorUnderlying<T, O extends object = object> {
   type: FieldType;
@@ -132,9 +134,8 @@ export class Descriptor<T, O extends object = object> {
 
   /**
    * Computes this field's value off one already-resolved raw value: falls back to `options.default`
-   * when raw is missing, else runs it through this field's own `start`. Synchronous, and called
-   * again by `create()` every time the field's raw value changes — this descriptor holds no `Store`
-   * of its own.
+   * when raw is missing, else runs it through this field's own `start`. Synchronous — `create()`
+   * calls this exactly once, to seed the field's `Store` before `.reduce()`'s promise has settled.
    */
   start(raw: unknown, path: string[] = []): T {
     const defaultValue = (this.options as { default?: T }).default;
@@ -142,11 +143,25 @@ export class Descriptor<T, O extends object = object> {
   }
 
   /**
-   * The optional async hook passed as `reduce` to the constructor, if any — `undefined` when this
-   * descriptor doesn't have one, in which case `create()` relies on `.start()` alone.
+   * The live `Store<T>` this field settles into: the constructor's own `reduce`, if given, or —
+   * when it wasn't — a default (`liveStoreFromStart`) that reuses `start` itself as its own
+   * recompute function, re-run on every `rawStore` change. Either way, this is the only place a
+   * live update for this field can come from — `create()` (`./config-node.js`) itself calls
+   * `.start()` exactly once, to seed the field before this resolves, and never again after.
    */
-  reduce(rawStore: Store<unknown>, path: string[] = []): Promise<Store<T>> | undefined {
-    return this.reduceFn?.(rawStore, path);
+  reduce(rawStore: Store<unknown>, path: string[] = []): Promise<Store<T>> {
+    if (this.reduceFn) return this.reduceFn(rawStore, path);
+    return Promise.resolve(this.liveStoreFromStart(rawStore, path));
+  }
+
+  /** The default `reduce`: a `Store<T>` that stays live by re-running `.start()` on every `rawStore` change. */
+  private liveStoreFromStart(rawStore: Store<unknown>, path: string[]): Store<T> {
+    const store = new Store<T>(this.start(rawStore.get(), path));
+    rawStore.listen((raw) => {
+      const next = this.start(raw, path);
+      if (next !== store.get()) store.set(next);
+    });
+    return store;
   }
 
   /**

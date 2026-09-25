@@ -128,8 +128,14 @@ describe("Descriptor.start()", () => {
 });
 
 describe("Descriptor.reduce()", () => {
-  test("is undefined when the constructor wasn't given a reduce hook", () => {
-    expect(numeric().reduce(new Store<unknown>("8080"))).toBeUndefined();
+  test("without a reduce hook, resolves to a Store built from start, live off rawStore changes", async () => {
+    const rawStore = new Store<unknown>("8080");
+    const reduced = await numeric().reduce(rawStore);
+
+    expect(reduced.get()).toBe(8080);
+
+    rawStore.set("9090");
+    expect(reduced.get()).toBe(9090);
   });
 
   test("resolves to the Store its own reduce hook produces", async () => {
@@ -143,7 +149,7 @@ describe("Descriptor.reduce()", () => {
     });
 
     const resultStore = await descriptor.reduce(new Store<unknown>("abc"));
-    expect(resultStore?.get()).toBe("reduced:abc");
+    expect(resultStore.get()).toBe("reduced:abc");
   });
 });
 

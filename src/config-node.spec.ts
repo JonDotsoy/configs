@@ -605,8 +605,10 @@ describe("create — every field builder resolves its raw value at runtime", () 
 
 describe("create — a hand-written custom Descriptor (CONFIG_DESCRIPTOR_TAG contract)", () => {
   // Cast to `Descriptor` since `ConfigsShape` is typed against the real class — the hand-written
-  // contract (tag + key? + start()) is a runtime-only extension point, recognized structurally by
-  // `isConfigDescriptor()` but not by the shape's own static type.
+  // contract (tag + key? + start() + reduce()) is a runtime-only extension point, recognized
+  // structurally by `isConfigDescriptor()` but not by the shape's own static type. `reduce()` is
+  // what actually keeps the field live — `start()` alone only seeds its very first value, before
+  // any source has even opened.
   function csv(options: { key?: string | string[] } = {}): Descriptor<string[], { key?: string | string[] }> {
     const parse = (raw: unknown) => (typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
 
@@ -615,6 +617,11 @@ describe("create — a hand-written custom Descriptor (CONFIG_DESCRIPTOR_TAG con
       key: options.key,
       start(raw: unknown) {
         return parse(raw);
+      },
+      async reduce(rawStore: Store<unknown>) {
+        const store = new Store<string[]>(parse(rawStore.get()));
+        rawStore.listen((raw) => store.set(parse(raw)));
+        return store;
       },
     } as unknown as Descriptor<string[], { key?: string | string[] }>;
   }
@@ -646,5 +653,23 @@ describe("create — a hand-written custom Descriptor (CONFIG_DESCRIPTOR_TAG con
     push({ allowedOrigins: "b.com, c.com" });
 
     expect(cfg.allowedOrigins.get()).toEqual(["b.com", "c.com"]);
+  });
+
+  test("without a reduce(), a hand-written descriptor only ever gets its one start()-seeded value — never a source's own value", async () => {
+    const startOnly = {
+      [CONFIG_DESCRIPTOR_TAG]: true as const,
+      start(raw: unknown) {
+        return typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : [];
+      },
+    } as unknown as Descriptor<string[], object>;
+
+    const cfg = await create(
+      { allowedOrigins: startOnly },
+      { sources: [testSource({ allowedOrigins: "a.com, b.com" })] },
+    );
+
+    // No source has opened yet at the moment `start()` runs, so it seeds `[]` — and, with no
+    // `reduce()` to pick up the source's later value, that's what the field is stuck at forever.
+    expect(cfg.allowedOrigins.get()).toEqual([]);
   });
 });
