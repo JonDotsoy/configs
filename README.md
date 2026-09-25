@@ -13,38 +13,81 @@ the moment a source pushes a new value.
 
 ```ts
 import { create, numeric, string, boolean } from "@jondotsoy/configs";
-import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
+import { envSource } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+import { pullSource } from "@jondotsoy/configs/sources/pull";
+import { file } from "@jondotsoy/configs/node";
 
-// SERVER_PORT=3000 SERVER_HOST=localhost → { server: { port: "3000", host: "localhost" } }
-// GET https://example.com/features → { promoService: true } (polled every 30s)
-const cfg = await create({
-  server: create(
-    {
-      port: numeric({ summary: "HTTP port", default: 3000 }),
-      host: string({ summary: "bind host", default: "localhost" }),
+// HOST=localhost PORT=3000 → { server: { host: "localhost", port: "3000" } }
+// server.tls.cert/.key are read eagerly from disk, decoded into FileBlobs
+// GET https://example.com/features → { experimental: { home: { promotionalDialog: true } },
+//   ui: { menuOrientation: "vertical", sidebarCollapsed: true } } (polled every 30s)
+// secretsManager.getSecretValue("prod/db") → { host, port, user, password } — your AWS/GCP/Vault
+// SDK client of choice, re-pulled every 5m so a rotated secret reaches the config tree
+const cfg = await create(
+  {
+    server: {
+      // freeze: true — host/port are read once at boot; changing them at runtime
+      // wouldn't rebind the already-listening server anyway.
+      host: string({ summary: "bind host", default: "localhost", key: "HOST", freeze: true }),
+      port: numeric({ summary: "HTTP port", default: 3000, key: "PORT", freeze: true }),
+      tls: {
+        cert: file({ summary: "TLS certificate", default: new URL("file:///etc/ssl/certs/server.pem") }),
+        key: file({ summary: "TLS private key", default: new URL("file:///etc/ssl/private/server-key.pem") }),
+      },
     },
-    { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
-  ),
-  features: create(
-    {
-      promoService: boolean({ summary: "enable the promo service", default: false }),
-    },
-    { sources: [fetchSource({ url: "https://example.com/features", pollingInterval: 30_000 })] },
-  ),
-});
+    features: create(
+      {
+        experimental: {
+          home: {
+            promotionalDialog: boolean({ summary: "show the promotional dialog", default: false }),
+          },
+        },
+        ui: {
+          menuOrientation: string({
+            summary: "main menu orientation",
+            default: "horizontal",
+            pattern: /^(horizontal|vertical)$/,
+          }),
+          sidebarCollapsed: boolean({ summary: "collapse the sidebar by default", default: false }),
+        },
+      },
+      { sources: [fetchSource({ url: "https://example.com/features", pollingInterval: 30_000 })] },
+    ),
+    database: create(
+      {
+        host: string({ summary: "db host" }),
+        port: numeric({ summary: "db port", default: 5432 }),
+        user: string({ summary: "db user" }),
+        password: string({ summary: "db password" }),
+      },
+      { sources: [pullSource({ pull: () => secretsManager.getSecretValue("prod/db"), interval: 5 * 60_000 })] },
+    ),
+  },
+  { sources: [envSource()] },
+);
+
+console.log(`listening on ${cfg.server.host.get()}:${cfg.server.port.get()}`);
+// listening on localhost:3000
 
 // React to changes
-cfg.server.port.subscribe((port) => {
-  console.log(`listening on port ${port}`);
+cfg.features.experimental.home.promotionalDialog.subscribe((enabled) => {
+  console.log(`promotional dialog ${enabled ? "enabled" : "disabled"}`);
 });
 
-cfg.features.promoService.subscribe((enabled) => {
-  console.log(`promo service ${enabled ? "enabled" : "disabled"}`);
+cfg.features.ui.menuOrientation.subscribe((orientation) => {
+  renderMenu({ orientation, collapsed: cfg.features.ui.sidebarCollapsed.get() });
 });
 
-console.log(cfg.server.port.get());
-// 3000
+// secretsManager rotates prod/db periodically; each pull's fresh password
+// reopens the connection pool instead of silently swapping credentials
+// underneath one already open.
+cfg.database.password.subscribe((password) => {
+  reconnectPool({ host: cfg.database.host.get(), port: cfg.database.port.get(), user: cfg.database.user.get(), password });
+});
+
+console.log(await cfg.server.tls.cert.get()?.text());
+// -----BEGIN CERTIFICATE-----...
 ```
 
 ## Table of contents

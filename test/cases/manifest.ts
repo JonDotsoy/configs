@@ -64,4 +64,10 @@ export const cases: CaseDef[] = [
     engines: allEngines,
     tolerateFailureEngines: ["browser"],
   },
+  {
+    file: "18-readme-first-example.ts",
+    description: "The README's first example: envSource with explicit, frozen keys for a flat group, file() TLS cert/key fields, a nested features group (a promotional dialog plus a menu orientation/sidebar UI pair) with its own fetchSource, and a nested database group with its own pullSource standing in for a secrets manager — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.",
+    engines: allEngines,
+    tolerateFailureEngines: ["browser"],
+  },
 ];
