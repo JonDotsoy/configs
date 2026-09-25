@@ -6,7 +6,26 @@ on:
       - develop
     paths:
       - 'package.json'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Version bump to apply before publishing'
+        type: choice
+        options:
+          - none
+          - patch
+          - minor
+          - major
+        default: none
+      dist_tag:
+        description: 'npm dist-tag to publish under'
+        type: choice
+        options:
+          - latest
+          - beta
+          - alpha
+          - demo
+        default: latest
 
 permissions:
   id-token: write  # Required for npm OIDC trusted publishing
@@ -28,6 +47,31 @@ jobs:
         with:
           node-version: latest
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Bump package version
+        if: github.event_name == 'workflow_dispatch' && inputs.version_bump != 'none'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          npm version "${{ inputs.version_bump }}" --no-git-tag-version
+          version="$(node -p "require('./package.json').version")"
+
+          if grep -q '^## \[Unreleased\]' CHANGELOG.md; then
+            date="$(date -u +%Y-%m-%d)"
+            sed -i "s/^## \[Unreleased\]/## [$version] - $date/" CHANGELOG.md
+            # Insert the new version's link reference right above the previous
+            # most recent one, keeping the reference-style links sorted newest first.
+            sed -i "0,\|^\[[0-9].*\]: https://github.com/${{ github.repository }}/releases/tag/v|s||[$version]: https://github.com/${{ github.repository }}/releases/tag/v$version\n&|" CHANGELOG.md
+          fi
+
+          git add package.json CHANGELOG.md
+          git commit -m "chore: bump version to $version"
+          sha="$(git rev-parse HEAD)"
+
+          git push origin HEAD:${{ github.event.repository.default_branch }}
+
+          echo "Bumped version to \`$version\` in [$sha](https://github.com/${{ github.repository }}/commit/$sha)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Read version from package.json
         id: pkg
@@ -60,12 +104,16 @@ jobs:
         id: dist-tag
         if: steps.check-release.outputs.exists == 'false'
         run: |
-          version="${{ steps.pkg.outputs.version }}"
-          prerelease="${version#*-}"
-          if [ "$prerelease" = "$version" ]; then
-            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.dist_tag }}" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=${prerelease%%.*}" >> "$GITHUB_OUTPUT"
+            version="${{ steps.pkg.outputs.version }}"
+            prerelease="${version#*-}"
+            if [ "$prerelease" = "$version" ]; then
+              echo "tag=latest" >> "$GITHUB_OUTPUT"
+            else
+              echo "tag=${prerelease%%.*}" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - name: Publish to npm
@@ -100,8 +148,10 @@ jobs:
           notes_file="$(mktemp)"
           printf '%s\n\n[View %s@%s on npm](https://www.npmjs.com/package/%s/v/%s)\n' \
             "$NOTES" "$pkg_name" "$version" "$pkg_name" "$version" > "$notes_file"
-          gh release create "v$version" \
+          release_url="$(gh release create "v$version" \
             --repo "${{ github.repository }}" \
             --title "v$version" \
             --target "${{ github.event.repository.default_branch }}" \
-            --notes-file "$notes_file"
+            --notes-file "$notes_file")"
+
+          echo "Created release [v$version]($release_url)" >> "$GITHUB_STEP_SUMMARY"
