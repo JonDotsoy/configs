@@ -1082,6 +1082,9 @@ await Promise.all(sources.map((source) => source.close()));
 
 Further guides live under [`docs/`](./docs):
 
+- [`docs/features.md`](./docs/features.md) — a full feature list by area
+  (`create()`/`load()`, field descriptors, sources, `file()`, React,
+  utilities), in Spanish.
 - [`docs/getting-starter/features.md`](./docs/getting-starter/features.md) —
   portability: isomorphism, and browser/Node.js/Bun support notes.
 - [`docs/examples/`](./docs/examples) — runnable-shaped snippets for common
