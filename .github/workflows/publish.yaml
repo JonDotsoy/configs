@@ -148,8 +148,10 @@ jobs:
           notes_file="$(mktemp)"
           printf '%s\n\n[View %s@%s on npm](https://www.npmjs.com/package/%s/v/%s)\n' \
             "$NOTES" "$pkg_name" "$version" "$pkg_name" "$version" > "$notes_file"
-          gh release create "v$version" \
+          release_url="$(gh release create "v$version" \
             --repo "${{ github.repository }}" \
             --title "v$version" \
             --target "${{ github.event.repository.default_branch }}" \
-            --notes-file "$notes_file"
+            --notes-file "$notes_file")"
+
+          echo "Created release [v$version]($release_url)" >> "$GITHUB_STEP_SUMMARY"
