@@ -216,6 +216,13 @@ back to `options.default` when raw is missing) and again on every `control.rawSt
 update — a hand-written `Descriptor` can write the same shape to get the same "live from the moment
 the source opens" behavior. See the README's "Writing a custom `Descriptor`" section.
 
+### Added
+
+- **`url()`'s `base` option** — resolves a relative value against it (as `new URL(raw, base)`
+  would), instead of requiring every `url()` field to be an absolute URL. Omitting `base` falls
+  back to the environment's `location` (e.g. a browser's `window.location`) when one is globally
+  available, so a relative value still resolves there without setting `base` explicitly.
+
 ### Changed — BREAKING: new `create()`/`load()` engine, legacy engine removed
 
 `src/config-node.ts`'s `create()` is now what `create`/`load` (from the package root) build on —
