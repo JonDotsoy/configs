@@ -1146,3 +1146,7 @@ Further guides live under [`docs/`](./docs):
 - [`docs/develop/check-package.md`](./docs/develop/check-package.md) —
   validating the published package against real Node, Bun, and Deno
   processes.
+- [`docs/develop/config-node-vs-legacy.md`](./docs/develop/config-node-vs-legacy.md) —
+  the legacy `configs.create()` engine vs. the new, unrelated `create()`
+  in `src/config-node.ts`: what each one's internal approach is, and why
+  they differ (in Spanish).
