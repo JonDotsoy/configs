@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Writing a custom field type — `ConfigDescriptor`'s constructor, `.parse()`, and `.key` are now
+  public.** `new ConfigDescriptor(type, parser, options)` builds a field descriptor from your own
+  `parser: Parser<T>` (`(raw: unknown, path: string[]) => T`, throw a `ConfigError` to reject a
+  value) — `string()`/`numeric()`/`boolean()`/`url()`/`shape()`, and `@jondotsoy/configs/node`'s
+  `file()`, each now build their own dedicated parser this way. `configs.create()`/`load()` treat
+  any `ConfigDescriptor`-backed shape entry identically regardless of who built it: it resolves the
+  field's path (its own nesting in the shape tree, or an explicit `key`), merges a live raw value
+  across sources into a `Store`, and hands that to the descriptor's own `parse(rawStore, path?):
+  Promise<{ store }>` — the descriptor never needs to know about sources or its siblings. The
+  `CONFIG_DESCRIPTOR_TAG` symbol and the `Parser<T>` type are also newly exported, for the rarer
+  case of writing a descriptor entirely by hand instead of constructing the class. See the
+  README's new "Writing a custom `ConfigDescriptor`" section.
 - **`@jondotsoy/configs/node`'s `file()`/`FileBlob`** — a new field-schema builder for reading a
   field's value as a file. A source's raw string value is decoded (as base64 or plain text,
   inferred automatically, or forced via `file({ format: "text" | "base64" })`) into a `FileBlob`,
