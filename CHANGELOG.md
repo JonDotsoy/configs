@@ -69,6 +69,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`url()` / `{ type: "url" }`** — a new field type that parses a string value into a `URL`
   instance (via the built-in `URL` constructor), throwing a `ConfigError` if it isn't a valid URL.
   `url()` resolves to `URL | null` (or `URL` when given a `default`), same as every other field type.
+- **`choice(options)`** — a new field-schema builder exported from `@jondotsoy/configs`, for a
+  field that must resolve to one of a fixed list of strings, e.g. `choice({ options: ["debug",
+  "info", "warn", "error"] })`. Rejects (throwing a `ConfigError`) any value not in `options.options`;
+  the field's inferred type narrows to the literal union of `options.options` (e.g. `"debug" |
+  "info" | "warn" | "error"`), same as every other builder narrows to `T` (rather than `T | null`)
+  once a `default` is given.
 - **`key` field option** — every field (via `string()`/`numeric()`/`boolean()`, or the
   `key` property on an explicit `FieldSchema` object literal) can now set `key: "PORT"` (or a
   `string[]` path) to read from that exact path in each source's snapshot, instead of the field's

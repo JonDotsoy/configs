@@ -12,20 +12,30 @@ the moment a source pushes a new value.
 - **Typed with TS check** — schemas are statically checked, so `cfg.port.get()` is inferred as `number | null` (or `number` when a `default` is set), not `any`.
 
 ```ts
-import { create, numeric, string, boolean } from "@jondotsoy/configs";
+import { create, choice, numeric, string, boolean } from "@jondotsoy/configs";
 import { envSource } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+import { fileSource } from "@jondotsoy/configs/sources/file";
 import { pullSource } from "@jondotsoy/configs/sources/pull";
 import { file } from "@jondotsoy/configs/node";
 
 // HOST=localhost PORT=3000 → { server: { host: "localhost", port: "3000" } }
 // server.tls.cert/.key are read eagerly from disk, decoded into FileBlobs
+// LOG_LEVEL=warn → app log verbosity, restricted to one of a fixed set of levels — envSource()
+//   (the real process env) takes priority; a local ./.env file (fileSource, live via fs.watch)
+//   is the fallback, so a developer can set LOG_LEVEL=debug there without exporting it in the shell
 // GET https://example.com/features → { experimental: { home: { promotionalDialog: true } },
 //   ui: { menuOrientation: "vertical", sidebarCollapsed: true } } (polled every 30s)
 // secretsManager.getSecretValue("prod/db") → { host, port, user, password } — your AWS/GCP/Vault
 // SDK client of choice, re-pulled every 5m so a rotated secret reaches the config tree
 const cfg = await create(
   {
+    logLevel: choice({
+      summary: "app log verbosity",
+      options: ["debug", "info", "warn", "error"],
+      default: "info",
+      key: "LOG_LEVEL",
+    }),
     server: {
       // freeze: true — host/port are read once at boot; changing them at runtime
       // wouldn't rebind the already-listening server anyway.
@@ -64,11 +74,14 @@ const cfg = await create(
       { sources: [pullSource({ pull: () => secretsManager.getSecretValue("prod/db"), interval: 5 * 60_000 })] },
     ),
   },
-  { sources: [envSource()] },
+  { sources: [envSource(), fileSource(".env")] },
 );
 
 console.log(`listening on ${cfg.server.host.get()}:${cfg.server.port.get()}`);
 // listening on localhost:3000
+
+console.log(`log level: ${cfg.logLevel.get()}`);
+// log level: info
 
 // React to changes
 cfg.features.experimental.home.promotionalDialog.subscribe((enabled) => {
@@ -124,9 +137,10 @@ npm install @jondotsoy/configs
 
 ### Field types
 
-A field's `type` is `"string"`, `"number"`, `"boolean"`, `"url"`, or `"shape"`. The first three
-coerce and validate primitives (numeric/boolean-ish strings, an optional `pattern` for strings).
-`"url"` parses a string into a `URL` instance, throwing a `ConfigError` if it isn't a valid one.
+A field's `type` is `"string"`, `"number"`, `"boolean"`, `"url"`, `"choice"`, or `"shape"`. The first
+three coerce and validate primitives (numeric/boolean-ish strings, an optional `pattern` for
+strings). `"url"` parses a string into a `URL` instance, throwing a `ConfigError` if it isn't a
+valid one. `"choice"` accepts only one of a fixed list of strings, rejecting anything else.
 `"shape"` hands the raw value to a `schema` you provide — anything with a `parse(value: unknown): T`
 method, which is exactly the shape `zod`, `valibot`, and most other validation libraries already
 export — so there's no dependency on any specific one.
@@ -135,8 +149,8 @@ export — so there's no dependency on any specific one.
 > **Writing a field as an object literal — `{ type: "string", ... }` and friends — is
 > deprecated.** It still works exactly as documented below (nothing breaks, nothing is removed),
 > but it now logs a one-time `console.warn` and its `Field*Schema` types carry `@deprecated` tags.
-> Use `string()`, `numeric()`, `boolean()`, `url()`, or `shape()` instead — same options, same
-> inference, just without repeating `type` yourself. See the next section.
+> Use `string()`, `numeric()`, `boolean()`, `url()`, `choice()`, or `shape()` instead — same
+> options, same inference, just without repeating `type` yourself. See the next section.
 
 ```ts
 import { create, shape } from "@jondotsoy/configs";
@@ -153,16 +167,17 @@ const cfg = await create(
 // return type, no manual annotation needed.
 ```
 
-`string()`, `numeric()`, `boolean()`, `url()`, and `shape()` are the **recommended** way to write
-the field schemas above, superseding the object-literal form — `numeric({ default: 3000 })` is
-exactly `{ type: "number", default: 3000 }`, just without repeating `type` yourself. Each returns
-a `ConfigDescriptor` instance (also exported, for anyone writing a `numeric(...): ConfigDescriptor<number>`
-helper of their own) instead of a plain object, but it resolves and infers identically either way.
-They accept the same options as their object-literal form (`summary`, `required`, `freeze`,
-`default`, `key`, `pattern` for `string()`, and `schema` for `shape()`):
+`string()`, `numeric()`, `boolean()`, `url()`, `choice()`, and `shape()` are the **recommended** way
+to write the field schemas above, superseding the object-literal form — `numeric({ default: 3000
+})` is exactly `{ type: "number", default: 3000 }`, just without repeating `type` yourself. Each
+returns a `ConfigDescriptor` instance (also exported, for anyone writing a `numeric(...):
+ConfigDescriptor<number>` helper of their own) instead of a plain object, but it resolves and
+infers identically either way. They accept the same options as their object-literal form
+(`summary`, `required`, `freeze`, `default`, `key`, `pattern` for `string()`, `options` for
+`choice()`, and `schema` for `shape()`):
 
 ```ts
-import { create, boolean, numeric, shape, string, url } from "@jondotsoy/configs";
+import { create, boolean, choice, numeric, shape, string, url } from "@jondotsoy/configs";
 import { z } from "zod";
 
 const cfg = await create(
@@ -171,6 +186,7 @@ const cfg = await create(
     host: string({ summary: "bind host", pattern: /^[\w.-]+$/, default: "localhost" }),
     debug: boolean({ summary: "enable verbose logging", default: false }),
     databaseUrl: url({ summary: "database connection string" }),
+    logLevel: choice({ summary: "log verbosity", options: ["debug", "info", "warn", "error"], default: "info" }),
     jwt: shape({ schema: z.object({ issuer: z.string(), ttl: z.number() }) }),
   },
   { sources: [/* ... */] },
@@ -178,6 +194,8 @@ const cfg = await create(
 
 // cfg.databaseUrl.get() is typed as URL | null — a valid URL string is parsed into an instance,
 // an invalid one throws a ConfigError.
+// cfg.logLevel.get() is typed as "debug" | "info" | "warn" | "error" — narrowed by the `default`,
+// and rejecting (via ConfigError) any value outside `options`.
 // cfg.jwt.get() is typed as { issuer: string; ttl: number } | null — inferred from `schema.parse`'s
 // return type.
 ```
@@ -231,8 +249,8 @@ is deprecated, since that's the one `string()`/`numeric()`/`boolean()`/`url()`/`
 
 ### Writing a custom `ConfigDescriptor`
 
-`string()`, `numeric()`, `boolean()`, `url()`, and `shape()` all build the same kind of object —
-a `ConfigDescriptor` — and that's the whole extension point: any shape entry that's a
+`string()`, `numeric()`, `boolean()`, `url()`, `choice()`, and `shape()` all build the same kind of
+object — a `ConfigDescriptor` — and that's the whole extension point: any shape entry that's a
 `ConfigDescriptor` gets the same treatment from `create()`/`load()`, whether it came from one of
 these builders or you built it yourself.
 

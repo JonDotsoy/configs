@@ -18,7 +18,7 @@ export { CONFIG_DESCRIPTOR_TAG } from "./utils/config-descriptor-tag.js";
  * purely informational once a `parser` is supplied directly (see the README's "Writing a custom
  * `ConfigDescriptor`" section), so a custom field type isn't restricted to this package's own set.
  */
-export type FieldType = "string" | "number" | "boolean" | "url" | "shape" | "file" | (string & {});
+export type FieldType = "string" | "number" | "boolean" | "url" | "shape" | "file" | "choice" | (string & {});
 
 interface BaseFieldSchema {
   summary?: string;
@@ -115,6 +115,16 @@ export type FieldSchema =
   | ShapeFieldSchema<unknown>
   | UntaggedShapeFieldSchema<unknown>
   | FileFieldSchema<unknown>;
+
+/**
+ * `choice()`'s options — `options` is the fixed, non-empty list of strings the field is allowed to
+ * resolve to; `default`, when given, must itself be one of them (enforced structurally: `O["options"][number]`
+ * is what `choice()` binds its return type's `T` to, so a mismatched `default` literal fails to typecheck).
+ */
+export interface ChoiceFieldOptions<T extends string = string> extends BaseFieldSchema {
+  options: readonly T[];
+  default?: T;
+}
 
 export type StringFieldOptions = Omit<StringFieldSchema, "type">;
 export type NumberFieldOptions = Omit<NumberFieldSchema, "type">;
@@ -238,6 +248,19 @@ export function shape<const O extends ShapeFieldOptions = {}>(
     shapeParser<InferShapeOptionValue<O>>(opts as { schema?: Parseable<InferShapeOptionValue<O>>; required?: boolean }, "shape"),
     opts,
   );
+}
+
+/**
+ * Builds a `"choice"` field descriptor — resolves only to one of the strings listed in
+ * `options.options`, rejecting (per the same log-or-throw rule as `shape()`'s `required`, see
+ * `typeMismatch`) anything else. `T` is inferred from `options.options` itself (via the `const`
+ * type parameter), so `choice({ options: ["a", "b"] })` resolves to `ConfigDescriptor<"a" | "b", O>`
+ * rather than the widened `string`.
+ */
+export function choice<const O extends ChoiceFieldOptions<string>>(
+  options: O,
+): ConfigDescriptor<O["options"][number], O> {
+  return new ConfigDescriptor("choice", choiceParser(options), options);
 }
 
 /**
@@ -380,6 +403,18 @@ export function urlParser(_options: UrlFieldOptions): Parser<URL> {
     } catch {
       throw new ConfigError(`Value at "${path.join(".")}" is not a valid URL: ${JSON.stringify(raw)}`);
     }
+  };
+}
+
+/** `choice()`'s own `Parser<T>` — rejects anything not present in `options.options`. */
+export function choiceParser<T extends string>(options: { options: readonly T[] }): Parser<T> {
+  return (raw, path) => {
+    if (typeof raw !== "string" || !options.options.includes(raw as T)) {
+      throw new ConfigError(
+        `Expected one of ${JSON.stringify(options.options)} at "${path.join(".")}", got ${JSON.stringify(raw)}`,
+      );
+    }
+    return raw as T;
   };
 }
 
