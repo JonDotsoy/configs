@@ -15,11 +15,14 @@ the moment a source pushes a new value.
 import { create, numeric, string, boolean } from "@jondotsoy/configs";
 import { envSource } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+import { pullSource } from "@jondotsoy/configs/sources/pull";
 import { file } from "@jondotsoy/configs/node";
 
 // HOST=localhost PORT=3000 → { server: { host: "localhost", port: "3000" } }
 // server.tls.cert/.key are read eagerly from disk, decoded into FileBlobs
 // GET https://example.com/features → { experimental: { home: { promotionalDialog: true } } } (polled every 30s)
+// secretsManager.getSecretValue("prod/db") → { host, port, user, password } — your AWS/GCP/Vault
+// SDK client of choice, re-pulled every 5m so a rotated secret reaches the config tree
 const cfg = await create(
   {
     server: {
@@ -40,6 +43,15 @@ const cfg = await create(
       },
       { sources: [fetchSource({ url: "https://example.com/features", pollingInterval: 30_000 })] },
     ),
+    database: create(
+      {
+        host: string({ summary: "db host" }),
+        port: numeric({ summary: "db port", default: 5432 }),
+        user: string({ summary: "db user" }),
+        password: string({ summary: "db password" }),
+      },
+      { sources: [pullSource({ pull: () => secretsManager.getSecretValue("prod/db"), interval: 5 * 60_000 })] },
+    ),
   },
   { sources: [envSource()] },
 );
@@ -51,6 +63,13 @@ cfg.server.port.subscribe((port) => {
 
 cfg.features.experimental.home.promotionalDialog.subscribe((enabled) => {
   console.log(`promotional dialog ${enabled ? "enabled" : "disabled"}`);
+});
+
+// secretsManager rotates prod/db periodically; each pull's fresh password
+// reopens the connection pool instead of silently swapping credentials
+// underneath one already open.
+cfg.database.password.subscribe((password) => {
+  reconnectPool({ host: cfg.database.host.get(), port: cfg.database.port.get(), user: cfg.database.user.get(), password });
 });
 
 console.log(cfg.server.port.get());

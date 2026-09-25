@@ -1,14 +1,15 @@
 // Case: the README's first example — envSource() with explicit `key`s for a
 // flat server group, a nested server.tls group with file() fields reading a
-// cert and key from disk, and a nested features group with its own
-// fetchSource (against a `data:` URL). file() is node:fs-backed, so a
-// browser bundle stubs it out — run there anyway to document the breakage
-// instead of skipping it (see manifest.ts's tolerateFailureEngines for this
-// case).
+// cert and key from disk, a nested features group with its own fetchSource
+// (against a `data:` URL), and a nested database group with its own
+// pullSource standing in for a secrets manager SDK call. file() is
+// node:fs-backed, so a browser bundle stubs it out — run there anyway to
+// document the breakage instead of skipping it (see manifest.ts's
+// tolerateFailureEngines for this case).
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, numeric, string, boolean, envSource, fetchSource } from "@jondotsoy/configs";
+import { create, numeric, string, boolean, envSource, fetchSource, pullSource } from "@jondotsoy/configs";
 import { file, FileBlob } from "@jondotsoy/configs/node";
 
 function assert(cond: unknown, message: string): void {
@@ -23,6 +24,13 @@ function toFileURL(path: string): URL {
 
 const body = JSON.stringify({ experimental: { home: { promotionalDialog: true } } });
 const featuresUrl = `data:application/json,${encodeURIComponent(body)}`;
+
+/** Stands in for a secrets manager SDK call (e.g. AWS Secrets Manager's GetSecretValueCommand) that rotates the returned password on every pull. */
+let secretPulls = 0;
+async function getDatabaseSecret() {
+  secretPulls++;
+  return { host: "db.internal", port: 5432, user: "app", password: `rotated-${secretPulls}` };
+}
 
 const dir = await mkdtemp(join(tmpdir(), "configs-readme-case-"));
 try {
@@ -51,6 +59,15 @@ try {
         },
         { sources: [fetchSource({ url: featuresUrl })] },
       ),
+      database: create(
+        {
+          host: string({ summary: "db host" }),
+          port: numeric({ summary: "db port", default: 5432 }),
+          user: string({ summary: "db user" }),
+          password: string({ summary: "db password" }),
+        },
+        { sources: [pullSource({ pull: getDatabaseSecret, interval: 10 })] },
+      ),
     },
     { sources: [envSource({ env: { HOST: "example.com", PORT: "8080" } })] },
   );
@@ -65,6 +82,15 @@ try {
   assert((await cfg.server.tls.cert.get()!.text()) === "-----BEGIN CERTIFICATE-----", "the loaded cert FileBlob has the file's content");
   assert(cfg.server.tls.key.get() instanceof FileBlob, "server.tls.key's URL default loads a FileBlob from disk");
   assert((await cfg.server.tls.key.get()!.text()) === "-----BEGIN PRIVATE KEY-----", "the loaded key FileBlob has the file's content");
+
+  assert(cfg.database.host.get() === "db.internal", "database's pullSource resolves host from the first pull");
+  assert(cfg.database.password.get() === "rotated-1", "database's pullSource resolves password from the first pull");
+
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert(
+    cfg.database.password.get() !== "rotated-1",
+    "a later pullSource round rotates the password, and .get() reflects it",
+  );
 
   await cfg.close();
 } finally {
