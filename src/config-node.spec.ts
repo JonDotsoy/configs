@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, spyOn, test } from "bun:test";
 import { create, isConfigsNode, type ConfigsNode, type ConfigsNodePending, type ConfigsShape, type Options } from "./config-node.ts";
-import { boolean, choice, CONFIG_DESCRIPTOR_TAG, ConfigDescriptor, numeric, shape, string, url } from "./config-descriptor.ts";
+import { boolean, choice, CONFIG_DESCRIPTOR_TAG, Descriptor, numeric, shape, string, url } from "./config-descriptor.ts";
 import { ConfigError } from "./errors.ts";
 import { envSource } from "./sources/env.ts";
 import { Source } from "./sources/source.ts";
@@ -526,22 +526,20 @@ describe("create — every field builder resolves its raw value at runtime", () 
   });
 });
 
-describe("create — a hand-written custom ConfigDescriptor (CONFIG_DESCRIPTOR_TAG contract)", () => {
-  // Cast to `ConfigDescriptor` since `ConfigsShape` is typed against the real class — the
-  // hand-written contract (tag + key? + reduce()) is a runtime-only extension point, recognized
-  // structurally by `isConfigDescriptor()` but not by the shape's own static type.
-  function csv(options: { key?: string | string[] } = {}): ConfigDescriptor<string[], { key?: string | string[] }> {
+describe("create — a hand-written custom Descriptor (CONFIG_DESCRIPTOR_TAG contract)", () => {
+  // Cast to `Descriptor` since `ConfigsShape` is typed against the real class — the hand-written
+  // contract (tag + key? + start()) is a runtime-only extension point, recognized structurally by
+  // `isConfigDescriptor()` but not by the shape's own static type.
+  function csv(options: { key?: string | string[] } = {}): Descriptor<string[], { key?: string | string[] }> {
     const parse = (raw: unknown) => (typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
 
     return {
       [CONFIG_DESCRIPTOR_TAG]: true as const,
       key: options.key,
-      reduce(rawStore: Store<unknown>) {
-        const store = new Store<string[]>(parse(rawStore.get()));
-        rawStore.listen((raw) => store.set(parse(raw)));
-        return store;
+      start(raw: unknown) {
+        return parse(raw);
       },
-    } as unknown as ConfigDescriptor<string[], { key?: string | string[] }>;
+    } as unknown as Descriptor<string[], { key?: string | string[] }>;
   }
 
   test("create() resolves a field backed by a hand-written descriptor, same as a built-in one", async () => {

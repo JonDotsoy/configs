@@ -7,7 +7,7 @@ cada pieza, el código fuente en `src/` está fuertemente comentado.
 ## Table of contents
 
 - [`create()` / `load()`](#create--load)
-- [Descriptores de campo (`ConfigDescriptor`)](#descriptores-de-campo-configdescriptor)
+- [Descriptores de campo (`Descriptor`)](#descriptores-de-campo-descriptor)
 - [Sources](#sources)
 - [`file()` — campo respaldado por disco](#file--campo-respaldado-por-disco)
 - [React](#react)
@@ -52,16 +52,18 @@ El punto de entrada público (`src/config-node.ts`, re-exportado desde
   `number | null` sin `default`, o `number` con uno — sin anotación
   manual, ni para grupos anidados ni para campos embebidos.
 
-## Descriptores de campo (`ConfigDescriptor`)
+## Descriptores de campo (`Descriptor`)
 
 `src/config-descriptor.ts` — el bloque de construcción de cada campo:
 
-- **`ConfigDescriptor<T, O>`** — la clase base. Expone `.key`,
-  `.parser`, y `.reduce(rawStore, path?)`: toma un `Store<unknown>` en
-  vivo y devuelve un `Store<T>` reactivo — cae a `options.default` cuando
-  no hay valor, o corre el `parser` propio del campo. Extensible a mano
-  (`new ConfigDescriptor(type, parser, options)`, o el contrato completo
-  vía `CONFIG_DESCRIPTOR_TAG` + `.reduce()`).
+- **`Descriptor<T, O>`** — la clase base. Expone `.key`, `.start(raw,
+  path?)` (síncrono: cae a `options.default` cuando no hay valor, o corre
+  el `start` propio del campo — es `create()` quien crea y mantiene vivo
+  el `Store` del campo, volviendo a llamar `.start()` en cada cambio) y un
+  `.reduce(rawStore, path?)` opcional que devuelve `Promise<Store<T>>`
+  para campos que solo pueden resolverse de forma asíncrona. Extensible a
+  mano (`new Descriptor({ type, options, start, reduce? })`, o el
+  contrato completo vía `CONFIG_DESCRIPTOR_TAG` + `.start()`).
 - **`string(options?)`** — coerción a `string`; `pattern` opcional
   (`RegExp`) para validar el valor.
 - **`numeric(options?)`** — coerciona un string numérico (o `number`

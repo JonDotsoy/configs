@@ -4,19 +4,19 @@ import { tSync } from "./utils/t.js";
 import { ConfigError } from "./errors.js";
 
 /**
- * Re-exported for anyone writing their own `ConfigDescriptor`-shaped object by hand instead of
- * constructing a real `new ConfigDescriptor(type, parser, options)` (see the README's "Writing a
- * custom ConfigDescriptor" section) — this is the one marker `isConfigDescriptor()` requires
- * alongside a callable `.reduce()`, set to `true`. A `Symbol.for()` registry symbol, not a plain
+ * Re-exported for anyone writing their own `Descriptor`-shaped object by hand instead of
+ * constructing a real `new Descriptor({ type, options, start, reduce? })` (see the README's
+ * "Writing a custom Descriptor" section) — this is the one marker `isConfigDescriptor()` requires
+ * alongside a callable `.start()`, set to `true`. A `Symbol.for()` registry symbol, not a plain
  * `Symbol()` — see its own module doc for why.
  */
 export { CONFIG_DESCRIPTOR_TAG } from "./utils/config-descriptor-tag.js";
 
 /**
  * The built-in labels get their own literals (kept for autocomplete/documentation); the trailing
- * `(string & {})` still accepts any other string unchanged — `ConfigDescriptor.type` is otherwise
- * purely informational once a `parser` is supplied directly (see the README's "Writing a custom
- * `ConfigDescriptor`" section), so a custom field type isn't restricted to this package's own set.
+ * `(string & {})` still accepts any other string unchanged — `Descriptor.type` is otherwise
+ * purely informational once a `start` is supplied directly (see the README's "Writing a
+ * custom `Descriptor`" section), so a custom field type isn't restricted to this package's own set.
  */
 export type FieldType = "string" | "number" | "boolean" | "url" | "shape" | "file" | "choice" | (string & {});
 
@@ -73,29 +73,43 @@ export interface ChoiceFieldOptions<T extends string = string> extends BaseField
 export type Parser<T> = (raw: unknown, path: string[]) => T;
 
 /**
- * What `string()`/`numeric()`/`boolean()` build. Carries its field `type`, its own `parser` (e.g.
- * `stringParser()`), and the exact `options` object the caller passed in, generic over both `T`
- * (the field's value type) and `O` (the caller's own literal `options` type — inferred via a
- * `const` type parameter on each builder, so `numeric({ default: 3000 })` preserves `3000` as a
- * literal rather than widening it to `number`). `InferConfigsNode` (`./config-node.js`) reads
- * whether `O` has a `default` directly, so `numeric()` narrows out `null` exactly when the
- * caller's own call included one.
+ * What `new Descriptor(...)` takes: `type`/`options` are purely descriptive (read by `.key`,
+ * `.freeze`, `.options.default`, ...); `start` is this field's synchronous parser, run against one
+ * already-resolved raw value every time it changes — the engine (`create()`, in `./config-node.js`)
+ * owns building and live-updating the field's own `Store`, calling `start` again on every raw
+ * change instead of `start` managing a `Store` itself. `reduce`, when given, is an optional async
+ * escape hatch: it receives the field's live raw `Store` directly and resolves to the `Store<T>`
+ * that then takes over as this field's value — its promise is folded into `create()`'s own
+ * readiness, same as a source's `open()`.
  */
-export class ConfigDescriptor<T, O extends object = object> {
+export interface DescriptorUnderlying<T, O extends object = object> {
+  type: FieldType;
+  options: O;
+  start?: Parser<T>;
+  reduce?(rawStore: Store<unknown>, path: string[]): Promise<Store<T>>;
+}
+
+/** What `string()`/`numeric()`/`boolean()` build. See `DescriptorUnderlying` for the constructor shape. */
+export class Descriptor<T, O extends object = object> {
   /** @internal Tags instances for `isConfigDescriptor` — see `CONFIG_DESCRIPTOR_TAG`'s doc. */
   readonly [CONFIG_DESCRIPTOR_TAG] = true;
 
-  constructor(
-    readonly type: FieldType,
-    readonly parser: Parser<T>,
-    readonly options: O,
-  ) {}
+  readonly type: FieldType;
+  readonly options: O;
+  private readonly startFn: Parser<T>;
+  private readonly reduceFn?: (rawStore: Store<unknown>, path: string[]) => Promise<Store<T>>;
+
+  constructor(underlying: DescriptorUnderlying<T, O>) {
+    this.type = underlying.type;
+    this.options = underlying.options;
+    this.startFn = underlying.start ?? ((raw) => raw as T);
+    this.reduceFn = underlying.reduce;
+  }
 
   /**
    * This field's explicit path override, if any (`options.key`) — exposed directly so `create()`
    * (`./config-node.js`) can resolve this field's path itself (`key` as-is, or its own position in
-   * the shape tree without one) without reaching into `options`/a reconstructed `FieldSchema` to
-   * find it.
+   * the shape tree without one) without reaching into `options` to find it.
    */
   get key(): string | string[] | undefined {
     return (this.options as { key?: string | string[] }).key;
@@ -110,50 +124,47 @@ export class ConfigDescriptor<T, O extends object = object> {
   }
 
   /**
-   * Given `rawStore` — already holding this field's merged raw value (or `undefined`/`null` when
-   * no source has it) and kept live by whoever resolves it (e.g. one field's `Source → KeyStore`
-   * chain in `create()`/`./config-node.js`) — returns a live `Store<T>` that recomputes on every
-   * `rawStore` change: falling back to `options.default` when raw is missing, else running it
-   * through this field's own `parser`. Synchronous — `rawStore` is expected to already exist, so
-   * there's nothing to await; the returned store is already initialized off `rawStore`'s current
-   * value.
+   * Computes this field's value off one already-resolved raw value: falls back to `options.default`
+   * when raw is missing, else runs it through this field's own `start`. Synchronous, and called
+   * again by `create()` every time the field's raw value changes — this descriptor holds no `Store`
+   * of its own.
    */
-  reduce(rawStore: Store<unknown>, path: string[] = []): Store<T> {
-    const compute = (raw: unknown): T => {
-      const defaultValue = (this.options as { default?: T }).default;
-      return raw === undefined || raw === null ? (defaultValue !== undefined ? defaultValue : (null as T)) : this.parser(raw, path);
-    };
-    const store = new Store<T>(compute(rawStore.get()));
-    rawStore.listen((raw) => {
-      const next = compute(raw);
-      if (next !== store.get()) store.set(next);
-    });
-    return store;
+  start(raw: unknown, path: string[] = []): T {
+    const defaultValue = (this.options as { default?: T }).default;
+    return raw === undefined || raw === null ? (defaultValue !== undefined ? defaultValue : (null as T)) : this.startFn(raw, path);
+  }
+
+  /**
+   * The optional async hook passed as `reduce` to the constructor, if any — `undefined` when this
+   * descriptor doesn't have one, in which case `create()` relies on `.start()` alone.
+   */
+  reduce(rawStore: Store<unknown>, path: string[] = []): Promise<Store<T>> | undefined {
+    return this.reduceFn?.(rawStore, path);
   }
 }
 
-/** Builds a `"string"` field descriptor, returned as a `ConfigDescriptor<string, O>`. */
-export function string<const O extends StringFieldOptions = {}>(options?: O): ConfigDescriptor<string, O> {
+/** Builds a `"string"` field descriptor, returned as a `Descriptor<string, O>`. */
+export function string<const O extends StringFieldOptions = {}>(options?: O): Descriptor<string, O> {
   const opts = (options ?? {}) as O;
-  return new ConfigDescriptor("string", stringParser(opts), opts);
+  return new Descriptor({ type: "string", options: opts, start: stringParser(opts) });
 }
 
-/** Builds a `"number"` field descriptor, returned as a `ConfigDescriptor<number, O>`. */
-export function numeric<const O extends NumberFieldOptions = {}>(options?: O): ConfigDescriptor<number, O> {
+/** Builds a `"number"` field descriptor, returned as a `Descriptor<number, O>`. */
+export function numeric<const O extends NumberFieldOptions = {}>(options?: O): Descriptor<number, O> {
   const opts = (options ?? {}) as O;
-  return new ConfigDescriptor("number", numberParser(opts), opts);
+  return new Descriptor({ type: "number", options: opts, start: numberParser(opts) });
 }
 
-/** Builds a `"boolean"` field descriptor, returned as a `ConfigDescriptor<boolean, O>`. */
-export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): ConfigDescriptor<boolean, O> {
+/** Builds a `"boolean"` field descriptor, returned as a `Descriptor<boolean, O>`. */
+export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): Descriptor<boolean, O> {
   const opts = (options ?? {}) as O;
-  return new ConfigDescriptor("boolean", booleanParser(opts), opts);
+  return new Descriptor({ type: "boolean", options: opts, start: booleanParser(opts) });
 }
 
-/** Builds a `"url"` field descriptor, returned as a `ConfigDescriptor<URL, O>`. Parses (and validates) a string value into a `URL` instance. */
-export function url<const O extends UrlFieldOptions = {}>(options?: O): ConfigDescriptor<URL, O> {
+/** Builds a `"url"` field descriptor, returned as a `Descriptor<URL, O>`. Parses (and validates) a string value into a `URL` instance. */
+export function url<const O extends UrlFieldOptions = {}>(options?: O): Descriptor<URL, O> {
   const opts = (options ?? {}) as O;
-  return new ConfigDescriptor("url", urlParser(opts), opts);
+  return new Descriptor({ type: "url", options: opts, start: urlParser(opts) });
 }
 
 /**
@@ -165,44 +176,44 @@ export function url<const O extends UrlFieldOptions = {}>(options?: O): ConfigDe
 type InferShapeOptionValue<O> = O extends { schema: infer Z } ? (Z extends { parse(value: unknown): infer R } ? R : unknown) : unknown;
 
 /**
- * Builds a `"shape"` field descriptor, returned as a `ConfigDescriptor<T, O>` — infers its value
+ * Builds a `"shape"` field descriptor, returned as a `Descriptor<T, O>` — infers its value
  * type from `schema`'s `parse` return type; omitting `schema` (`shape()` alone) infers `unknown`.
  */
 export function shape<const O extends ShapeFieldOptions = {}>(
   options?: O,
-): ConfigDescriptor<InferShapeOptionValue<O>, O> {
+): Descriptor<InferShapeOptionValue<O>, O> {
   const opts = (options ?? {}) as O;
-  return new ConfigDescriptor(
-    "shape",
-    shapeParser<InferShapeOptionValue<O>>(opts as { schema?: Parseable<InferShapeOptionValue<O>>; required?: boolean }, "shape"),
-    opts,
-  );
+  return new Descriptor({
+    type: "shape",
+    options: opts,
+    start: shapeParser<InferShapeOptionValue<O>>(opts as { schema?: Parseable<InferShapeOptionValue<O>>; required?: boolean }, "shape"),
+  });
 }
 
 /**
  * Builds a `"choice"` field descriptor — resolves only to one of the strings listed in
  * `options.options`, rejecting (per the same log-or-throw rule as `shape()`'s `required`, see
  * `typeMismatch`) anything else. `T` is inferred from `options.options` itself (via the `const`
- * type parameter), so `choice({ options: ["a", "b"] })` resolves to `ConfigDescriptor<"a" | "b", O>`
+ * type parameter), so `choice({ options: ["a", "b"] })` resolves to `Descriptor<"a" | "b", O>`
  * rather than the widened `string`.
  */
 export function choice<const O extends ChoiceFieldOptions<string>>(
   options: O,
-): ConfigDescriptor<O["options"][number], O> {
-  return new ConfigDescriptor("choice", choiceParser(options), options);
+): Descriptor<O["options"][number], O> {
+  return new Descriptor({ type: "choice", options, start: choiceParser(options) });
 }
 
 /**
- * A genuine `ConfigDescriptor` needs both markers to count as one: the `CONFIG_DESCRIPTOR_TAG`
- * symbol alone doesn't prove the rest of the contract (`.key`, `.reduce()`) is actually there —
+ * A genuine `Descriptor` needs both markers to count as one: the `CONFIG_DESCRIPTOR_TAG`
+ * symbol alone doesn't prove the rest of the contract (`.key`, `.start()`) is actually there —
  * every builder (`string()`/`numeric()`/`boolean()`/`url()`/`shape()`, and `file()` from
- * `./node.js`) satisfies both by construction, since they all return a real `ConfigDescriptor`
+ * `./node.js`) satisfies both by construction, since they all return a real `Descriptor`
  * instance, but this check doesn't take that on faith.
  */
-export function isConfigDescriptor(node: unknown): node is ConfigDescriptor<unknown, object> {
+export function isConfigDescriptor(node: unknown): node is Descriptor<unknown, object> {
   if (typeof node !== "object" || node === null) return false;
   if ((node as Record<symbol, unknown>)[CONFIG_DESCRIPTOR_TAG] !== true) return false;
-  return typeof (node as { reduce?: unknown }).reduce === "function";
+  return typeof (node as { start?: unknown }).start === "function";
 }
 
 function typeMismatch(type: FieldType, value: unknown, path: string[]): never {
@@ -304,4 +315,3 @@ export function shapeParser<T>(options: { schema?: Parseable<T>; required?: bool
     return shapeFailure(options.required, new ConfigError(`Value at "${path.join(".")}" failed schema validation: ${message}`)) as T;
   };
 }
-

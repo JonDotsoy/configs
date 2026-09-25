@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigDescriptor, shapeFailure, type Parser } from "./config-descriptor.js";
+import { Descriptor, shapeFailure, type Parser } from "./config-descriptor.js";
 import { ConfigError } from "./errors.js";
 import { tSync } from "./utils/t.js";
 
@@ -220,7 +220,7 @@ function resolveDefault(defaultValue: string | URL | undefined, format: FileValu
 }
 
 /**
- * `file()`'s return type: same as `ConfigDescriptor<FileBlob, O>`, except `required: true` also
+ * `file()`'s return type: same as `Descriptor<FileBlob, O>`, except `required: true` also
  * narrows `.get()` to `FileBlob` (never `null`) — same effect a real `default` has elsewhere,
  * applied here from `required` instead since a `file()` field almost always wants "always
  * present" enforced by `required`, not by a fallback value. Same caveat as `default` everywhere
@@ -229,8 +229,8 @@ function resolveDefault(defaultValue: string | URL | undefined, format: FileValu
  * to happen.
  */
 type FileFieldReturn<O extends FileFieldOptions> = O extends { required: true }
-  ? ConfigDescriptor<FileBlob, O & { default: FileBlob }>
-  : ConfigDescriptor<FileBlob, O>;
+  ? Descriptor<FileBlob, O & { default: FileBlob }>
+  : Descriptor<FileBlob, O>;
 
 /**
  * `file()`'s own `Parser<FileBlob>` — decodes a raw string value (as base64 or text, per `format`
@@ -283,5 +283,5 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): FileFi
   const resolvedDefault = resolveDefault(opts.default, opts.format);
   if (resolvedDefault !== undefined) runtimeOptions.default = resolvedDefault;
 
-  return new ConfigDescriptor("file", fileParser(runtimeOptions), runtimeOptions) as unknown as FileFieldReturn<O>;
+  return new Descriptor({ type: "file", options: runtimeOptions, start: fileParser(runtimeOptions) }) as unknown as FileFieldReturn<O>;
 }

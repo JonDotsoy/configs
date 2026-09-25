@@ -1,4 +1,4 @@
-import { isConfigDescriptor, type ConfigDescriptor } from "./config-descriptor.js";
+import { isConfigDescriptor, type Descriptor } from "./config-descriptor.js";
 import type { Source } from "./sources/source.js";
 import { Store } from "./utils/store.js";
 
@@ -23,7 +23,7 @@ interface ConfigsNodeMarker {
 
 /** A shape entry is a leaf field descriptor, a nested group of more shape entries, or an embedded `create()` result. */
 export interface ConfigsShape {
-  [key: string]: ConfigDescriptor<any, any> | ConfigsNodeMarker | ConfigsShape;
+  [key: string]: Descriptor<any, any> | ConfigsNodeMarker | ConfigsShape;
 }
 
 export interface Options {
@@ -35,10 +35,10 @@ export function isConfigsNode(value: unknown): value is ConfigsNodePending<Confi
   return typeof value === "object" && value !== null && (value as Record<symbol, unknown>)[CONFIGS_NODE_TAG] === true;
 }
 
-type InferValue<D> = D extends ConfigDescriptor<infer V, infer O> ? (O extends { default: any } ? V : V | null) : never;
+type InferValue<D> = D extends Descriptor<infer V, infer O> ? (O extends { default: any } ? V : V | null) : never;
 
 type InferConfigsNode<T extends ConfigsShape> = {
-  [K in keyof T]: T[K] extends ConfigDescriptor<any, any>
+  [K in keyof T]: T[K] extends Descriptor<any, any>
     ? Store<InferValue<T[K]>>
     : T[K] extends ConfigsNodePending<infer S>
       ? ConfigsNode<S>
@@ -92,19 +92,52 @@ function keyStore(rawSources: Store<unknown>[], path: string[]): Store<unknown> 
 }
 
 /** A field's explicit `key` override (if set) is an absolute path, taken as-is instead of `entryPath`. */
-function resolveFieldPath(descriptor: ConfigDescriptor<unknown, object>, entryPath: string[]): string[] {
+function resolveFieldPath(descriptor: Descriptor<unknown, object>, entryPath: string[]): string[] {
   const explicitKey = descriptor.key;
   if (explicitKey === undefined) return entryPath;
   return Array.isArray(explicitKey) ? explicitKey : [explicitKey];
 }
 
 /**
+ * Builds one field's own live `Store<T>`: seeded off `rawStore`'s current value via
+ * `descriptor.start()`, then recomputed the same way every time `rawStore` changes — the
+ * descriptor itself holds no `Store`; this is the only place one gets created for it. When the
+ * descriptor also has an (optional) `reduce`, its promise is folded into `embeddedReady` (so
+ * `create()`'s own readiness waits on it, same as a source's `open()`), and the `Store<T>` it
+ * resolves to takes over as this field's value, staying live off its own updates.
+ */
+function buildField(
+  descriptor: Descriptor<unknown, object>,
+  rawStore: Store<unknown>,
+  path: string[],
+  embeddedReady: PromiseLike<unknown>[],
+): Store<unknown> {
+  const fieldStore = new Store<unknown>(descriptor.start(rawStore.get(), path));
+  rawStore.listen((raw) => {
+    const next = descriptor.start(raw, path);
+    if (next !== fieldStore.get()) fieldStore.set(next);
+  });
+
+  const reducePromise = typeof descriptor.reduce === "function" ? descriptor.reduce(rawStore, path) : undefined;
+  if (reducePromise) {
+    embeddedReady.push(
+      reducePromise.then((resultStore) => {
+        fieldStore.set(resultStore.get());
+        resultStore.listen((value) => fieldStore.set(value));
+      }),
+    );
+  }
+
+  return fieldStore;
+}
+
+/**
  * Recursively builds `shape` into a plain tree of `Store`s (leaves) and nested plain objects
  * (groups) — each leaf wired as its own independent `Source → KeyStore → FieldStore` chain:
  * `keyStore()` merges `rawSources` at that leaf's path (its own `key` override, if set, else its
- * position in the shape tree — see `resolveFieldPath()`), and `descriptor.reduce()` turns that
- * into the field's own live, parsed `Store`. A leaf only recomputes when a source at its own path
- * changes — there's no whole-tree recompute sweep.
+ * position in the shape tree — see `resolveFieldPath()`), and `buildField()` turns that into the
+ * field's own live, parsed `Store`. A leaf only recomputes when a source at its own path changes
+ * — there's no whole-tree recompute sweep.
  *
  * An embedded `create()` result (`isConfigsNode(entry)`) is adopted as-is instead: it already
  * resolves independently, from its own `sources` — nothing here rewires it against `rawSources`
@@ -123,7 +156,7 @@ function buildNode(
     const entryPath = [...path, key];
     if (isConfigDescriptor(entry)) {
       const fieldPath = resolveFieldPath(entry, entryPath);
-      node[key] = entry.reduce(keyStore(rawSources, fieldPath), fieldPath);
+      node[key] = buildField(entry, keyStore(rawSources, fieldPath), fieldPath, embeddedReady);
     } else if (isConfigsNode(entry)) {
       embeddedReady.push(entry);
       node[key] = entry;

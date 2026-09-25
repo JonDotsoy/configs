@@ -106,7 +106,7 @@ console.log(await cfg.server.tls.cert.get()?.text());
 - [Install](#install)
 - [Guide](#guide)
   - [Field types](#field-types)
-  - [Writing a custom `ConfigDescriptor`](#writing-a-custom-configdescriptor)
+  - [Writing a custom `Descriptor`](#writing-a-custom-descriptor)
   - [Nested groups](#nested-groups)
   - [`key` — reading a field from an explicit path](#key--reading-a-field-from-an-explicit-path)
   - [`load` — `create()` that defaults to `envSource()`](#load--create-that-defaults-to-envsource)
@@ -135,7 +135,7 @@ npm install @jondotsoy/configs
 
 ### Field types
 
-A shape entry is a `ConfigDescriptor` built by one of six field builders: `string()`, `numeric()`,
+A shape entry is a `Descriptor` built by one of six field builders: `string()`, `numeric()`,
 `boolean()`, `url()`, `choice()`, or `shape()`. The first three coerce and validate primitives
 (numeric/boolean-ish strings, an optional `pattern` for strings). `url()` parses a string into a
 `URL` instance, throwing a `ConfigError` if it isn't a valid one. `choice()` accepts only one of a
@@ -168,8 +168,8 @@ const cfg = await create(
 // return type.
 ```
 
-Each builder returns a `ConfigDescriptor` instance (also exported, for anyone writing a
-`numeric(...): ConfigDescriptor<number>` helper of their own), and accepts the same common
+Each builder returns a `Descriptor` instance (also exported, for anyone writing a
+`numeric(...): Descriptor<number>` helper of their own), and accepts the same common
 options: `summary`, `required`, `key` (see below), and `default` — plus `pattern` for `string()`,
 `options` for `choice()`, and `schema` for `shape()`.
 
@@ -194,24 +194,23 @@ const cfg = await create({ metadata: shape() }, { sources: [/* ... */] });
 // cfg.metadata.get() is typed as unknown
 ```
 
-### Writing a custom `ConfigDescriptor`
+### Writing a custom `Descriptor`
 
 `string()`, `numeric()`, `boolean()`, `url()`, `choice()`, and `shape()` all build the same kind of
-object — a `ConfigDescriptor` — and that's the whole extension point: any shape entry that's a
-`ConfigDescriptor` gets the same treatment from `create()`/`load()`, whether it came from one of
-these builders or you built it yourself.
+object — a `Descriptor` — and that's the whole extension point: any shape entry that's a
+`Descriptor` gets the same treatment from `create()`/`load()`, whether it came from one of these
+builders or you built it yourself.
 
-**The role `create()` plays**, for every `ConfigDescriptor`-backed field, regardless of who built
-it: it works out the field's path (its own nesting in the shape tree, or `.key` when set — see
-[`key`](#key--reading-a-field-from-an-explicit-path) above), builds one live `Store` that always
-holds whatever raw value the sources currently publish there (merged across sources, re-resolved
-live as they change), and hands that `Store` to the descriptor's `reduce(rawStore, path)`.
-`create()` never inspects the raw value itself past that merge — coercing it into whatever the
-field's `.get()` should return is entirely the descriptor's job. What `reduce()` returns (a live
-`Store<T>`) becomes the field: `.get()`/`.subscribe()`/`.listen()` all read from it directly.
+**The role `create()` plays**, for every `Descriptor`-backed field, regardless of who built it: it
+works out the field's path (its own nesting in the shape tree, or `.key` when set — see
+[`key`](#key--reading-a-field-from-an-explicit-path) above), builds and owns one live `Store` for
+that field, seeding it off whatever raw value the sources currently publish there (merged across
+sources) via the descriptor's `start(raw, path)`, and re-running `start` the same way every time
+that raw value changes. `create()` never inspects the raw value itself past that merge — coercing
+it into whatever the field's `.get()` should return is entirely the descriptor's job.
 
-The simplest way to build one is `new ConfigDescriptor(type, parser, options)` directly — `type`
-is just a label (any string; only the built-ins' own labels are special), `parser` is a
+The simplest way to build one is `new Descriptor({ type, options, start })` directly — `type` is
+just a label (any string; only the built-ins' own labels are special), `start` is a
 `(raw: unknown, path: string[]) => T` function doing the actual coercion/validation (throw a
 `ConfigError` to reject a value), and `options` is a plain object that can carry a `key` (same
 `string | string[]` explicit-path override every built-in field type accepts) plus a `default`
@@ -220,7 +219,7 @@ get for free — including a field that's correct the moment it's first read, no
 built-in one:
 
 ```ts
-import { ConfigDescriptor, create, type Parser } from "@jondotsoy/configs";
+import { Descriptor, create, type Parser } from "@jondotsoy/configs";
 import { envSource } from "@jondotsoy/configs/sources/env";
 
 function csv(options: { key?: string | string[]; default?: string[] } = {}) {
@@ -228,7 +227,7 @@ function csv(options: { key?: string | string[]; default?: string[] } = {}) {
     if (typeof raw !== "string") throw new Error(`Expected a comma-separated string at "${path.join(".")}"`);
     return raw.split(",").map((s) => s.trim());
   };
-  return new ConfigDescriptor("csv", parseCsv, options);
+  return new Descriptor({ type: "csv", options, start: parseCsv });
 }
 
 // ALLOWED_ORIGINS=a.com, b.com, c.com
@@ -242,37 +241,41 @@ cfg.allowedOrigins.get();
 ```
 
 You don't need to extend the class or reach for `CONFIG_DESCRIPTOR_TAG` for this — `new
-ConfigDescriptor(...)` already carries the internal tag `create()` uses to recognize it, same as
-every built-in field type.
+Descriptor(...)` already carries the internal tag `create()` uses to recognize it, same as every
+built-in field type.
 
 The tag itself (`CONFIG_DESCRIPTOR_TAG`, also exported) is only there for the rarer case of
 writing the whole thing by hand instead of constructing the class — say, to avoid importing it
-across an unusual bundling setup. The contract is the same three things: the tag symbol set to
-`true`, a `key` if you need one, and a `reduce(rawStore, path?)` method returning a live `Store<T>`
-yourself:
+across an unusual bundling setup. The contract is the same two things: the tag symbol set to
+`true`, and a `start(raw, path?)` method returning `T` synchronously (a `key` on top, if you need
+one):
 
 ```ts
-import { CONFIG_DESCRIPTOR_TAG, Store, create } from "@jondotsoy/configs";
+import { CONFIG_DESCRIPTOR_TAG, create } from "@jondotsoy/configs";
 import { envSource } from "@jondotsoy/configs/sources/env";
 
 function csv(options: { key?: string | string[] } = {}) {
-  const parse = (raw: unknown) => (typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
-
   return {
     [CONFIG_DESCRIPTOR_TAG]: true as const,
     key: options.key,
-    reduce(rawStore: Store<unknown>) {
-      const store = new Store<string[]>(parse(rawStore.get()));
-      rawStore.listen((raw) => store.set(parse(raw)));
-      return store;
+    start(raw: unknown): string[] {
+      return typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : [];
     },
   };
 }
 ```
 
-Unlike `new ConfigDescriptor(...)` above, `create()` calls this `reduce()` directly rather than
-routing through a `parser`, so there's no functional difference between the two forms — both
-produce a field that's correct the moment it's first read, live-updating from then on.
+Unlike `new Descriptor(...)` above, `create()` calls this `start()` directly rather than routing
+through a wrapper, so there's no functional difference between the two forms — both produce a
+field that's correct the moment it's first read, live-updating from then on (`create()` itself
+re-runs `start()` on every raw update; the descriptor doesn't need to manage a `Store` or listen to
+anything itself).
+
+For a field whose value can only be produced asynchronously (e.g. an async lookup), a descriptor
+can also give the constructor a `reduce(rawStore, path)` hook returning `Promise<Store<T>>` —
+`create()` folds that promise into its own readiness (same as a source's `open()`) and, once it
+resolves, adopts the `Store<T>` it produced as the field's live value. `start` still runs
+synchronously in the meantime, so the field is never left without a value.
 
 ### Nested groups
 

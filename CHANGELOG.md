@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — BREAKING: `ConfigDescriptor` renamed to `Descriptor`, constructor and extension contract changed
+
+`ConfigDescriptor` is now exported as `Descriptor`, and its constructor takes a single options
+object instead of positional arguments:
+
+```ts
+new Descriptor<T>({
+  type: "csv",
+  options: { key: "ALLOWED_ORIGINS" },
+  start(raw, path) { /* same role the old `parser` had */ },
+  // optional: for a value that can only be resolved asynchronously
+  async reduce(rawStore, path) { return someStore; },
+})
+```
+
+`start(raw, path): T` replaces the old `parser` — `create()`/`load()` now build and own each
+field's `Store` themselves, calling `.start()` to seed it and again on every raw-value change,
+instead of the descriptor building and live-updating its own `Store` via `.reduce()`. The hand-
+written `CONFIG_DESCRIPTOR_TAG` contract changes to match: a descriptor written by hand now needs a
+callable `.start()` (not `.reduce()`) to be recognized by `isConfigDescriptor()`. `.reduce(rawStore,
+path)` is now optional and, when given, returns `Promise<Store<T>>` instead: its promise is folded
+into `create()`'s own readiness, and the `Store<T>` it resolves to takes over as the field's live
+value — for fields whose value can only be produced asynchronously. See the README's "Writing a
+custom `Descriptor`" section.
+
 ### Changed — BREAKING: new `create()`/`load()` engine, legacy engine removed
 
 `src/config-node.ts`'s `create()` is now what `create`/`load` (from the package root) build on —

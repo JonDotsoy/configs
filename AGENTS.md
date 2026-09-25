@@ -19,7 +19,7 @@ no bundler other than `bun build`). Distributed as ESM only.
 src/
   configs.ts              # public API: re-exports create()/load() from config-node.ts, plus builders/sources
   config-node.ts           # create()/load()'s engine: ConfigsNode, ConfigsShape, isConfigsNode
-  config-descriptor.ts      # ConfigDescriptor, string()/numeric()/boolean()/url()/choice()/shape()
+  config-descriptor.ts      # Descriptor, string()/numeric()/boolean()/url()/choice()/shape()
   errors.ts                # ConfigError
   sources/
     source.ts           # Source base class (start/close contract)
