@@ -24,7 +24,7 @@ interface BaseFieldSchema {
   summary?: string;
   required?: boolean;
   /** Freezes the field at its first resolved value: later source updates no longer reach `.get()`. */
-  readonly?: boolean;
+  freeze?: boolean;
   /**
    * Overrides where this field reads from in each source's snapshot: an explicit path, checked
    * instead of the field's own position in the shape tree (its key, prefixed by every ancestor

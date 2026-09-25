@@ -385,7 +385,7 @@ function collectEmbeddedStates(shape: SchemaShape): ConfigNodeState<any>[] {
 class ConfigNodeState<S extends SchemaShape> {
   private ownRootStores: Store<any>[] = [];
   private readonly fields = new Map<string, ConfigField<any>>();
-  /** One raw-value `Store` per non-`readonly` `ConfigDescriptor`-backed field, handed to that descriptor's own `parse()` — see `wireDescriptorField`. */
+  /** One raw-value `Store` per non-`freeze`d `ConfigDescriptor`-backed field, handed to that descriptor's own `parse()` — see `wireDescriptorField`. */
   private readonly rawStores = new Map<string, Store<unknown>>();
   private readonly children = new Map<string, object>();
   private snapshotStore: Store<InferShape<S>> | undefined;
@@ -457,7 +457,7 @@ class ConfigNodeState<S extends SchemaShape> {
       // `wireDescriptorField`) — recomputing it again here would just duplicate that.
       if (isConfigDescriptor(node)) continue;
       const schema = toFieldSchema(node);
-      if (schema.readonly) continue;
+      if (schema.freeze) continue;
       const path = resolvePath(schema, this.basePath, key);
       const next = this.resolveField(schema, path);
       if (next !== field.get()) field._update(next);
@@ -504,7 +504,7 @@ class ConfigNodeState<S extends SchemaShape> {
   /**
    * This `ConfigNode`'s side of the split with `ConfigDescriptor.parse()`: builds the one raw
    * `Store` for `path` — merged from `this.rootStores`, no coercion/defaulting, kept live by
-   * `refreshFields()` via `this.rawStores` (skipped for a `readonly` field, so it's built once
+   * `refreshFields()` via `this.rawStores` (skipped for a `freeze`d field, so it's built once
    * and never updated again) — and hands it to `descriptor.parse()`. The descriptor knows
    * nothing beyond that one `Store` and `path`; every subsequent value its own returned `store`
    * publishes (immediately, then on every live update) is mirrored onto `field` here.
@@ -516,8 +516,8 @@ class ConfigNodeState<S extends SchemaShape> {
     field: ConfigField<any>,
   ): void {
     const rawStore = new Store<unknown>(resolveRawValue(this.rootStores, path));
-    const readonly = (descriptor as { options?: { readonly?: boolean } }).options?.readonly === true;
-    if (!readonly) this.rawStores.set(key, rawStore);
+    const freeze = (descriptor as { options?: { freeze?: boolean } }).options?.freeze === true;
+    if (!freeze) this.rawStores.set(key, rawStore);
     descriptor.parse(rawStore, path).then(({ store }) => {
       store.subscribe((value) => {
         if (value !== field.get()) field._update(value);
