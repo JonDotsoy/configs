@@ -10,11 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`create()` in `src/config-node.ts`**: a new, from-scratch, minimal config-node implementation,
-  unrelated to `configs.create()`'s engine. Given a flat shape of `ConfigDescriptor`s (e.g. `{
-  port: numeric() }`), it returns a plain object exposing each key as a live `Store` — no `Proxy`,
-  and no `.get()` on the root. The returned object is also `then`able: `await`ing it resolves once
-  every source in `options.sources` has published its first snapshot, into the same plain shape
-  (no longer `then`able).
+  unrelated to `configs.create()`'s engine. Given a shape of `ConfigDescriptor`s (e.g. `{ port:
+  numeric() }`), it returns a plain object exposing each leaf key as a live `Store` — no `Proxy`,
+  and no `.get()` on the root. A plain nested object in the shape (`{ server: { port: numeric() }
+  }`) becomes a nested group of `Store`s of its own (`{ server: { port: Store<number | null> } }`),
+  resolved from each source's own matching nested path. The returned object is also `then`able:
+  `await`ing it resolves once every source in `options.sources` has published its first snapshot,
+  into the same plain shape (no longer `then`able).
 - **`ConfigDescriptor.reduce(raw, path?)`**: a synchronous counterpart to `.parse()` — computes a
   field's value directly from an already-merged `raw` value (falling back to `options.default`,
   then running it through the field's own `parser`) with no `Store<unknown>` to subscribe to.
