@@ -1174,15 +1174,15 @@ ok - a failed sseSource connection leaves the field null instead of throwing
 ALL_CHECKS_PASSED
 
 sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): fetch failed
-    at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-peF2Rc/node_modules/@jondotsoy/configs/dist/configs.js:578:9)
-    at async t (file:///tmp/jondotsoy-configs-test-cases-peF2Rc/node_modules/@jondotsoy/configs/dist/configs.js:612:20)
-    at async Object.start (file:///tmp/jondotsoy-configs-test-cases-peF2Rc/node_modules/@jondotsoy/configs/dist/configs.js:873:51) {
+    at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-lDBttH/node_modules/@jondotsoy/configs/dist/configs.js:578:9)
+    at async t (file:///tmp/jondotsoy-configs-test-cases-lDBttH/node_modules/@jondotsoy/configs/dist/configs.js:612:20)
+    at async Object.start (file:///tmp/jondotsoy-configs-test-cases-lDBttH/node_modules/@jondotsoy/configs/dist/configs.js:873:51) {
   [cause]: TypeError: fetch failed
       at node:internal/deps/undici/undici:14976:13
-      at async download (file:///tmp/jondotsoy-configs-test-cases-peF2Rc/node_modules/@jondotsoy/configs/dist/configs.js:553:20)
-      at async downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-peF2Rc/node_modules/@jondotsoy/configs/dist/configs.js:568:14)
-      at async t (file:///tmp/jondotsoy-configs-test-cases-peF2Rc/node_modules/@jondotsoy/configs/dist/configs.js:612:20)
-      at async Object.start (file:///tmp/jondotsoy-configs-test-cases-peF2Rc/node_modules/@jondotsoy/configs/dist/configs.js:873:51) {
+      at async download (file:///tmp/jondotsoy-configs-test-cases-lDBttH/node_modules/@jondotsoy/configs/dist/configs.js:553:20)
+      at async downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-lDBttH/node_modules/@jondotsoy/configs/dist/configs.js:568:14)
+      at async t (file:///tmp/jondotsoy-configs-test-cases-lDBttH/node_modules/@jondotsoy/configs/dist/configs.js:612:20)
+      at async Object.start (file:///tmp/jondotsoy-configs-test-cases-lDBttH/node_modules/@jondotsoy/configs/dist/configs.js:873:51) {
     [cause]: Error: bad port
         at makeNetworkError (node:internal/deps/undici/undici:9495:35)
         at mainFetch (node:internal/deps/undici/undici:10721:20)
@@ -1190,10 +1190,10 @@ sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" Attempt
         at fetch (node:internal/deps/undici/undici:10576:20)
         at fetch (node:internal/deps/undici/undici:14974:10)
         at fetch (node:internal/bootstrap/web/exposed-window-or-worker:75:12)
-        at download (file:///tmp/jondotsoy-configs-test-cases-peF2Rc/node_modules/@jondotsoy/configs/dist/configs.js:553:26)
-        at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-peF2Rc/node_modules/@jondotsoy/configs/dist/configs.js:568:20)
-        at file:///tmp/jondotsoy-configs-test-cases-peF2Rc/node_modules/@jondotsoy/configs/dist/configs.js:873:65
-        at t (file:///tmp/jondotsoy-configs-test-cases-peF2Rc/node_modules/@jondotsoy/configs/dist/configs.js:612:59)
+        at download (file:///tmp/jondotsoy-configs-test-cases-lDBttH/node_modules/@jondotsoy/configs/dist/configs.js:553:26)
+        at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-lDBttH/node_modules/@jondotsoy/configs/dist/configs.js:568:20)
+        at file:///tmp/jondotsoy-configs-test-cases-lDBttH/node_modules/@jondotsoy/configs/dist/configs.js:873:65
+        at t (file:///tmp/jondotsoy-configs-test-cases-lDBttH/node_modules/@jondotsoy/configs/dist/configs.js:612:59)
   }
 }
 [@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
@@ -1239,9 +1239,9 @@ sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" 573 |  
 578 |   throw new AttemptsExhaustedError(maxAttempts, lastError);
               ^
 AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): Unable to connect. Is the computer able to access the url?
-      at downloadWithRetry (/tmp/jondotsoy-configs-test-cases-peF2Rc/node_modules/@jondotsoy/configs/dist/configs.js:578:9)
-      at async t (/tmp/jondotsoy-configs-test-cases-peF2Rc/node_modules/@jondotsoy/configs/dist/configs.js:612:71)
-      at async start (/tmp/jondotsoy-configs-test-cases-peF2Rc/node_modules/@jondotsoy/configs/dist/configs.js:873:57)
+      at downloadWithRetry (/tmp/jondotsoy-configs-test-cases-lDBttH/node_modules/@jondotsoy/configs/dist/configs.js:578:9)
+      at async t (/tmp/jondotsoy-configs-test-cases-lDBttH/node_modules/@jondotsoy/configs/dist/configs.js:612:71)
+      at async start (/tmp/jondotsoy-configs-test-cases-lDBttH/node_modules/@jondotsoy/configs/dist/configs.js:873:57)
 
 error: Unable to connect. Is the computer able to access the url?
   path: "http://127.0.0.1:9/nobody-listens-here",
@@ -1315,9 +1315,9 @@ Compile: `$ bun build test/cases/08-sse-source-connection-failure.ts --target br
 [PASSED]
 Failed to load resource: net::ERR_UNSAFE_PORT
 sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): Failed to fetch
-    at downloadWithRetry (http://localhost:43371/:344:9)
-    at async t (http://localhost:43371/:348:20)
-    at async Object.start (http://localhost:43371/:443:51)
+    at downloadWithRetry (http://localhost:41335/:344:9)
+    at async t (http://localhost:41335/:348:20)
+    at async Object.start (http://localhost:41335/:443:51)
 [@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ok - a failed sseSource connection leaves the field null instead of throwing
 ALL_CHECKS_PASSED
@@ -2859,10 +2859,10 @@ Compile: `$ bun build test/cases/16-shell-source-runs-command.ts --target browse
 ```
 [WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
 shellSource: failed to run "echo {"port":7070}" AttemptsExhaustedError: shellSource: failed after 1 attempt(s): spawn is not a function
-    at runWithRetry (http://localhost:37333/:379:9)
-    at async t (http://localhost:37333/:291:20)
-    at async shellRound (http://localhost:37333/:383:37)
-    at async Object.start (http://localhost:37333/:433:21)
+    at runWithRetry (http://localhost:44945/:379:9)
+    at async t (http://localhost:44945/:291:20)
+    at async shellRound (http://localhost:44945/:383:37)
+    at async Object.start (http://localhost:44945/:433:21)
 [@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 RESULT: FAIL: FAIL: shellSource runs a command and parses its stdout as JSON
 ```
@@ -3233,30 +3233,31 @@ Compile: `$ bun build test/cases/17-node-file-field.ts --target browser --format
 ```
 [WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
 ConfigError2: Value at "key" could not be decoded as a file: mkdtempSync is not a function
-    at ConfigDescriptor.parser (http://localhost:37581/:1312:44)
-    at resolveDescriptorInitial (http://localhost:37581/:730:21)
-    at ConfigNodeState.fieldFor (http://localhost:37581/:829:43)
-    at Object.get (http://localhost:37581/:920:105)
-    at http://localhost:37581/:1340:18
+    at ConfigDescriptor.parser (http://localhost:37783/:1312:44)
+    at resolveDescriptorInitial (http://localhost:37783/:730:21)
+    at ConfigNodeState.fieldFor (http://localhost:37783/:829:43)
+    at Object.get (http://localhost:37783/:920:105)
+    at http://localhost:37783/:1340:18
 ConfigError2: Value at "key" could not be decoded as a file: mkdtempSync is not a function
-    at ConfigDescriptor.parser (http://localhost:37581/:1312:44)
-    at compute (http://localhost:37581/:1157:122)
-    at ConfigDescriptor.parse (http://localhost:37581/:1158:32)
-    at ConfigNodeState.wireDescriptorField (http://localhost:37581/:846:16)
-    at ConfigNodeState.fieldFor (http://localhost:37581/:832:14)
-    at Object.get (http://localhost:37581/:920:105)
-    at http://localhost:37581/:1340:18
+    at ConfigDescriptor.parser (http://localhost:37783/:1312:44)
+    at compute (http://localhost:37783/:1157:122)
+    at ConfigDescriptor.parse (http://localhost:37783/:1158:32)
+    at ConfigNodeState.wireDescriptorField (http://localhost:37783/:846:16)
+    at ConfigNodeState.fieldFor (http://localhost:37783/:832:14)
+    at Object.get (http://localhost:37783/:920:105)
+    at http://localhost:37783/:1340:18
 RESULT: FAIL: FAIL: a source's text value resolves to a FileBlob
 ```
 
 ## case test/cases/18-readme-first-example.ts — node
 
-The README's first example: envSource with explicit, frozen keys for a flat group, file() TLS cert/key fields, a nested features group with its own fetchSource, and a nested database group with its own pullSource standing in for a secrets manager — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
+The README's first example: envSource with explicit, frozen keys for a flat group, file() TLS cert/key fields, a nested features group (a promotional dialog plus a menu orientation/sidebar UI pair) with its own fetchSource, and a nested database group with its own pullSource standing in for a secrets manager — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
 
 ```ts
 // Case: the README's first example — envSource() with explicit `key`s for a
 // flat server group, a nested server.tls group with file() fields reading a
-// cert and key from disk, a nested features group with its own fetchSource
+// cert and key from disk, a nested features group (promotionalDialog plus a
+// ui.menuOrientation/sidebarCollapsed pair) with its own fetchSource
 // (against a `data:` URL), and a nested database group with its own
 // pullSource standing in for a secrets manager SDK call. file() is
 // node:fs-backed, so a browser bundle stubs it out — run there anyway to
@@ -3278,7 +3279,10 @@ function toFileURL(path: string): URL {
   return new URL(`file://${path}`);
 }
 
-const body = JSON.stringify({ experimental: { home: { promotionalDialog: true } } });
+const body = JSON.stringify({
+  experimental: { home: { promotionalDialog: true } },
+  ui: { menuOrientation: "vertical", sidebarCollapsed: true },
+});
 const featuresUrl = `data:application/json,${encodeURIComponent(body)}`;
 
 /** Stands in for a secrets manager SDK call (e.g. AWS Secrets Manager's GetSecretValueCommand) that rotates the returned password on every pull. */
@@ -3312,6 +3316,14 @@ try {
               promotionalDialog: boolean({ summary: "show the promotional dialog", default: false }),
             },
           },
+          ui: {
+            menuOrientation: string({
+              summary: "main menu orientation",
+              default: "horizontal",
+              pattern: /^(horizontal|vertical)$/,
+            }),
+            sidebarCollapsed: boolean({ summary: "collapse the sidebar by default", default: false }),
+          },
         },
         { sources: [fetchSource({ url: featuresUrl })] },
       ),
@@ -3334,6 +3346,8 @@ try {
     cfg.features.experimental.home.promotionalDialog.get() === true,
     "features nests its own fetchSource under experimental.home.promotionalDialog",
   );
+  assert(cfg.features.ui.menuOrientation.get() === "vertical", "features.ui.menuOrientation resolves from the same fetchSource");
+  assert(cfg.features.ui.sidebarCollapsed.get() === true, "features.ui.sidebarCollapsed resolves from the same fetchSource");
   assert(cfg.server.tls.cert.get() instanceof FileBlob, "server.tls.cert's URL default loads a FileBlob from disk");
   assert((await cfg.server.tls.cert.get()!.text()) === "-----BEGIN CERTIFICATE-----", "the loaded cert FileBlob has the file's content");
   assert(cfg.server.tls.key.get() instanceof FileBlob, "server.tls.key's URL default loads a FileBlob from disk");
@@ -3363,6 +3377,8 @@ Compile: `$ node --experimental-strip-types --no-warnings test/cases/18-readme-f
 ok - HOST resolves to server.host via an explicit key
 ok - PORT resolves to server.port via an explicit key
 ok - features nests its own fetchSource under experimental.home.promotionalDialog
+ok - features.ui.menuOrientation resolves from the same fetchSource
+ok - features.ui.sidebarCollapsed resolves from the same fetchSource
 ok - server.tls.cert's URL default loads a FileBlob from disk
 ok - the loaded cert FileBlob has the file's content
 ok - server.tls.key's URL default loads a FileBlob from disk
@@ -3375,12 +3391,13 @@ ALL_CHECKS_PASSED
 
 ## case test/cases/18-readme-first-example.ts — bun
 
-The README's first example: envSource with explicit, frozen keys for a flat group, file() TLS cert/key fields, a nested features group with its own fetchSource, and a nested database group with its own pullSource standing in for a secrets manager — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
+The README's first example: envSource with explicit, frozen keys for a flat group, file() TLS cert/key fields, a nested features group (a promotional dialog plus a menu orientation/sidebar UI pair) with its own fetchSource, and a nested database group with its own pullSource standing in for a secrets manager — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
 
 ```ts
 // Case: the README's first example — envSource() with explicit `key`s for a
 // flat server group, a nested server.tls group with file() fields reading a
-// cert and key from disk, a nested features group with its own fetchSource
+// cert and key from disk, a nested features group (promotionalDialog plus a
+// ui.menuOrientation/sidebarCollapsed pair) with its own fetchSource
 // (against a `data:` URL), and a nested database group with its own
 // pullSource standing in for a secrets manager SDK call. file() is
 // node:fs-backed, so a browser bundle stubs it out — run there anyway to
@@ -3402,7 +3419,10 @@ function toFileURL(path: string): URL {
   return new URL(`file://${path}`);
 }
 
-const body = JSON.stringify({ experimental: { home: { promotionalDialog: true } } });
+const body = JSON.stringify({
+  experimental: { home: { promotionalDialog: true } },
+  ui: { menuOrientation: "vertical", sidebarCollapsed: true },
+});
 const featuresUrl = `data:application/json,${encodeURIComponent(body)}`;
 
 /** Stands in for a secrets manager SDK call (e.g. AWS Secrets Manager's GetSecretValueCommand) that rotates the returned password on every pull. */
@@ -3436,6 +3456,14 @@ try {
               promotionalDialog: boolean({ summary: "show the promotional dialog", default: false }),
             },
           },
+          ui: {
+            menuOrientation: string({
+              summary: "main menu orientation",
+              default: "horizontal",
+              pattern: /^(horizontal|vertical)$/,
+            }),
+            sidebarCollapsed: boolean({ summary: "collapse the sidebar by default", default: false }),
+          },
         },
         { sources: [fetchSource({ url: featuresUrl })] },
       ),
@@ -3458,6 +3486,8 @@ try {
     cfg.features.experimental.home.promotionalDialog.get() === true,
     "features nests its own fetchSource under experimental.home.promotionalDialog",
   );
+  assert(cfg.features.ui.menuOrientation.get() === "vertical", "features.ui.menuOrientation resolves from the same fetchSource");
+  assert(cfg.features.ui.sidebarCollapsed.get() === true, "features.ui.sidebarCollapsed resolves from the same fetchSource");
   assert(cfg.server.tls.cert.get() instanceof FileBlob, "server.tls.cert's URL default loads a FileBlob from disk");
   assert((await cfg.server.tls.cert.get()!.text()) === "-----BEGIN CERTIFICATE-----", "the loaded cert FileBlob has the file's content");
   assert(cfg.server.tls.key.get() instanceof FileBlob, "server.tls.key's URL default loads a FileBlob from disk");
@@ -3487,6 +3517,8 @@ Compile: `$ bun test/cases/18-readme-first-example.ts (running the copy installe
 ok - HOST resolves to server.host via an explicit key
 ok - PORT resolves to server.port via an explicit key
 ok - features nests its own fetchSource under experimental.home.promotionalDialog
+ok - features.ui.menuOrientation resolves from the same fetchSource
+ok - features.ui.sidebarCollapsed resolves from the same fetchSource
 ok - server.tls.cert's URL default loads a FileBlob from disk
 ok - the loaded cert FileBlob has the file's content
 ok - server.tls.key's URL default loads a FileBlob from disk
@@ -3499,12 +3531,13 @@ ALL_CHECKS_PASSED
 
 ## case test/cases/18-readme-first-example.ts — deno
 
-The README's first example: envSource with explicit, frozen keys for a flat group, file() TLS cert/key fields, a nested features group with its own fetchSource, and a nested database group with its own pullSource standing in for a secrets manager — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
+The README's first example: envSource with explicit, frozen keys for a flat group, file() TLS cert/key fields, a nested features group (a promotional dialog plus a menu orientation/sidebar UI pair) with its own fetchSource, and a nested database group with its own pullSource standing in for a secrets manager — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
 
 ```ts
 // Case: the README's first example — envSource() with explicit `key`s for a
 // flat server group, a nested server.tls group with file() fields reading a
-// cert and key from disk, a nested features group with its own fetchSource
+// cert and key from disk, a nested features group (promotionalDialog plus a
+// ui.menuOrientation/sidebarCollapsed pair) with its own fetchSource
 // (against a `data:` URL), and a nested database group with its own
 // pullSource standing in for a secrets manager SDK call. file() is
 // node:fs-backed, so a browser bundle stubs it out — run there anyway to
@@ -3526,7 +3559,10 @@ function toFileURL(path: string): URL {
   return new URL(`file://${path}`);
 }
 
-const body = JSON.stringify({ experimental: { home: { promotionalDialog: true } } });
+const body = JSON.stringify({
+  experimental: { home: { promotionalDialog: true } },
+  ui: { menuOrientation: "vertical", sidebarCollapsed: true },
+});
 const featuresUrl = `data:application/json,${encodeURIComponent(body)}`;
 
 /** Stands in for a secrets manager SDK call (e.g. AWS Secrets Manager's GetSecretValueCommand) that rotates the returned password on every pull. */
@@ -3560,6 +3596,14 @@ try {
               promotionalDialog: boolean({ summary: "show the promotional dialog", default: false }),
             },
           },
+          ui: {
+            menuOrientation: string({
+              summary: "main menu orientation",
+              default: "horizontal",
+              pattern: /^(horizontal|vertical)$/,
+            }),
+            sidebarCollapsed: boolean({ summary: "collapse the sidebar by default", default: false }),
+          },
         },
         { sources: [fetchSource({ url: featuresUrl })] },
       ),
@@ -3582,6 +3626,8 @@ try {
     cfg.features.experimental.home.promotionalDialog.get() === true,
     "features nests its own fetchSource under experimental.home.promotionalDialog",
   );
+  assert(cfg.features.ui.menuOrientation.get() === "vertical", "features.ui.menuOrientation resolves from the same fetchSource");
+  assert(cfg.features.ui.sidebarCollapsed.get() === true, "features.ui.sidebarCollapsed resolves from the same fetchSource");
   assert(cfg.server.tls.cert.get() instanceof FileBlob, "server.tls.cert's URL default loads a FileBlob from disk");
   assert((await cfg.server.tls.cert.get()!.text()) === "-----BEGIN CERTIFICATE-----", "the loaded cert FileBlob has the file's content");
   assert(cfg.server.tls.key.get() instanceof FileBlob, "server.tls.key's URL default loads a FileBlob from disk");
@@ -3613,12 +3659,13 @@ Compile: `$ deno test/cases/18-readme-first-example.ts`
 
 ## case test/cases/18-readme-first-example.ts — browser
 
-The README's first example: envSource with explicit, frozen keys for a flat group, file() TLS cert/key fields, a nested features group with its own fetchSource, and a nested database group with its own pullSource standing in for a secrets manager — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
+The README's first example: envSource with explicit, frozen keys for a flat group, file() TLS cert/key fields, a nested features group (a promotional dialog plus a menu orientation/sidebar UI pair) with its own fetchSource, and a nested database group with its own pullSource standing in for a secrets manager — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
 
 ```ts
 // Case: the README's first example — envSource() with explicit `key`s for a
 // flat server group, a nested server.tls group with file() fields reading a
-// cert and key from disk, a nested features group with its own fetchSource
+// cert and key from disk, a nested features group (promotionalDialog plus a
+// ui.menuOrientation/sidebarCollapsed pair) with its own fetchSource
 // (against a `data:` URL), and a nested database group with its own
 // pullSource standing in for a secrets manager SDK call. file() is
 // node:fs-backed, so a browser bundle stubs it out — run there anyway to
@@ -3640,7 +3687,10 @@ function toFileURL(path: string): URL {
   return new URL(`file://${path}`);
 }
 
-const body = JSON.stringify({ experimental: { home: { promotionalDialog: true } } });
+const body = JSON.stringify({
+  experimental: { home: { promotionalDialog: true } },
+  ui: { menuOrientation: "vertical", sidebarCollapsed: true },
+});
 const featuresUrl = `data:application/json,${encodeURIComponent(body)}`;
 
 /** Stands in for a secrets manager SDK call (e.g. AWS Secrets Manager's GetSecretValueCommand) that rotates the returned password on every pull. */
@@ -3674,6 +3724,14 @@ try {
               promotionalDialog: boolean({ summary: "show the promotional dialog", default: false }),
             },
           },
+          ui: {
+            menuOrientation: string({
+              summary: "main menu orientation",
+              default: "horizontal",
+              pattern: /^(horizontal|vertical)$/,
+            }),
+            sidebarCollapsed: boolean({ summary: "collapse the sidebar by default", default: false }),
+          },
         },
         { sources: [fetchSource({ url: featuresUrl })] },
       ),
@@ -3696,6 +3754,8 @@ try {
     cfg.features.experimental.home.promotionalDialog.get() === true,
     "features nests its own fetchSource under experimental.home.promotionalDialog",
   );
+  assert(cfg.features.ui.menuOrientation.get() === "vertical", "features.ui.menuOrientation resolves from the same fetchSource");
+  assert(cfg.features.ui.sidebarCollapsed.get() === true, "features.ui.sidebarCollapsed resolves from the same fetchSource");
   assert(cfg.server.tls.cert.get() instanceof FileBlob, "server.tls.cert's URL default loads a FileBlob from disk");
   assert((await cfg.server.tls.cert.get()!.text()) === "-----BEGIN CERTIFICATE-----", "the loaded cert FileBlob has the file's content");
   assert(cfg.server.tls.key.get() instanceof FileBlob, "server.tls.key's URL default loads a FileBlob from disk");

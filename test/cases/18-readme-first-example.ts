@@ -1,6 +1,7 @@
 // Case: the README's first example — envSource() with explicit `key`s for a
 // flat server group, a nested server.tls group with file() fields reading a
-// cert and key from disk, a nested features group with its own fetchSource
+// cert and key from disk, a nested features group (promotionalDialog plus a
+// ui.menuOrientation/sidebarCollapsed pair) with its own fetchSource
 // (against a `data:` URL), and a nested database group with its own
 // pullSource standing in for a secrets manager SDK call. file() is
 // node:fs-backed, so a browser bundle stubs it out — run there anyway to
@@ -22,7 +23,10 @@ function toFileURL(path: string): URL {
   return new URL(`file://${path}`);
 }
 
-const body = JSON.stringify({ experimental: { home: { promotionalDialog: true } } });
+const body = JSON.stringify({
+  experimental: { home: { promotionalDialog: true } },
+  ui: { menuOrientation: "vertical", sidebarCollapsed: true },
+});
 const featuresUrl = `data:application/json,${encodeURIComponent(body)}`;
 
 /** Stands in for a secrets manager SDK call (e.g. AWS Secrets Manager's GetSecretValueCommand) that rotates the returned password on every pull. */
@@ -56,6 +60,14 @@ try {
               promotionalDialog: boolean({ summary: "show the promotional dialog", default: false }),
             },
           },
+          ui: {
+            menuOrientation: string({
+              summary: "main menu orientation",
+              default: "horizontal",
+              pattern: /^(horizontal|vertical)$/,
+            }),
+            sidebarCollapsed: boolean({ summary: "collapse the sidebar by default", default: false }),
+          },
         },
         { sources: [fetchSource({ url: featuresUrl })] },
       ),
@@ -78,6 +90,8 @@ try {
     cfg.features.experimental.home.promotionalDialog.get() === true,
     "features nests its own fetchSource under experimental.home.promotionalDialog",
   );
+  assert(cfg.features.ui.menuOrientation.get() === "vertical", "features.ui.menuOrientation resolves from the same fetchSource");
+  assert(cfg.features.ui.sidebarCollapsed.get() === true, "features.ui.sidebarCollapsed resolves from the same fetchSource");
   assert(cfg.server.tls.cert.get() instanceof FileBlob, "server.tls.cert's URL default loads a FileBlob from disk");
   assert((await cfg.server.tls.cert.get()!.text()) === "-----BEGIN CERTIFICATE-----", "the loaded cert FileBlob has the file's content");
   assert(cfg.server.tls.key.get() instanceof FileBlob, "server.tls.key's URL default loads a FileBlob from disk");

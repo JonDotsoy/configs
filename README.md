@@ -20,7 +20,8 @@ import { file } from "@jondotsoy/configs/node";
 
 // HOST=localhost PORT=3000 → { server: { host: "localhost", port: "3000" } }
 // server.tls.cert/.key are read eagerly from disk, decoded into FileBlobs
-// GET https://example.com/features → { experimental: { home: { promotionalDialog: true } } } (polled every 30s)
+// GET https://example.com/features → { experimental: { home: { promotionalDialog: true } },
+//   ui: { menuOrientation: "vertical", sidebarCollapsed: true } } (polled every 30s)
 // secretsManager.getSecretValue("prod/db") → { host, port, user, password } — your AWS/GCP/Vault
 // SDK client of choice, re-pulled every 5m so a rotated secret reaches the config tree
 const cfg = await create(
@@ -41,6 +42,14 @@ const cfg = await create(
           home: {
             promotionalDialog: boolean({ summary: "show the promotional dialog", default: false }),
           },
+        },
+        ui: {
+          menuOrientation: string({
+            summary: "main menu orientation",
+            default: "horizontal",
+            pattern: /^(horizontal|vertical)$/,
+          }),
+          sidebarCollapsed: boolean({ summary: "collapse the sidebar by default", default: false }),
         },
       },
       { sources: [fetchSource({ url: "https://example.com/features", pollingInterval: 30_000 })] },
@@ -64,6 +73,10 @@ console.log(`listening on ${cfg.server.host.get()}:${cfg.server.port.get()}`);
 // React to changes
 cfg.features.experimental.home.promotionalDialog.subscribe((enabled) => {
   console.log(`promotional dialog ${enabled ? "enabled" : "disabled"}`);
+});
+
+cfg.features.ui.menuOrientation.subscribe((orientation) => {
+  renderMenu({ orientation, collapsed: cfg.features.ui.sidebarCollapsed.get() });
 });
 
 // secretsManager rotates prod/db periodically; each pull's fresh password
