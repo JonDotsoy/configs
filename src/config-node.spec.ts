@@ -47,6 +47,7 @@ describe("create", () => {
     const cfg = create(shape, { sources: [testSource({ port: "9000" })] });
 
     expect(cfg.port.get()).toBe(4000);
+    expectTypeOf(cfg.port.get()).toEqualTypeOf<number>();
 
     const resolved = await cfg;
 
