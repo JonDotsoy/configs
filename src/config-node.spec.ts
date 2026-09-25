@@ -438,6 +438,83 @@ describe("create — live updates", () => {
   });
 });
 
+describe("create — close()", () => {
+  test("closes every own source", async () => {
+    let closed = false;
+    const source = new Source<{ port?: string }>({
+      async start(control) {
+        control.set({ port: "3000" });
+      },
+      async close() {
+        closed = true;
+      },
+    });
+    const cfg = create({ port: numeric() }, { sources: [source] });
+    await cfg;
+
+    await cfg.close();
+
+    expect(closed).toBe(true);
+  });
+
+  test("closes every field descriptor's own close hook, at every nesting depth", async () => {
+    const closedFields: string[] = [];
+    function tracked(name: string) {
+      return new Descriptor<string>({
+        type: "tracked",
+        options: {},
+        start: (raw) => String(raw),
+        async close() {
+          closedFields.push(name);
+        },
+      });
+    }
+
+    const cfg = create(
+      { port: tracked("port"), server: { host: tracked("host") } },
+      { sources: [testSource({ port: "3000", server: { host: "example.com" } })] },
+    );
+    await cfg;
+
+    await cfg.close();
+
+    expect(closedFields.sort()).toEqual(["host", "port"]);
+  });
+
+  test("closes an embedded create() result's own close(), cascading into its own sources", async () => {
+    let embeddedClosed = false;
+    const embeddedSource = new Source<{ cert?: string }>({
+      async start(control) {
+        control.set({ cert: "cert.pem" });
+      },
+      async close() {
+        embeddedClosed = true;
+      },
+    });
+
+    const cfg = create({
+      server: { tls: create({ cert: string() }, { sources: [embeddedSource] }) },
+    });
+    await cfg;
+
+    await cfg.close();
+
+    expect(embeddedClosed).toBe(true);
+  });
+
+  test("a hand-written descriptor with no close() doesn't break close()", async () => {
+    const handWritten = {
+      [CONFIG_DESCRIPTOR_TAG]: true as const,
+      start: (raw: unknown) => String(raw),
+    };
+
+    const cfg = create({ field: handWritten as any }, { sources: [testSource({ field: "abc" })] });
+    await cfg;
+
+    await expect(cfg.close()).resolves.toBeUndefined();
+  });
+});
+
 describe("create — parser failures", () => {
   test("a raw value that fails the field's own parser rejects the awaited node with a ConfigError", async () => {
     const cfg = create({ port: numeric() }, { sources: [testSource({ port: "not-a-number" })] });

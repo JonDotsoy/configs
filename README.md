@@ -277,6 +277,34 @@ can also give the constructor a `reduce(rawStore, path)` hook returning `Promise
 resolves, adopts the `Store<T>` it produced as the field's live value. `start` still runs
 synchronously in the meantime, so the field is never left without a value.
 
+If `start`/`reduce` open something that needs releasing (a connection, a timer, ...), give the
+constructor a `close(): Promise<void>` hook too — `create()`'s own returned node is itself
+`close()`able (alongside `then()`): calling `cfg.close()` runs every field's own `close`, every
+embedded `create()` result's own `close()`, and every one of the node's own `options.sources`
+(`Source.close()`), all in one call:
+
+```ts
+function pollingDescriptor() {
+  let timer: ReturnType<typeof setInterval> | undefined;
+  return new Descriptor<number>({
+    type: "poll",
+    options: {},
+    start(raw) {
+      timer ??= setInterval(() => {}, 1000);
+      return Number(raw);
+    },
+    async close() {
+      clearInterval(timer);
+    },
+  });
+}
+
+const cfg = create({ ticks: pollingDescriptor() }, { sources: [envSource()] });
+await cfg;
+// ... later
+await cfg.close();
+```
+
 ### Nested groups
 
 A shape property can be a plain object — it's an implicit nested group, sharing the enclosing

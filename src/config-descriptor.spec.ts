@@ -147,6 +147,27 @@ describe("Descriptor.reduce()", () => {
   });
 });
 
+describe("Descriptor.close()", () => {
+  test("resolves to undefined when the constructor wasn't given a close hook", async () => {
+    await expect(numeric().close()).resolves.toBeUndefined();
+  });
+
+  test("runs the constructor's own close hook", async () => {
+    let closed = false;
+    const descriptor = new Descriptor<string>({
+      type: "csv",
+      options: {},
+      start: (raw) => String(raw),
+      async close() {
+        closed = true;
+      },
+    });
+
+    await descriptor.close();
+    expect(closed).toBe(true);
+  });
+});
+
 describe("isConfigDescriptor()", () => {
   test("recognizes a real Descriptor built by every field builder", () => {
     expect(isConfigDescriptor(string())).toBe(true);

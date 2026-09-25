@@ -55,6 +55,13 @@ export type ConfigsNodePending<T extends ConfigsShape> = ConfigsNode<T> &
       onfulfilled?: ((value: ConfigsNode<T>) => TResult1 | PromiseLike<TResult1>) | undefined | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | undefined | null,
     ): PromiseLike<TResult1 | TResult2>;
+    /**
+     * Releases everything this node opened: every own `options.sources` entry (`Source.close()`),
+     * every field descriptor's own `close` (`Descriptor.close()`), and every embedded `create()`
+     * result's own `close()` in turn. Safe to call whether or not the node has finished opening
+     * yet, and any number of times.
+     */
+    close(): Promise<void>;
   };
 
 /** Walks `path` into `snapshot`, one key at a time; `undefined` if any segment is missing or not an object. */
@@ -149,6 +156,7 @@ function buildNode(
   path: string[],
   rawSources: Store<unknown>[],
   embeddedReady: PromiseLike<unknown>[],
+  closers: (() => Promise<void>)[],
 ): Record<string, unknown> {
   const node: Record<string, unknown> = {};
   for (const key of Object.keys(shape)) {
@@ -157,11 +165,13 @@ function buildNode(
     if (isConfigDescriptor(entry)) {
       const fieldPath = resolveFieldPath(entry, entryPath);
       node[key] = buildField(entry, keyStore(rawSources, fieldPath), fieldPath, embeddedReady);
+      closers.push(() => (typeof entry.close === "function" ? entry.close() : Promise.resolve()));
     } else if (isConfigsNode(entry)) {
       embeddedReady.push(entry);
+      closers.push(() => entry.close());
       node[key] = entry;
     } else {
-      node[key] = buildNode(entry as ConfigsShape, entryPath, rawSources, embeddedReady);
+      node[key] = buildNode(entry as ConfigsShape, entryPath, rawSources, embeddedReady, closers);
     }
   }
   return node;
@@ -174,14 +184,17 @@ function buildNode(
  * from the very start: once that source's own `open()` resolves, its value — and every later
  * update — forwards into the placeholder, which ripples reactively through to just the fields
  * whose path it can resolve. The returned object is also `then`able: it resolves once every
- * source here, and every embedded node's own sources, have published their first snapshot.
+ * source here, and every embedded node's own sources, have published their first snapshot. It's
+ * also `close`able: releases every own source, every field descriptor's own `close`, and every
+ * embedded node's own `close`, in one call.
  */
 export function create<T extends ConfigsShape>(configShape: T, options: Options = {}): ConfigsNodePending<T> {
   const sources = options.sources ?? [];
   const rawSources = sources.map(() => new Store<unknown>(null));
   const embeddedReady: PromiseLike<unknown>[] = [];
+  const closers: (() => Promise<void>)[] = [];
 
-  const node = buildNode(configShape, [], rawSources, embeddedReady) as ConfigsNode<T>;
+  const node = buildNode(configShape, [], rawSources, embeddedReady, closers) as ConfigsNode<T>;
   (node as Record<symbol, unknown>)[CONFIGS_NODE_TAG] = true;
 
   const ownReady = Promise.all(
@@ -202,6 +215,9 @@ export function create<T extends ConfigsShape>(configShape: T, options: Options 
       // `node` (not `this`) is what resolves: `this` also carries `then`, so resolving to it would
       // make the Promise machinery treat it as thenable again and re-invoke `then` recursively.
       return ready.then(() => node).then(onfulfilled, onrejected as any);
+    },
+    close(): Promise<void> {
+      return Promise.all([...closers.map((close) => close()), ...sources.map((source) => source.close())]).then(() => undefined);
     },
   }) as ConfigsNodePending<T>;
 }

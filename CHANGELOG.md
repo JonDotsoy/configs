@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — `Descriptor`/`create()` cleanup via `close()`
+
+`new Descriptor({ ... })` accepts an optional `close(): Promise<void>` hook, for releasing whatever
+`start`/`reduce` set up (a connection, a timer, ...). The object `create()`/`load()` return is now
+itself `close()`-able, alongside `then()`: calling `cfg.close()` (on the original reference returned
+by `create()`, before `await`ing it away) runs every field descriptor's own `close`, every embedded
+`create()` result's own `close()`, and every one of the node's own `options.sources`
+(`Source.close()`) — all in one call. See the README's "Writing a custom `Descriptor`" section.
+
 ### Changed — BREAKING: `ConfigDescriptor` renamed to `Descriptor`, constructor and extension contract changed
 
 `ConfigDescriptor` is now exported as `Descriptor`, and its constructor takes a single options

@@ -28,9 +28,14 @@ El punto de entrada público (`src/config-node.ts`, re-exportado desde
   shape.
 - **`then`-able** — el objeto que devuelve `create()` puede `await`earse:
   resuelve una vez que cada `Source` en `options.sources` publicó su
-  primer snapshot, a un objeto plano equivalente (ya sin `then`). Los
-  campos son legibles de forma síncrona incluso antes de ese `await`
+  primer snapshot, a un objeto plano equivalente (ya sin `then`/`close`).
+  Los campos son legibles de forma síncrona incluso antes de ese `await`
   (parten en su `default`, o en `null`).
+- **`close`-able** — el objeto que devuelve `create()` (la referencia
+  original, antes de `await`earla) expone `.close(): Promise<void>`:
+  cierra cada `Source` propio (`Source.close()`), el `.close()` propio de
+  cada descriptor de campo (`Descriptor.close()`) y el `.close()` de cada
+  nodo `create()` embebido, todo en una sola llamada.
 - **Grupos anidados** — un valor del shape puede ser:
   - un **objeto plano** (`{ server: { port: numeric() } }`), que comparte
     las `sources` del `create()` que lo contiene; o
@@ -59,11 +64,14 @@ El punto de entrada público (`src/config-node.ts`, re-exportado desde
 - **`Descriptor<T, O>`** — la clase base. Expone `.key`, `.start(raw,
   path?)` (síncrono: cae a `options.default` cuando no hay valor, o corre
   el `start` propio del campo — es `create()` quien crea y mantiene vivo
-  el `Store` del campo, volviendo a llamar `.start()` en cada cambio) y un
+  el `Store` del campo, volviendo a llamar `.start()` en cada cambio), un
   `.reduce(rawStore, path?)` opcional que devuelve `Promise<Store<T>>`
-  para campos que solo pueden resolverse de forma asíncrona. Extensible a
-  mano (`new Descriptor({ type, options, start, reduce? })`, o el
-  contrato completo vía `CONFIG_DESCRIPTOR_TAG` + `.start()`).
+  para campos que solo pueden resolverse de forma asíncrona, y un
+  `.close()` (siempre presente, no-op si el constructor no dio `close`)
+  que `create()` llama una vez por campo desde el `.close()` del nodo.
+  Extensible a mano (`new Descriptor({ type, options, start, reduce?,
+  close? })`, o el contrato completo vía `CONFIG_DESCRIPTOR_TAG` +
+  `.start()`).
 - **`string(options?)`** — coerción a `string`; `pattern` opcional
   (`RegExp`) para validar el valor.
 - **`numeric(options?)`** — coerciona un string numérico (o `number`

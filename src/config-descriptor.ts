@@ -80,13 +80,16 @@ export type Parser<T> = (raw: unknown, path: string[]) => T;
  * change instead of `start` managing a `Store` itself. `reduce`, when given, is an optional async
  * escape hatch: it receives the field's live raw `Store` directly and resolves to the `Store<T>`
  * that then takes over as this field's value — its promise is folded into `create()`'s own
- * readiness, same as a source's `open()`.
+ * readiness, same as a source's `open()`. `close`, when given, releases whatever `start`/`reduce`
+ * set up (a connection, a timer, ...) — `create()`'s own `close()` (`./config-node.js`) calls every
+ * field's `close` once, same as `Source.close()` does for its own `underlying.close`.
  */
 export interface DescriptorUnderlying<T, O extends object = object> {
   type: FieldType;
   options: O;
   start?: Parser<T>;
   reduce?(rawStore: Store<unknown>, path: string[]): Promise<Store<T>>;
+  close?(): Promise<void>;
 }
 
 /** What `string()`/`numeric()`/`boolean()` build. See `DescriptorUnderlying` for the constructor shape. */
@@ -98,12 +101,14 @@ export class Descriptor<T, O extends object = object> {
   readonly options: O;
   private readonly startFn: Parser<T>;
   private readonly reduceFn?: (rawStore: Store<unknown>, path: string[]) => Promise<Store<T>>;
+  private readonly closeFn?: () => Promise<void>;
 
   constructor(underlying: DescriptorUnderlying<T, O>) {
     this.type = underlying.type;
     this.options = underlying.options;
     this.startFn = underlying.start ?? ((raw) => raw as T);
     this.reduceFn = underlying.reduce;
+    this.closeFn = underlying.close;
   }
 
   /**
@@ -140,6 +145,14 @@ export class Descriptor<T, O extends object = object> {
    */
   reduce(rawStore: Store<unknown>, path: string[] = []): Promise<Store<T>> | undefined {
     return this.reduceFn?.(rawStore, path);
+  }
+
+  /**
+   * Releases whatever `start`/`reduce` set up, via the constructor's own `close`, if any — a no-op
+   * otherwise. `create()`'s own `close()` (`./config-node.js`) calls this once per field.
+   */
+  close(): Promise<void> {
+    return Promise.resolve(this.closeFn?.());
   }
 }
 
