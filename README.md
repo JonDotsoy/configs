@@ -18,14 +18,17 @@ import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 import { file } from "@jondotsoy/configs/node";
 
 // HOST=localhost PORT=3000 → { server: { host: "localhost", port: "3000" } }
-// server.tlsCert is read eagerly from disk, decoded into a FileBlob
+// server.tls.cert/.key are read eagerly from disk, decoded into FileBlobs
 // GET https://example.com/features → { experimental: { home: { promotionalDialog: true } } } (polled every 30s)
 const cfg = await create(
   {
     server: {
       host: string({ summary: "bind host", default: "localhost", key: "HOST" }),
       port: numeric({ summary: "HTTP port", default: 3000, key: "PORT" }),
-      tlsCert: file({ summary: "TLS certificate", default: new URL("file:///etc/ssl/certs/server.pem") }),
+      tls: {
+        cert: file({ summary: "TLS certificate", default: new URL("file:///etc/ssl/certs/server.pem") }),
+        key: file({ summary: "TLS private key", default: new URL("file:///etc/ssl/private/server-key.pem") }),
+      },
     },
     features: create(
       {
@@ -53,7 +56,7 @@ cfg.features.experimental.home.promotionalDialog.subscribe((enabled) => {
 console.log(cfg.server.port.get());
 // 3000
 
-console.log(await cfg.server.tlsCert.get()?.text());
+console.log(await cfg.server.tls.cert.get()?.text());
 // -----BEGIN CERTIFICATE-----...
 ```
 
