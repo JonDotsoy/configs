@@ -66,7 +66,8 @@ export const cases: CaseDef[] = [
   },
   {
     file: "18-readme-first-example.ts",
-    description: "The README's first example: envSource with explicit keys for a flat group, plus a nested group with its own fetchSource.",
+    description: "The README's first example: envSource with explicit keys for a flat group, a file() TLS cert, and a nested group with its own fetchSource — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.",
     engines: allEngines,
+    tolerateFailureEngines: ["browser"],
   },
 ];

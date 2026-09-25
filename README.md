@@ -15,14 +15,17 @@ the moment a source pushes a new value.
 import { create, numeric, string, boolean } from "@jondotsoy/configs";
 import { envSource } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+import { file } from "@jondotsoy/configs/node";
 
 // HOST=localhost PORT=3000 → { server: { host: "localhost", port: "3000" } }
+// server.tlsCert is read eagerly from disk, decoded into a FileBlob
 // GET https://example.com/features → { experimental: { home: { promotionalDialog: true } } } (polled every 30s)
 const cfg = await create(
   {
     server: {
       host: string({ summary: "bind host", default: "localhost", key: "HOST" }),
       port: numeric({ summary: "HTTP port", default: 3000, key: "PORT" }),
+      tlsCert: file({ summary: "TLS certificate", default: new URL("file:///etc/ssl/certs/server.pem") }),
     },
     features: create(
       {
@@ -49,6 +52,9 @@ cfg.features.experimental.home.promotionalDialog.subscribe((enabled) => {
 
 console.log(cfg.server.port.get());
 // 3000
+
+console.log(await cfg.server.tlsCert.get()?.text());
+// -----BEGIN CERTIFICATE-----...
 ```
 
 ## Table of contents
