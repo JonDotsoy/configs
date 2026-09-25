@@ -17,11 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (no longer `then`able).
 - **`ConfigDescriptor.reduce(raw, path?)`**: a synchronous counterpart to `.parse()` — computes a
   field's value directly from an already-merged `raw` value (falling back to `options.default`,
-  then running it through the field's own `parser`) and returns an already-resolved
-  `ReadOnlyStore<T>`, with no `Store<unknown>` to subscribe to and no `Promise` to await. Available
-  on every descriptor built by `string()`/`numeric()`/`boolean()`/`url()`/`shape()`/`choice()`
-  (and `file()`, from `./node.js`), since it lives on the shared `ConfigDescriptor` base class. The
-  new `create()` (`src/config-node.ts`) always resolves a field's value through `.reduce()`.
+  then running it through the field's own `parser`) with no `Store<unknown>` to subscribe to.
+  Returns `{ store: ReadOnlyStore<T>, ready: Promise<ReadOnlyStore<T>> }`: `store` is the
+  already-resolved value, `ready` is that same `store` wrapped in a `Promise`, for callers
+  migrating off `.parse()`'s `await`ed shape. Available on every descriptor built by
+  `string()`/`numeric()`/`boolean()`/`url()`/`shape()`/`choice()` (and `file()`, from `./node.js`),
+  since it lives on the shared `ConfigDescriptor` base class. The new `create()`
+  (`src/config-node.ts`) always resolves a field's value through `.reduce(...).store`.
 
 ### Deprecated
 

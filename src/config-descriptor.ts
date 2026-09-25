@@ -192,9 +192,9 @@ export class ConfigDescriptor<T, O extends object = object> {
    * directly instead of a live `Store<unknown>` to subscribe to.
    */
   async parse(rawStore: Store<unknown>, path: string[] = []): Promise<{ store: Store<T> }> {
-    const store = new Store<T>(this.reduce(rawStore.get(), path).get());
+    const store = new Store<T>(this.reduce(rawStore.get(), path).store.get());
     rawStore.listen((raw) => {
-      const next = this.reduce(raw, path).get();
+      const next = this.reduce(raw, path).store.get();
       if (next !== store.get()) store.set(next);
     });
     return { store };
@@ -204,14 +204,16 @@ export class ConfigDescriptor<T, O extends object = object> {
    * Synchronous counterpart to `.parse()`: computes this field's value straight from `raw` — the
    * merged raw value from wherever a caller resolves it from `sources` (or `undefined`/`null` when
    * none has it) — falling back to `options.default` when `raw` is missing, else running it
-   * through this field's own `parser`. Returns an already-resolved `ReadOnlyStore<T>` wrapping that
-   * one value; it isn't kept live itself — a caller re-invokes `reduce()` with a fresh `raw`
-   * whenever the input changes (see `create()` in `./config-node.js`).
+   * through this field's own `parser`. `store` is that value, already resolved; `ready` is the
+   * same store, wrapped in a `Promise` so a caller migrating off `.parse()`'s `await`ed shape
+   * doesn't have to change how it reads the result. Neither is kept live — a caller re-invokes
+   * `reduce()` with a fresh `raw` whenever the input changes (see `create()` in `./config-node.js`).
    */
-  reduce(raw: unknown, path: string[] = []): ReadOnlyStore<T> {
+  reduce(raw: unknown, path: string[] = []): { store: ReadOnlyStore<T>; ready: Promise<ReadOnlyStore<T>> } {
     const defaultValue = (this.options as { default?: T }).default;
     const value = raw === undefined || raw === null ? (defaultValue !== undefined ? defaultValue : (null as T)) : this.parser(raw, path);
-    return new Store<T>(value);
+    const store = new Store<T>(value);
+    return { store, ready: Promise.resolve(store) };
   }
 }
 
