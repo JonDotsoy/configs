@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   own `sources`, never looked up against the parent's, and the parent's own `then()` also waits
   for it. `isConfigsNode(value)` (also exported) tells such an embedded node apart from a plain
   nested shape.
+
+  A field's `key` option (`numeric({ key: "PORT" })`) is honored too: it reads from that explicit,
+  absolute path in every source's snapshot instead of the field's own position in the shape tree —
+  the same override the legacy engine already supported.
 - **`ConfigDescriptor.reduce(rawStore, path?)`**: the reactive counterpart to `.parse()`, and what
   it's now built on. Takes a live `Store<unknown>` (not a bare raw value) and returns a live
   `Store<T>` that recomputes on every `rawStore` change — falling back to `options.default` when

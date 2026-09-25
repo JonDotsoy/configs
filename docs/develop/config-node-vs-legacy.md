@@ -20,7 +20,7 @@ qué no, y por qué.
 | Cálculo de campos | perezoso y cacheado (`fieldFor()`/`childNode()`, `Map`) | eager: todo el árbol se construye una vez, al llamar a `create()` — sin `Map` de caché, porque no hace falta decidir nada dos veces |
 | Resolución de un campo | `ConfigDescriptor.parse()` (async, se suscribe a un `Store<unknown>` en vivo) | `ConfigDescriptor.reduce()` (sync, recibe un `Store<unknown>` — la `KeyStore` de ese campo — y se suscribe a ella igual que `parse()`) |
 | Grupos anidados | `configs.create({...})` embebido — puede traer **sus propias `sources`**, independientes del padre, o compartir las del padre, según reciba `options` o no | objeto plano → comparte las `sources` del `create()` raíz; **otro `create()` embebido** → resuelve con sus propias `sources`, detectado vía `isConfigsNode()` |
-| `key` (path override) | soportado (`descriptor.key`) | **no soportado** — el path de resolución es siempre la ruta de anidamiento del shape |
+| `key` (path override) | soportado (`descriptor.key`, vía `pathFor()`) | soportado — `resolveFieldPath()` hace lo mismo: si el campo declara `key`, ese path (absoluto) reemplaza al de anidamiento |
 | `freeze` | soportado (`wireDescriptorField` deja de escuchar tras el primer valor) | **no soportado** — cada campo se queda suscrito a su `KeyStore` para siempre |
 | Actualizaciones en vivo | por campo, vía suscripción a cada `Store` de origen | por campo también, pero vía una cadena `Source → KeyStore → FieldStore` propia de cada campo — sin recorrer el resto del árbol |
 | Cierre de fuentes | `.close()` en la raíz, recursivo sobre grupos embebidos | no expuesto — quien creó las `Source`s las cierra directamente |
@@ -40,10 +40,10 @@ nodo exista. Las actualizaciones en vivo llegan por campo: cada fuente abierta d
 `refreshFields()`, que recorre `rawStores`/`fields`/`children` ya cacheados y solo toca lo que
 cambió (comparando con `!==`).
 
-Esto es lo que permite dos cosas que el nuevo motor no tiene: **`key`** (el campo puede declarar un
-path de lectura distinto al de su posición en el árbol, resuelto vía `pathFor(descriptor.key, ...)`)
-y **`freeze`** (`wireDescriptorField` deja de agregar el campo a `rawStores`, así que
-`refreshFields()` ya no vuelve a tocarlo).
+Esto es lo que permite **`freeze`**, algo que el nuevo motor no tiene: `wireDescriptorField` deja
+de agregar el campo a `rawStores`, así que `refreshFields()` ya no vuelve a tocarlo. `key` (el
+campo puede declarar un path de lectura distinto al de su posición en el árbol, resuelto vía
+`pathFor(descriptor.key, ...)`) sí tiene equivalente en el nuevo motor — ver más abajo.
 
 ### Nuevo: sin `Proxy`, un pipeline reactivo por campo (`Source → KeyStore → FieldStore`)
 
@@ -73,6 +73,11 @@ Sí se sigue reutilizando lo mismo de siempre para que un `Store` ya entregado a
 `create()` no se reemplace nunca: `buildNode()` construye el objeto de campos/grupos una única vez
 y ese mismo objeto (y cada `Store` dentro de él) es lo que `then()` termina resolviendo — no hay
 una "segunda pasada" que reconstruya nada.
+
+`key` (`numeric({ key: "PORT" })`) también se respeta al construir esa cadena: `resolveFieldPath()`
+— el equivalente directo del `pathFor()` del legado — sustituye la ruta de anidamiento del campo
+por el path explícito del `key` antes de pasárselo tanto a `keyStore()` como a `descriptor.reduce()`,
+así que el override es absoluto (ignora en qué grupo anidado vive el campo) igual que en el legado.
 
 ## Resolución de un campo: `parse()` vs `reduce()`
 
@@ -158,9 +163,10 @@ La diferencia de tipos que sí importa es la forma del nodo resultante:
 - **Código existente que ya usa `configs.create()`/`load()`**: sigue funcionando — está deprecado,
   no eliminado — pero no recibe features nuevas (no va a ganar, por ejemplo, `reduce()`-based
   resolution ni ningún cambio de este documento). Migrar tiene sentido cuando el código no depende
-  de lo que el nuevo motor no tiene: `key`, `freeze`, o los métodos de agregación en la raíz
-  (`.get()`/`.subscribe()`/`.close()`). Un grupo anidado con `sources` propias sí tiene equivalente
-  en el nuevo motor — embeber otro `create()` — así que eso solo no bloquea la migración.
+  de lo que el nuevo motor no tiene: `freeze`, o los métodos de agregación en la raíz
+  (`.get()`/`.subscribe()`/`.close()`). `key` y un grupo anidado con `sources` propias sí tienen
+  equivalente en el nuevo motor — `key` funciona igual, y para lo segundo se embebe otro `create()`
+  — así que ninguno de los dos bloquea, por sí solo, la migración.
 
 ## Ver también
 

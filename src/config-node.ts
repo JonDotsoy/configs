@@ -91,11 +91,19 @@ function keyStore(rawSources: Store<unknown>[], path: string[]): Store<unknown> 
   return store;
 }
 
+/** A field's explicit `key` override (if set) is an absolute path, taken as-is instead of `entryPath`. */
+function resolveFieldPath(descriptor: ConfigDescriptor<unknown, object>, entryPath: string[]): string[] {
+  const explicitKey = descriptor.key;
+  if (explicitKey === undefined) return entryPath;
+  return Array.isArray(explicitKey) ? explicitKey : [explicitKey];
+}
+
 /**
  * Recursively builds `shape` into a plain tree of `Store`s (leaves) and nested plain objects
  * (groups) — each leaf wired as its own independent `Source → KeyStore → FieldStore` chain:
- * `keyStore()` merges `rawSources` at that leaf's path, and `descriptor.reduce()` turns that into
- * the field's own live, parsed `Store`. A leaf only recomputes when a source at its own path
+ * `keyStore()` merges `rawSources` at that leaf's path (its own `key` override, if set, else its
+ * position in the shape tree — see `resolveFieldPath()`), and `descriptor.reduce()` turns that
+ * into the field's own live, parsed `Store`. A leaf only recomputes when a source at its own path
  * changes — there's no whole-tree recompute sweep.
  *
  * An embedded `create()` result (`isConfigsNode(entry)`) is adopted as-is instead: it already
@@ -114,7 +122,8 @@ function buildNode(
     const entry = shape[key]!;
     const entryPath = [...path, key];
     if (isConfigDescriptor(entry)) {
-      node[key] = entry.reduce(keyStore(rawSources, entryPath), entryPath);
+      const fieldPath = resolveFieldPath(entry, entryPath);
+      node[key] = entry.reduce(keyStore(rawSources, fieldPath), fieldPath);
     } else if (isConfigsNode(entry)) {
       embeddedReady.push(entry);
       node[key] = entry;

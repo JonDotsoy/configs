@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, spyOn, test } from "bun:test";
 import { create, isConfigsNode, type ConfigsNode, type ConfigsNodePending, type ConfigsShape, type Options } from "./config-node.ts";
 import { boolean, choice, numeric, shape, string, url } from "./config-descriptor.ts";
 import { ConfigError } from "./errors.ts";
+import { envSource } from "./sources/env.ts";
 import { Source } from "./sources/source.ts";
 import { Store, type ReadOnlyStore } from "./utils/store.ts";
 import { z } from "zod";
@@ -194,6 +195,43 @@ describe("create — embedding another create() result", () => {
 
     expectTypeOf(cfg.server.tls.cert).toEqualTypeOf<Store<string | null>>();
     expectTypeOf(cfg.server.tls.key).toEqualTypeOf<Store<string>>();
+  });
+});
+
+describe("create — key: reading a field from an explicit path", () => {
+  test("a field's key overrides its own shape position — create({ key: numeric({ key: \"PORT\" }) }) reads PORT, not \"key\"", async () => {
+    const cfg = await create({ key: numeric({ key: "PORT" }) }, { sources: [envSource({ env: { PORT: "4000" } })] });
+
+    expect(cfg.key.get()).toBe(4000);
+  });
+
+  test("key still resolves relative to the top level even when the field itself is nested", async () => {
+    const cfg = await create(
+      { server: { port: numeric({ key: "PORT" }) } },
+      { sources: [envSource({ env: { PORT: "4000", "server.port": "9999" } })] },
+    );
+
+    // "PORT" wins over the nested "server.port" — the shape's own nesting is ignored once `key` is set.
+    expect(cfg.server.port.get()).toBe(4000);
+  });
+
+  test("key works the same way inside an embedded create() — resolved against its own independent source only", async () => {
+    const server = create({ key: numeric({ key: "PORT" }) }, { sources: [envSource({ env: { PORT: "5000" } })] });
+
+    const cfg = await create(
+      { server },
+      {
+        sources: [
+          envSource({ env: { PORT: "9999" } }),
+          testSource({ server: { key: "1111" } }),
+        ],
+      },
+    );
+
+    // The embedded node's own PORT=5000 wins — never the outer PORT=9999, and never the nested
+    // testSource's server.key=1111 either, since the embedded node ignores the parent's sources
+    // entirely (see "create — embedding another create() result" above).
+    expect(cfg.server.key.get()).toBe(5000);
   });
 });
 
