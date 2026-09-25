@@ -80,7 +80,7 @@ interface UntaggedShapeFieldSchema<T> extends BaseFieldSchema {
  * Same shape as `ShapeFieldSchema<T>` — schema-based coercion, `schema` optional — tagged `"file"`
  * instead: what `file()` (`./node.js`) builds via `ConfigDescriptor`, so its `.type` reads "file"
  * (a `file()` field, not a generic shape) while going through the exact same schema-based
- * coercion path in `coerce()`.
+ * coercion path, `shapeParser()`.
  */
 interface FileFieldSchema<T> extends BaseFieldSchema {
   type: "file";
@@ -330,7 +330,7 @@ function shapeFailure(required: boolean | undefined, error: ConfigError): unknow
 }
 
 /** `string()`'s own `Parser<string>` — the coercion/validation rules a `"string"` field applies, including its own `pattern`. */
-function stringParser(options: StringFieldOptions): Parser<string> {
+export function stringParser(options: StringFieldOptions): Parser<string> {
   return (raw, path) => {
     if (typeof raw !== "string") typeMismatch("string", raw, path);
     if (options.pattern && !options.pattern.test(raw)) {
@@ -341,7 +341,7 @@ function stringParser(options: StringFieldOptions): Parser<string> {
 }
 
 /** `numeric()`'s own `Parser<number>` — a numeric-looking string is coerced, anything else is rejected. */
-function numberParser(_options: NumberFieldOptions): Parser<number> {
+export function numberParser(_options: NumberFieldOptions): Parser<number> {
   return (raw, path) => {
     if (typeof raw === "number") return raw;
     const num = Number(raw);
@@ -351,7 +351,7 @@ function numberParser(_options: NumberFieldOptions): Parser<number> {
 }
 
 /** `boolean()`'s own `Parser<boolean>` — `"true"`/`"1"` and `"false"`/`"0"` are coerced, anything else is rejected. */
-function booleanParser(_options: BooleanFieldOptions): Parser<boolean> {
+export function booleanParser(_options: BooleanFieldOptions): Parser<boolean> {
   return (raw, path) => {
     if (typeof raw === "boolean") return raw;
     if (raw === "true" || raw === "1") return true;
@@ -361,7 +361,7 @@ function booleanParser(_options: BooleanFieldOptions): Parser<boolean> {
 }
 
 /** `url()`'s own `Parser<URL>` — a string is parsed (and validated) into a `URL` instance; an already-`URL` value passes through as-is. */
-function urlParser(_options: UrlFieldOptions): Parser<URL> {
+export function urlParser(_options: UrlFieldOptions): Parser<URL> {
   return (raw, path) => {
     if (raw instanceof URL) return raw;
     if (typeof raw !== "string") typeMismatch("url", raw, path);
@@ -399,18 +399,3 @@ export function shapeParser<T>(options: { schema?: Parseable<T>; required?: bool
   };
 }
 
-/**
- * Coerces/validates `raw` (already resolved from some source) against `field`, by dispatching to
- * the same per-type `Parser<T>` (`stringParser`/`numberParser`/`booleanParser`/`urlParser`/
- * `shapeParser`) each builder hands its own `ConfigDescriptor` — this is what the deprecated
- * `{ type: "...", ... }` object-literal field form (and any other bare/untagged shape entry, via
- * `toFieldSchema()`) still goes through in `./config.types.js`'s legacy field engine, since it
- * never gets a `ConfigDescriptor`/`parser` of its own to call directly.
- */
-export function coerce(field: FieldSchema, raw: unknown, path: string[]): unknown {
-  if (field.type === "shape" || field.type === "file") return shapeParser(field, field.type)(raw, path);
-  if (field.type === "url") return urlParser(field)(raw, path);
-  if (field.type === "number") return numberParser(field)(raw, path);
-  if (field.type === "boolean") return booleanParser(field)(raw, path);
-  return stringParser(field as StringFieldSchema)(raw, path);
-}

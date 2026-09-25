@@ -2,14 +2,19 @@ import { Source } from "./sources/source.js";
 import { Store, type Subscriber, type Unsubscribe } from "./utils/store.js";
 import { ConfigError } from "./errors.js";
 import {
+  booleanParser,
   ConfigDescriptor,
-  coerce,
   isBareParseable,
   isConfigDescriptor,
+  numberParser,
+  shapeParser,
+  stringParser,
   toFieldSchema,
+  urlParser,
   type FieldSchema,
   type FieldType,
   type Parseable,
+  type StringFieldSchema,
 } from "./config-descriptor.js";
 
 export {
@@ -288,14 +293,30 @@ function resolvePath(schema: FieldSchema, basePath: string[], key: string): stri
 
 /**
  * Resolves `field`'s value from `sources` (in priority order): the first source whose snapshot
- * has a value at `path` wins, coerced/validated via `coerce()`; falls back to `field.default`,
- * else `null`. Drives `ConfigNodeState.resolveField`, the synchronous engine behind every
- * legacy (non-`ConfigDescriptor`) field, live or not.
+ * has a value at `path` wins, coerced/validated via `parseLegacyField()`; falls back to
+ * `field.default`, else `null`. Drives `ConfigNodeState.resolveField`, the synchronous engine
+ * behind every legacy (non-`ConfigDescriptor`) field, live or not.
  */
+/**
+ * Dispatches `field` to the matching per-type `Parser<T>` (`stringParser`/`numberParser`/
+ * `booleanParser`/`urlParser`/`shapeParser`, from `./config-descriptor.js`) — the same coercion
+ * rules every `ConfigDescriptor` runs via its own `parser`, just reached by `field.type` here
+ * since the legacy `{ type: "...", ... }` object-literal field form (and any other bare/untagged
+ * shape entry, via `toFieldSchema()`) never gets a `ConfigDescriptor`/`parser` of its own to call
+ * directly.
+ */
+function parseLegacyField(field: FieldSchema, raw: unknown, path: string[]): unknown {
+  if (field.type === "shape" || field.type === "file") return shapeParser(field, field.type)(raw, path);
+  if (field.type === "url") return urlParser(field)(raw, path);
+  if (field.type === "number") return numberParser(field)(raw, path);
+  if (field.type === "boolean") return booleanParser(field)(raw, path);
+  return stringParser(field as StringFieldSchema)(raw, path);
+}
+
 function resolveFieldValue(field: FieldSchema, sources: Store<any>[], path: string[]): unknown {
   const raw = resolveRawValue(sources, path);
   if (raw === undefined) return field.default !== undefined ? field.default : null;
-  return coerce(field, raw, path);
+  return parseLegacyField(field, raw, path);
 }
 
 /**
@@ -315,7 +336,7 @@ function resolveRawValue(sources: Store<any>[], path: string[]): unknown {
 /**
  * A genuine `ConfigDescriptor` instance's *synchronous* counterpart to what its own `.parse()`
  * eventually publishes — same default-then-parser logic, just run immediately (via `.parser`
- * directly, never through the legacy `coerce()`/`toFieldSchema()` dispatch) so a field backed by
+ * directly, never through the legacy `parseLegacyField()`/`toFieldSchema()` dispatch) so a field backed by
  * one is already correct the moment it's first read, not just once its `.parse()` promise settles
  * a microtask later. Only ever called for a real `ConfigDescriptor` (checked via `instanceof` in
  * `fieldFor`) — a hand-written custom descriptor (tag + `.parse()` only, no `.parser`) has no such
@@ -449,7 +470,7 @@ class ConfigNodeState<S extends SchemaShape> {
       if (isConfigDescriptor(node)) {
         // A ConfigDescriptor exposes its own `.key` directly — resolved via that, never through a
         // reconstructed FieldSchema. A real instance also has its own synchronous `.parser`, used
-        // directly (never through the generic `coerce()`/`toFieldSchema()` dispatch, which only
+        // directly (never through the generic `parseLegacyField()`/`toFieldSchema()` dispatch, which only
         // understands the built-in field types) — a hand-written custom descriptor (tag + `.parse()`
         // only) has no such synchronous path and starts at `null` until its `.parse()` resolves.
         const path = pathFor(node.key, this.basePath, key);
