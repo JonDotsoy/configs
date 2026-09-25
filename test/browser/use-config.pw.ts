@@ -22,7 +22,7 @@ test("useConfig picks up a store update pushed from outside React", async ({ pag
   await expect(page.getByTestId("banner-state")).toHaveText("active");
 });
 
-test("useConfig(cfg.foo) reads a configs.create() field before it resolves, then catches up", async ({
+test("useConfig(cfg.foo) reads a create() field before it resolves, then catches up", async ({
   page,
 }) => {
   await page.goto("/");

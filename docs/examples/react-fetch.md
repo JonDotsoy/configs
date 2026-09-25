@@ -13,16 +13,16 @@ the browser — see
 ## `App.tsx`
 
 ```tsx
-import { create } from "@jondotsoy/configs";
+import { create, boolean } from "@jondotsoy/configs";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 import { useConfig } from "@jondotsoy/configs/react";
 import { Temporal } from "temporal-polyfill";
 
 const cfg = await create(
   {
-    features: create({
-      promoService: { type: "boolean", summary: "enable the promo service", default: false },
-    }),
+    features: {
+      promoService: boolean({ summary: "enable the promo service", default: false }),
+    },
   },
   {
     sources: [
@@ -63,4 +63,4 @@ just republishes `cfg.features.promoService` in place.
 
 - [Verifying Google-signed JWTs against rotating keys](./jwt-auth.md) for
   another `fetchSource` + `pollingInterval` example, this time with a
-  `type: "shape"` field validated by a zod schema instead of a scalar type.
+  `shape()` field validated by a zod schema instead of a scalar type.

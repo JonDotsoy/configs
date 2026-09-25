@@ -47,6 +47,11 @@ try {
   await writeFile(keyPath, "-----BEGIN PRIVATE KEY-----");
   await writeFile(dotEnvPath, "LOG_LEVEL=debug\n");
 
+  const rootEnvSource = envSource({ env: { HOST: "example.com", PORT: "8080", LOG_LEVEL: "warn" } });
+  const rootFileSource = fileSource(dotEnvPath);
+  const featuresFetchSource = fetchSource({ url: featuresUrl });
+  const databasePullSource = pullSource({ pull: getDatabaseSecret, interval: 10 });
+
   const cfg = await create(
     {
       logLevel: choice({
@@ -56,8 +61,8 @@ try {
         key: "LOG_LEVEL",
       }),
       server: {
-        host: string({ summary: "bind host", default: "localhost", key: "HOST", freeze: true }),
-        port: numeric({ summary: "HTTP port", default: 3000, key: "PORT", freeze: true }),
+        host: string({ summary: "bind host", default: "localhost", key: "HOST" }),
+        port: numeric({ summary: "HTTP port", default: 3000, key: "PORT" }),
         tls: {
           cert: file({ summary: "TLS certificate", default: toFileURL(certPath) }),
           key: file({ summary: "TLS private key", default: toFileURL(keyPath) }),
@@ -79,7 +84,7 @@ try {
             sidebarCollapsed: boolean({ summary: "collapse the sidebar by default", default: false }),
           },
         },
-        { sources: [fetchSource({ url: featuresUrl })] },
+        { sources: [featuresFetchSource] },
       ),
       database: create(
         {
@@ -88,10 +93,10 @@ try {
           user: string({ summary: "db user" }),
           password: string({ summary: "db password" }),
         },
-        { sources: [pullSource({ pull: getDatabaseSecret, interval: 10 })] },
+        { sources: [databasePullSource] },
       ),
     },
-    { sources: [envSource({ env: { HOST: "example.com", PORT: "8080", LOG_LEVEL: "warn" } }), fileSource(dotEnvPath)] },
+    { sources: [rootEnvSource, rootFileSource] },
   );
 
   assert(
@@ -120,15 +125,17 @@ try {
     "a later pullSource round rotates the password, and .get() reflects it",
   );
 
-  await cfg.close();
+  await Promise.all([rootEnvSource.close(), rootFileSource.close(), featuresFetchSource.close(), databasePullSource.close()]);
 
   // Without a real LOG_LEVEL env var, the ./.env fileSource() fallback kicks in.
+  const fallbackEnvSource = envSource({ env: {} });
+  const fallbackFileSource = fileSource(dotEnvPath);
   const cfgNoEnvVar = await create(
     { logLevel: choice({ options: ["debug", "info", "warn", "error"], default: "info", key: "LOG_LEVEL" }) },
-    { sources: [envSource({ env: {} }), fileSource(dotEnvPath)] },
+    { sources: [fallbackEnvSource, fallbackFileSource] },
   );
   assert(cfgNoEnvVar.logLevel.get() === "debug", "with no real LOG_LEVEL set, the ./.env fileSource() fallback resolves logLevel");
-  await cfgNoEnvVar.close();
+  await Promise.all([fallbackEnvSource.close(), fallbackFileSource.close()]);
 } finally {
   await rm(dir, { recursive: true, force: true });
 }

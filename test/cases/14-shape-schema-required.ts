@@ -1,10 +1,11 @@
-// Case: a `"shape"` field with a custom `Parseable` schema. Fields resolve
-// lazily on first access — so a failed `required: true` field throws the
-// moment it's *read* (not when `configs.create()` itself resolves), while
-// the same failure on `required: false` is logged (via console.error) and
-// swallowed into `null` instead. No validation library needed: `Parseable<T>`
-// is just duck-typed as `{ parse(value: unknown): T }`.
-import { configs, literalSource } from "@jondotsoy/configs";
+// Case: a shape() field with a custom Parseable schema. Fields resolve
+// eagerly and reactively — so a failed `required: true` field rejects the
+// awaited create() call itself (thrown as soon as the bad value is parsed,
+// not deferred to whenever the field is next read), while the same failure
+// on `required: false` is logged (via console.error) and swallowed into
+// `null` instead. No validation library needed: `Parseable<T>` is just
+// duck-typed as `{ parse(value: unknown): T }`.
+import { create, literalSource, shape } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -18,27 +19,28 @@ const numberSchema = {
   },
 };
 
-const badSource = literalSource({ port: "not-a-number" });
+const badSource1 = literalSource({ port: "not-a-number" });
 
-const cfg1 = await configs.create({ port: { schema: numberSchema, required: true } }, { sources: [badSource] });
 let threw = false;
 try {
-  cfg1.port.get();
+  await create({ port: shape({ schema: numberSchema, required: true }) }, { sources: [badSource1] });
 } catch {
   threw = true;
 }
-assert(threw, "reading a required shape field throws once its schema fails to parse the source value");
+assert(threw, "awaiting create() rejects once a required shape field fails to parse the source value");
 
 const originalConsoleError = console.error;
 console.error = () => {};
 let cfg2Value: number | null;
+const badSource2 = literalSource({ port: "not-a-number" });
 try {
-  const cfg2 = await configs.create({ port: { schema: numberSchema, required: false } }, { sources: [badSource] });
+  const cfg2 = await create({ port: shape({ schema: numberSchema, required: false }) }, { sources: [badSource2] });
   cfg2Value = cfg2.port.get();
 } finally {
   console.error = originalConsoleError;
 }
 assert(cfg2Value === null, "the same failure on a non-required shape field is swallowed into null instead");
 
-await cfg1.close();
+await badSource1.close();
+await badSource2.close();
 console.log("ALL_CHECKS_PASSED");

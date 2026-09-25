@@ -1,8 +1,8 @@
 // Case: importing the root entry point (`@jondotsoy/configs`) exposes every
 // documented top-level export, under every supported engine.
 import {
-  configs,
   create,
+  load,
   envSource,
   fetchSource,
   fileSource,
@@ -20,8 +20,8 @@ function assert(cond: unknown, message: string): void {
   console.log("ok - " + message);
 }
 
-assert(typeof configs.create === "function", "configs.create is a function");
 assert(typeof create === "function", "create is exported from root");
+assert(typeof load === "function", "load is exported from root");
 assert(typeof envSource === "function", "envSource is exported from root");
 assert(typeof fetchSource === "function", "fetchSource is exported from root");
 assert(typeof fileSource === "function", "fileSource is exported from root");

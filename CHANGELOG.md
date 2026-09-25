@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed — BREAKING: new `create()`/`load()` engine, legacy engine removed
+
+`src/config-node.ts`'s `create()` is now what `create`/`load` (from the package root) build on —
+replacing the old `src/config.types.ts` engine entirely, which has been deleted along with
+everything that only made sense for it. This is a breaking change: read through if you use
+`configs.create()`, object-literal fields (`{ type: "string", ... }`), a bare schema/`{ schema }`
+shape shorthand, `freeze`, or the root's `.get()`/`.subscribe()`/`.close()`.
+
+- **`create(shape, options?)` / `load(shape, options?)`** are exported from the package root as
+  before, now backed by the new engine. Given a shape of `ConfigDescriptor`s (e.g. `{ port:
+  numeric() }`), the returned object exposes each leaf key as a live `Store` directly — no `Proxy`.
+  A plain nested object in the shape (`{ server: { port: numeric() } }`) becomes a nested group of
+  `Store`s of its own, resolved from each source's own matching nested path; a shape entry can
+  also be **another, separate `create()` call** (`{ server: { tls: create({ cert: string() }, {
+  sources: [...] }) } }`), adopted as-is — it resolves independently from its own `sources`, never
+  looked up against the parent's, and the parent's own `then()` also waits for it (`isConfigsNode`,
+  also exported, tells the two apart). `key` (`numeric({ key: "PORT" })`) still works the same as
+  before: an explicit, absolute path override. The returned object is `then`able: `await`ing it
+  resolves once every source (including every embedded `create()`'s own) has published its first
+  snapshot, into the same plain shape (no longer `then`able).
+
+  Internally, each leaf field is its own independent reactive chain — `Source → KeyStore →
+  FieldStore` — instead of one global recompute sweep over the whole shape on every change: each
+  `options.sources` entry gets a placeholder `Store`, wired into every field it could resolve from
+  the moment `create()` is called; once that source's own `open()` resolves, its value (and every
+  later update) forwards into the placeholder and ripples through only the fields whose path it
+  can affect.
+- **`ConfigDescriptor.reduce(rawStore, path?)`**: what every field's live `Store` is now built
+  from. Takes a live `Store<unknown>` and returns a live `Store<T>` that recomputes on every
+  `rawStore` change — falling back to `options.default` when raw is missing, else running it
+  through the field's own `parser` — synchronously, with no `Promise` to await. Available on every
+  descriptor built by `string()`/`numeric()`/`boolean()`/`url()`/`shape()`/`choice()` (and
+  `file()`, from `./node.js`), since it lives on the shared `ConfigDescriptor` base class.
+
+### Removed
+
+- **The legacy `configs.create()` engine (`src/config.types.ts`) is gone**, along with the
+  `configs` namespace object that exposed it. Use `create()`/`load()` from the package root
+  instead — same names, new engine (see above).
+- **Object-literal fields (`{ type: "string", ... }` and friends) are no longer accepted** — only
+  `string()`/`numeric()`/`boolean()`/`url()`/`choice()`/`shape()` (or a hand-built
+  `ConfigDescriptor`). Likewise, a bare schema used directly as a shape entry (`port: z.number()`)
+  and the untagged `{ schema: z.number() }` shorthand are no longer accepted — wrap them in
+  `shape({ schema: ... })`.
+- **The root node's `.get()`, `.subscribe()`, `.listen()`, `.close()`, and `[Symbol.asyncDispose]`
+  are gone** — the new engine's node only ever exposes the shape's own fields, nothing else. To
+  read a snapshot of the whole tree, walk it yourself; to close a `Source`, call `.close()` on the
+  `Source` instance itself (`create()` never retains it for that).
+- **`ConfigDescriptor.parse()` is gone** — it was a `Promise`-wrapping shim kept only for the now-
+  deleted legacy engine. Call `.reduce()` directly instead (see above) — same behavior,
+  synchronous, no `Promise` to await.
+- `freeze` is still a recognized field option (kept for now, to limit the size of this change) but
+  has no effect: no remaining engine acts on it.
+
 ## [1.2.6] - 2026-09-25
 
 ### Changed

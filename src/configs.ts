@@ -1,35 +1,20 @@
-import { createConfigNode } from "./config.types.js";
-import type { configs as ConfigsApi, CreateOptions, PendingConfigNode, SchemaShape } from "./config.types.js";
+import { create as createConfigsNode, type ConfigsNodePending, type ConfigsShape, type Options } from "./config-node.js";
 import { envSource } from "./sources/env.js";
 
-export type {
-  ConfigNode,
-  CreateOptions,
-  InferReadOnlyAccessors,
-  InferShape,
-  PendingConfigNode,
-  ReadOnlyStore,
-  SchemaGroup,
-  SchemaNode,
-  SchemaShape,
-} from "./config.types.js";
+export type { ConfigsNode, ConfigsNodePending, ConfigsShape, Options } from "./config-node.js";
 export type {
   BooleanFieldOptions,
-  BooleanFieldSchema,
   ChoiceFieldOptions,
-  FieldSchema,
   FieldType,
   NumberFieldOptions,
-  NumberFieldSchema,
   Parseable,
   Parser,
   ShapeFieldOptions,
   StringFieldOptions,
-  StringFieldSchema,
   UrlFieldOptions,
-  UrlFieldSchema,
 } from "./config-descriptor.js";
 export type { SourceControl, UnderlyingSource } from "./types/index.js";
+export type { ReadOnlyStore } from "./utils/store.js";
 export type { DataType, DataTypeName } from "./utils/data-types.js";
 export type { EnvSourceOptions, EnvKeyMapper } from "./sources/env.js";
 export type { FetchSourceOptions, FetchedEvent } from "./sources/fetch.js";
@@ -46,17 +31,14 @@ export { fileSource } from "./sources/file.js";
 export { literalSource } from "./sources/literal.js";
 export { pullSource } from "./sources/pull.js";
 export { shellSource } from "./sources/shell.js";
-export { boolean, choice, CONFIG_DESCRIPTOR_TAG, ConfigDescriptor, numeric, shape, string, url } from "./config-descriptor.js";
+export { boolean, choice, CONFIG_DESCRIPTOR_TAG, ConfigDescriptor, numeric, shape, string, url, isConfigDescriptor } from "./config-descriptor.js";
+export { isConfigsNode } from "./config-node.js";
 export { Store } from "./utils/store.js";
 export { DataTypes } from "./utils/data-types.js";
 export { DotEnv } from "./utils/dotenv.js";
 export { ConfigError } from "./errors.js";
 
-export const configs: ConfigsApi = {
-  create: createConfigNode,
-};
-
-export const create: ConfigsApi["create"] = createConfigNode;
+export const create: typeof createConfigsNode = createConfigsNode;
 
 /**
  * Same as `create()`, except it defaults `options.sources` to `[envSource()]` instead of `[]` —
@@ -64,8 +46,6 @@ export const create: ConfigsApi["create"] = createConfigNode;
  * `process.env`. Passing an explicit `sources` array overrides that default entirely (it isn't
  * merged with `envSource()`) and `load()` then behaves exactly like `create()`.
  */
-export function load<S extends SchemaShape>(shape: S, options: CreateOptions = {}): PendingConfigNode<S> {
-  return createConfigNode(shape, { ...options, sources: options.sources ?? [envSource()] });
+export function load<S extends ConfigsShape>(shape: S, options: Options = {}): ConfigsNodePending<S> {
+  return createConfigsNode(shape, { ...options, sources: options.sources ?? [envSource()] });
 }
-
-export default configs;

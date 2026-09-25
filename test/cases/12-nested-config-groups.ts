@@ -1,7 +1,6 @@
-// Case: nested config groups — a shape built from `configs.create()` calls
-// embedded inside another `configs.create()`'s shape — resolve fields at
-// every depth and close() cascades into every nested source.
-import { configs, literalSource } from "@jondotsoy/configs";
+// Case: nested config groups — plain nested objects in create()'s shape,
+// several levels deep — resolve fields at every depth from the same source.
+import { create, literalSource, string } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -10,12 +9,12 @@ function assert(cond: unknown, message: string): void {
 
 const source = literalSource({ database: { host: "db.internal", credentials: { user: "root" } } });
 
-const cfg = await configs.create(
+const cfg = await create(
   {
-    database: configs.create({
-      host: { type: "string" },
-      credentials: configs.create({ user: { type: "string" } }),
-    }),
+    database: {
+      host: string(),
+      credentials: { user: string() },
+    },
   },
   { sources: [source] },
 );
@@ -23,5 +22,5 @@ const cfg = await configs.create(
 assert(cfg.database.host.get() === "db.internal", "a first-level nested field resolves");
 assert(cfg.database.credentials.user.get() === "root", "a second-level nested field resolves");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");

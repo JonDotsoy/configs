@@ -17,7 +17,9 @@ no bundler other than `bun build`). Distributed as ESM only.
 
 ```
 src/
-  configs.ts              # public API: configs.create(), ConfigNode, ConfigField
+  configs.ts              # public API: re-exports create()/load() from config-node.ts, plus builders/sources
+  config-node.ts           # create()/load()'s engine: ConfigsNode, ConfigsShape, isConfigsNode
+  config-descriptor.ts      # ConfigDescriptor, string()/numeric()/boolean()/url()/choice()/shape()
   errors.ts                # ConfigError
   sources/
     source.ts           # Source base class (start/close contract)
@@ -66,8 +68,8 @@ aren't built into `dist/`, so they're exempt.
 The pluggable-input concept is named `Source`: base class `Source`, factory
 functions `envSource()`/`fetchSource()`/`sseSource()`/`fileSource()`, options
 types `EnvSourceOptions`/`FetchSourceOptions`/`SseSourceOptions`/`FileSourceOptions`,
-folder `src/sources/`, and the `CreateOptions.sources` array passed to
-`configs.create()`.
+folder `src/sources/`, and the `Options.sources` array passed to
+`create()`.
 
 When adding a new source, follow the existing shape:
 
@@ -156,12 +158,19 @@ node/bun/deno-only in the manifest only when it genuinely needs a Node API
 
 ### Types-first development mode
 
-When reshaping a public API (e.g. a new `configs.create()` return shape),
+> Historical note: the gotchas below were hit building `src/config.types.ts`,
+> the legacy `configs.create()` engine — since deleted in favor of the
+> current `create()`/`load()` engine in `src/config-node.ts`. The technique
+> and the gotchas themselves still apply to any similarly-shaped public API
+> reshape; only the specific file/type names below (`config.types.ts`,
+> `ConfigNode`, `SchemaGroup`, ...) are no longer real files in this repo.
+
+When reshaping a public API (e.g. a new `create()` return shape),
 design the type surface before touching the runtime:
 
-1. Write the new types in a standalone file (e.g. `src/config.types.ts`),
-   without editing the runtime module (`configs.ts` can stay empty/unchanged
-   during this phase).
+1. Write the new types in a standalone file, without editing the runtime
+   module that will eventually implement them (it can stay
+   empty/unchanged during this phase).
 2. Update only the spec file's imports and `expectTypeOf(...)` assertions to
    match the new surface — leave its `expect(...)` runtime assertions as the
    target behavior to implement later.
@@ -236,15 +245,16 @@ test("hello world", () => {
 
 Use `expectTypeOf` for compile-time type assertions — e.g. checking that a
 config field narrows from `T | null` to `T` once a `default` is set, or that
-`configs.create(...)` returns the right accessor shape. It only checks types
+`create(...)` returns the right accessor shape. It only checks types
 and never runs at runtime, so it still needs a real `test()`/`expect()` to
 make the file count as a test:
 
 ```ts
 import { expectTypeOf, test } from "bun:test";
+import { create, numeric } from "@jondotsoy/configs";
 
 test("port narrows to number when a default is set", () => {
-  const cfg = configs.create({ port: { type: "number", default: 3000 } });
+  const cfg = create({ port: numeric({ default: 3000 }) });
   expectTypeOf(cfg.port.get()).toEqualTypeOf<number>();
 });
 ```

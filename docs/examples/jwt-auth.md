@@ -5,17 +5,17 @@ Google rotates its OAuth2 signing keys every few hours. `fetchSource` with
 process always verifies against current keys without a redeploy.
 
 The JWKS response is an array of key objects, not a scalar
-`string`/`number`/`boolean`. `configs.create()`'s `type: "shape"` field
-covers exactly that: `schema` takes anything shaped like a validation
-library's schema (`{ parse(value): T }` — zod, valibot, superstruct, ...)
-and the field's value comes out typed as whatever that schema parses to.
-The response is already shaped as `{ keys: [...] }`, so the field is
-just named `keys` to match — no `treePath` needed.
+`string`/`number`/`boolean`. `shape()` covers exactly that: `schema` takes
+anything shaped like a validation library's schema (`{ parse(value): T }` —
+zod, valibot, superstruct, ...) and the field's value comes out typed as
+whatever that schema parses to. The response is already shaped as `{ keys:
+[...] }`, so the field is just named `keys` to match — no `treePath`
+needed.
 
 ## `auth.ts`
 
 ```ts
-import { create } from "@jondotsoy/configs";
+import { create, shape } from "@jondotsoy/configs";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 import { decodeProtectedHeader, importJWK, jwtVerify } from "jose";
 import { Temporal } from "temporal-polyfill";
@@ -33,7 +33,7 @@ const googleJwksSchema = z.array(googleJwkSchema);
 
 const cfg = await create(
   {
-    keys: { type: "shape", schema: googleJwksSchema, required: true },
+    keys: shape({ schema: googleJwksSchema, required: true }),
   },
   {
     sources: [
@@ -91,18 +91,20 @@ Cache-Control: public, max-age=21600, must-revalidate, no-transform
 ```
 
 `await create(...)` waits for the first fetch round before `cfg` is used.
-`required: true` on `keys` doesn't stop a bad response from resolving —
-it changes what happens when code actually reads the field: a response
-`googleJwksSchema` can't parse resolves `keys` to `null` and only logs a
-`console.error`, but `required: true` makes `cfg.keys.get()` itself throw
-a `ConfigError` in that case, so `verifyGoogleIdToken` never silently
-treats a broken JWKS as "no keys". `cfg.keys.get()` comes back typed as
-`z.infer<typeof googleJwksSchema>`, inferred straight from the schema.
-Every subsequent poll (hourly here) re-validates the response and
-republishes `keys` in place.
+Without `required: true`, a response `googleJwksSchema` can't parse would
+just resolve `keys` to `null` and log a `console.error`; `required: true`
+escalates that into a thrown `ConfigError` instead — thrown as soon as the
+bad response is parsed (the initial fetch, or any later poll), not deferred
+to whenever `cfg.keys.get()` is next called, so `verifyGoogleIdToken` never
+silently treats a broken JWKS as "no keys": either the first `await
+create(...)` itself rejects, or (on a later poll) the rejection surfaces
+wherever that update was being awaited/subscribed to. `cfg.keys.get()`
+comes back typed as `z.infer<typeof googleJwksSchema>`, inferred straight
+from the schema. Every subsequent poll (hourly here) re-validates the
+response and republishes `keys` in place.
 
 ## See also
 
 - [React: polling a remote feature-flag endpoint](./react-fetch.md) for
   another `fetchSource` + `pollingInterval` example, this time with a
-  plain `boolean` field instead of a `"shape"` schema.
+  plain `boolean()` field instead of a `shape()` schema.

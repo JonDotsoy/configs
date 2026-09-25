@@ -15,7 +15,7 @@ browser, Node.js, and Bun.
 
 ## Isomorphism
 
-The core of the package is runtime-agnostic: `configs`, `Source`,
+The core of the package is runtime-agnostic: `create`, `Source`,
 `envSource`, `fetchSource`, `sseSource`, and `literalSource` don't depend on
 any Node.js-specific API, so they run the same in the browser, Node.js,
 Bun, or Deno.
@@ -58,11 +58,11 @@ npm install @jondotsoy/configs
 ```
 
 ```ts
-import { configs } from "@jondotsoy/configs";
+import { create, numeric } from "@jondotsoy/configs";
 import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
 
-const cfg = await configs.create(
-  { server: configs.create({ port: { type: "number", default: 3000 } }) },
+const cfg = await create(
+  { server: { port: numeric({ default: 3000 }) } },
   { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
 );
 
@@ -91,11 +91,11 @@ bun add @jondotsoy/configs
 ```
 
 ```ts
-import { configs } from "@jondotsoy/configs";
+import { create, numeric } from "@jondotsoy/configs";
 import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
 
-const cfg = await configs.create(
-  { server: configs.create({ port: { type: "number", default: 3000 } }) },
+const cfg = await create(
+  { server: { port: numeric({ default: 3000 }) } },
   { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
 );
 

@@ -1,7 +1,7 @@
 // Case: envSource + mapKey.snakeCase, against an explicit `env` object
 // (rather than process.env) so the same script runs unmodified in a browser,
 // which has no process.env.
-import { configs, envSource, mapKey } from "@jondotsoy/configs";
+import { create, envSource, mapKey, numeric, string } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -13,13 +13,13 @@ const source = envSource({
   mapKey: mapKey.snakeCase(),
 });
 
-const cfg = await configs.create(
-  { server: configs.create({ port: { type: "number" }, host: { type: "string" } }) },
+const cfg = await create(
+  { server: { port: numeric(), host: string() } },
   { sources: [source] },
 );
 
 assert(cfg.server.port.get() === 8080, "SERVER_PORT maps to server.port via snakeCase");
 assert(cfg.server.host.get() === "example.com", "SERVER_HOST maps to server.host via snakeCase");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");

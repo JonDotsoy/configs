@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
-import { configs, Source } from "./configs";
+import { create, Source } from "./configs";
+import { boolean } from "./config-descriptor";
 import { Store } from "./utils/store";
 import { useConfig } from "./react";
 
@@ -61,7 +62,7 @@ describe("useConfig", () => {
   });
 });
 
-describe("useConfig with configs.create()", () => {
+describe("useConfig with create()", () => {
   test("reads cfg.foo immediately, without awaiting cfg, and catches up once its source resolves", async () => {
     let resolveStart: () => void;
     const started = new Promise<void>((resolve) => {
@@ -75,7 +76,7 @@ describe("useConfig with configs.create()", () => {
       },
     });
 
-    const cfg = configs.create({ foo: { type: "boolean", required: true } }, { sources: [source] });
+    const cfg = create({ foo: boolean({ required: true }) }, { sources: [source] });
     const renders: (boolean | null)[] = [];
 
     act(() => {

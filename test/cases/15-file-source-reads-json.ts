@@ -6,7 +6,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configs, fileSource } from "@jondotsoy/configs";
+import { create, fileSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -20,11 +20,11 @@ try {
   await writeFile(filePath, JSON.stringify({ port: 6060 }));
 
   const source = fileSource<{ port: number }>(filePath, { watch: false });
-  const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+  const cfg = await create({ port: numeric() }, { sources: [source] });
 
   assert(cfg.port.get() === 6060, "fileSource reads and parses a JSON file from disk");
 
-  await cfg.close();
+  await source.close();
 } finally {
   await rm(dir, { recursive: true, force: true });
 }

@@ -3,7 +3,7 @@
 // so a browser bundle stubs it out (see manifest.ts's tolerateFailureEngines
 // for this case) — run there anyway to document the breakage instead of
 // skipping it, same as fileSource's node:fs case (15).
-import { configs, shellSource } from "@jondotsoy/configs";
+import { create, shellSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -11,9 +11,9 @@ function assert(cond: unknown, message: string): void {
 }
 
 const source = shellSource<{ port: number }>(["echo", JSON.stringify({ port: 7070 })]);
-const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+const cfg = await create({ port: numeric() }, { sources: [source] });
 
 assert(cfg.port.get() === 7070, "shellSource runs a command and parses its stdout as JSON");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");

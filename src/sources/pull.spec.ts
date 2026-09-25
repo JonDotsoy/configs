@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { configs } from "../configs";
+import { create } from "../configs";
+import { numeric } from "../config-descriptor";
 import type { CounterMetric, HistogramMetric } from "../utils/metric";
 import { pullSource } from "./pull";
 
@@ -163,10 +164,10 @@ describe("pullSource", () => {
       const store = await source.open();
       expect(store.get()).toEqual({ port: 3000 });
 
-      const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+      const cfg = await create({ port: numeric() }, { sources: [source] });
       expect(cfg.port.get()).toBe(3000);
 
-      await cfg.close();
+      await source.close();
     });
 
     test("a well-formed class instance resolves the matching field", async () => {
@@ -178,10 +179,10 @@ describe("pullSource", () => {
       expect(store.get()).toBeInstanceOf(MyInstance);
       expect(store.get()).toEqual(new MyInstance(3000));
 
-      const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+      const cfg = await create({ port: numeric() }, { sources: [source] });
       expect(cfg.port.get()).toBe(3000);
 
-      await cfg.close();
+      await source.close();
     });
 
     test("a Proxy wrapping a well-formed object resolves the matching field", async () => {
@@ -193,10 +194,10 @@ describe("pullSource", () => {
       const store = await source.open();
       expect(store.get()).toEqual({ port: 3000 });
 
-      const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+      const cfg = await create({ port: numeric() }, { sources: [source] });
       expect(cfg.port.get()).toBe(3000);
 
-      await cfg.close();
+      await source.close();
     });
 
     test("a Proxy with a custom `get` trap is read the same as a plain object", async () => {
@@ -210,10 +211,10 @@ describe("pullSource", () => {
         interval: 1000,
       });
 
-      const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+      const cfg = await create({ port: numeric() }, { sources: [source] });
       expect(cfg.port.get()).toBe(3000);
 
-      await cfg.close();
+      await source.close();
     });
 
     test("a wrongly-cased key is published as-is but doesn't resolve the field", async () => {
@@ -225,11 +226,11 @@ describe("pullSource", () => {
       // pullSource does no validation — whatever `pull` returns is published verbatim.
       expect(store.get()).toEqual({ Port: 3000 });
 
-      // configs.create looks up fields by exact key, so a mismatched case never resolves.
-      const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+      // create() looks up fields by exact key, so a mismatched case never resolves.
+      const cfg = await create({ port: numeric() }, { sources: [source] });
       expect(cfg.port.get()).toBeNull();
 
-      await cfg.close();
+      await source.close();
     });
 
     test("a wrongly-cased key falls back to the field's default instead of the mismatched value", async () => {
@@ -238,13 +239,13 @@ describe("pullSource", () => {
         interval: 1000,
       });
 
-      const cfg = await configs.create(
-        { port: { type: "number", default: 8080 } },
+      const cfg = await create(
+        { port: numeric({ default: 8080 }) },
         { sources: [source] },
       );
       expect(cfg.port.get()).toBe(8080);
 
-      await cfg.close();
+      await source.close();
     });
 
     test("a `pull` that throws leaves the field at its default instead of failing the config", async () => {
@@ -257,15 +258,15 @@ describe("pullSource", () => {
         interval: 1000,
       });
 
-      const cfg = await configs.create(
-        { port: { type: "number", default: 8080 } },
+      const cfg = await create(
+        { port: numeric({ default: 8080 }) },
         { sources: [source] },
       );
 
       expect(cfg.port.get()).toBe(8080);
       expect(errorSpy).toHaveBeenCalledTimes(1);
 
-      await cfg.close();
+      await source.close();
       errorSpy.mockRestore();
     });
 
@@ -279,12 +280,12 @@ describe("pullSource", () => {
         interval: 1000,
       });
 
-      const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+      const cfg = await create({ port: numeric() }, { sources: [source] });
 
       expect(cfg.port.get()).toBeNull();
       expect(errorSpy).toHaveBeenCalledTimes(1);
 
-      await cfg.close();
+      await source.close();
       errorSpy.mockRestore();
     });
   });

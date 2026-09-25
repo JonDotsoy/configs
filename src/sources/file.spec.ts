@@ -3,7 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { configs } from "../configs";
+import { create } from "../configs";
+import { numeric, string } from "../config-descriptor";
 import type { CounterMetric, HistogramMetric } from "../utils/metric";
 import { fileSource } from "./file";
 
@@ -665,12 +666,12 @@ describe("fileSource", () => {
     });
   });
 
-  test("wires into configs.create as a source", async () => {
+  test("wires into create() as a source", async () => {
     const path = join(dir, "config.json");
     await Bun.write(path, JSON.stringify({ port: 3000, host: "localhost" }));
 
-    const cfg = await configs.create(
-      { port: { type: "number", required: true }, host: { type: "string", required: true } },
+    const cfg = await create(
+      { port: numeric({ required: true }), host: string({ required: true }) },
       { sources: [fileSource(path, { watch: false })] },
     );
 

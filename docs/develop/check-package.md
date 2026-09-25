@@ -31,11 +31,11 @@ Casos a probar en cada entorno:
 - **Instalación real** de la última versión publicada en npm (`npm add @jondotsoy/configs`
   / `bun add @jondotsoy/configs` / `deno add npm:@jondotsoy/configs`), tal como lo haría
   un consumidor — no resolución desde `src/` ni desde el workspace del monorepo.
-- **Import del core**: `import { configs, envSource, ... } from "@jondotsoy/configs"`.
+- **Import del core**: `import { create, envSource, ... } from "@jondotsoy/configs"`.
 - **Import de subpaths de `sources/*`**: cada entrada pública del mapa `exports` de
   `package.json` — hoy `./sources/env`, `./sources/fetch`, `./sources/sse`,
   `./sources/file`, `./sources/literal` — resuelve de forma independiente.
-- **Caso de uso funcional**: `configs.create(...)` con un `envSource()` real, leyendo
+- **Caso de uso funcional**: `create(...)` con un `envSource()` real, leyendo
   una variable de entorno y devolviendo el valor esperado (no solo que el import no
   explote).
 - **Tipado**: los `.d.ts` publicados en `dist/` resuelven y type-checkean con
@@ -64,7 +64,7 @@ como `test.ts` en cada paso que lo pida:
 - [ ] **Deno** — `deno add npm:@jondotsoy/configs`, `deno check test.ts` y
       `deno run --allow-env test.ts` ([detalle](#deno)).
 - [ ] **Bundler de navegador** — `bun build entry.ts --outdir out --target browser`
-      y `vite build` sobre el caso limpio (`configs` + `literalSource`, sin
+      y `vite build` sobre el caso limpio (`create` + `literalSource`, sin
       `fileSource`); debe bundlear sin error en ambos ([detalle](#bundlers-de-navegador-bun-build---target-browser--vite)).
 - [ ] **Subpaths** — al menos un import de `sources/*` (`envSource`, `fetchSource`,
       `sseSource`, `fileSource` o `literalSource`) resuelto desde su propio subpath,
@@ -81,20 +81,20 @@ entender la causa — ver la sección de cada entorno para el paso a paso comple
 
 Este es el snippet de referencia que se reutiliza en los tres entornos (ver
 [Estrategia por entorno](#estrategia-por-entorno)). Cubre import del core, import de
-un subpath de `sources/*`, un `configs.create(...)` real con `envSource`, y que el
+un subpath de `sources/*`, un `create(...)` real con `envSource`, y que el
 tipo de retorno de `.get()` se infiera correctamente (`number` porque hay `default`,
 `string | null` porque no lo hay):
 
 ```ts
-import { configs, envSource, mapKey } from "@jondotsoy/configs";
+import { create, envSource, mapKey, numeric, string } from "@jondotsoy/configs";
 import { envSource as envSourceFromSubpath } from "@jondotsoy/configs/sources/env";
 
-const cfg = await configs.create(
+const cfg = await create(
   {
-    server: configs.create({
-      port: { type: "number", default: 3000 },
-      host: { type: "string" },
-    }),
+    server: {
+      port: numeric({ default: 3000 }),
+      host: string(),
+    },
   },
   { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
 );
@@ -116,7 +116,7 @@ en cualquier entorno:
 
 ```js
 // check-imports.mjs
-import { configs, envSource, literalSource, mapKey, Source, ConfigError } from "@jondotsoy/configs";
+import { create, envSource, literalSource, mapKey, numeric, Source, ConfigError } from "@jondotsoy/configs";
 import { envSource as envSourceFromSubpath } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
@@ -126,7 +126,7 @@ function assert(cond, message) {
   console.log("ok - " + message);
 }
 
-assert(typeof configs.create === "function", "configs.create is a function");
+assert(typeof create === "function", "create is a function");
 assert(typeof envSource === "function", "envSource exported from root");
 assert(typeof mapKey.snakeCase === "function", "mapKey.snakeCase exported from root");
 assert(typeof literalSource === "function", "literalSource exported from root");
@@ -137,14 +137,14 @@ assert(typeof fetchSource === "function", "fetchSource exported from /sources/fe
 assert(typeof sseSource === "function", "sseSource exported from /sources/sse");
 
 const source = envSource({ mapKey: mapKey.snakeCase() });
-const cfg = await configs.create(
-  { server: configs.create({ port: { type: "number", summary: "HTTP port", default: 3000 } }) },
+const cfg = await create(
+  { server: { port: numeric({ summary: "HTTP port", default: 3000 }) } },
   { sources: [source] },
 );
 
 assert(cfg.server.port.get() === 4000, "cfg.server.port.get() reads SERVER_PORT=4000 via envSource");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -264,14 +264,14 @@ mkdir -p /tmp/check-browser && cd /tmp/check-browser
 npm add @jondotsoy/configs
 ```
 
-**Caso limpio** (`configs` + `literalSource`, sin ningún import de `sources/*` que
+**Caso limpio** (`create` + `literalSource`, sin ningún import de `sources/*` que
 toque Node) — `entry.ts`:
 
 ```ts
-import { configs, literalSource } from "@jondotsoy/configs";
+import { create, literalSource, numeric } from "@jondotsoy/configs";
 
-const cfg = await configs.create(
-  { server: configs.create({ port: { type: "number", default: 3000 } }) },
+const cfg = await create(
+  { server: { port: numeric({ default: 3000 }) } },
   { sources: [literalSource({ server: { port: 9090 } })] },
 );
 console.log(cfg.server.port.get());
@@ -296,10 +296,10 @@ porque `node:fs` está en el mismo archivo bundleado, tree-shaking aparte.
 **Caso con `fileSource`** — mismo `entry.ts` pero importando y usando `fileSource`:
 
 ```ts
-import { configs, fileSource } from "@jondotsoy/configs";
+import { create, fileSource, numeric } from "@jondotsoy/configs";
 
-const cfg = await configs.create(
-  { server: configs.create({ port: { type: "number", default: 3000 } }) },
+const cfg = await create(
+  { server: { port: numeric({ default: 3000 }) } },
   { sources: [fileSource({ path: "./config.json" })] },
 );
 ```
@@ -321,10 +321,10 @@ en el navegador. Probado importando desde la raíz y desde el subpath dedicado:
 
 ```ts
 // (a) desde la raíz
-import { configs, fetchSource } from "@jondotsoy/configs";
+import { create, fetchSource, numeric } from "@jondotsoy/configs";
 
-const cfg = await configs.create(
-  { server: configs.create({ port: { type: "number", default: 3000 } }) },
+const cfg = await create(
+  { server: { port: numeric({ default: 3000 }) } },
   { sources: [fetchSource({ url: "https://example.com/config.json" })] },
 );
 console.log(cfg.server.port.get());
@@ -374,6 +374,6 @@ Como mínimo:
 bun test
 ```
 
-Si el cambio toca tipos públicos o algo en `src/sources/*`/`src/config.types.ts`,
+Si el cambio toca tipos públicos o algo en `src/sources/*`/`src/config-node.ts`,
 sumar el chequeo manual de tipado en al menos Node (es el runtime con la resolución
 de módulos más estricta) antes de subir la versión.
