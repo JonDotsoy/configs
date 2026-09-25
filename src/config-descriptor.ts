@@ -323,7 +323,11 @@ function typeMismatch(type: FieldType, value: unknown, path: string[]): never {
  * doesn't have it. Only an explicit `required: true` escalates that failure into a thrown
  * `ConfigError`.
  */
-function shapeFailure(required: boolean | undefined, error: ConfigError): unknown {
+/**
+ * Exported so any field type whose `Parser<T>` needs the same "log unless `required`" rule (e.g.
+ * `file()`'s own `fileParser`, in `./node.js`) doesn't have to reimplement it.
+ */
+export function shapeFailure(required: boolean | undefined, error: ConfigError): unknown {
   if (required) throw error;
   console.error(error);
   return null;
