@@ -1,6 +1,7 @@
-import { describe, expect, expectTypeOf, test } from "bun:test";
+import { describe, expect, expectTypeOf, spyOn, test } from "bun:test";
 import { create, type ConfigsNode, type ConfigsNodePending, type ConfigsShape, type Options } from "./config-node.ts";
 import { boolean, choice, numeric, shape, string, url } from "./config-descriptor.ts";
+import { ConfigError } from "./errors.ts";
 import { Source } from "./sources/source.ts";
 import { Store, type ReadOnlyStore } from "./utils/store.ts";
 import { z } from "zod";
@@ -12,6 +13,18 @@ function testSource<T>(value: T): Source<T> {
       control.close();
     },
   });
+}
+
+/** A `Source` that never closes, so `push()` can publish further snapshots after `open()` resolves. */
+function liveTestSource<T>(initial: T): { source: Source<T>; push: (value: T) => void } {
+  let push: (value: T) => void = () => {};
+  const source = new Source<T>({
+    start(control) {
+      control.set(initial);
+      push = (value: T) => control.set(value);
+    },
+  });
+  return { source, push: (value: T) => push(value) };
 }
 
 describe("create", () => {
@@ -187,5 +200,205 @@ describe("types — ConfigsNode / ConfigsNodePending / Options", () => {
 
     const cfg = create(shape);
     expectTypeOf(cfg.server.tls).toEqualTypeOf<{ cert: Store<string | null>; key: Store<string | null> }>();
+  });
+});
+
+describe("create — deep nesting (mirrors the legacy engine's multi-level merge tests)", () => {
+  test("resolves a field 7 levels deep, matched against the same nested path in the source's snapshot", async () => {
+    const treeShape = {
+      foo: { tar: { biz: { liz: { lol: { flip: { fof: numeric() } } } } } },
+    };
+    const cfg = await create(treeShape, {
+      sources: [testSource({ foo: { tar: { biz: { liz: { lol: { flip: { fof: "42" } } } } } } })],
+    });
+
+    const value = cfg.foo.tar.biz.liz.lol.flip.fof.get();
+
+    expect(typeof value).toBe("number");
+    expect(value).toBe(42);
+    expectTypeOf(cfg.foo.tar.biz.liz.lol.flip.fof).toEqualTypeOf<Store<number | null>>();
+  });
+
+  test("resolves to null at the same depth when the leaf is unset and there's no default", async () => {
+    const treeShape = {
+      foo: { tar: { biz: { liz: { lol: { flip: { fof: numeric() } } } } } },
+    };
+    const cfg = await create(treeShape, { sources: [testSource({ foo: { tar: {} } })] });
+
+    expect(cfg.foo.tar.biz.liz.lol.flip.fof.get()).toBeNull();
+  });
+
+  test("earlier sources win per leaf field, independent of nesting depth — a field missing there falls through to the next source", async () => {
+    const treeShape = {
+      foo: {
+        tar: {
+          fof: numeric(),
+          other: string(),
+        },
+      },
+    };
+
+    const cfg = await create(treeShape, {
+      sources: [
+        // only "other" here
+        testSource({ foo: { tar: { other: "from-source-1" } } }),
+        // "fof" falls through to here; "other" is shadowed by the earlier source
+        testSource({ foo: { tar: { fof: "99", other: "from-source-2" } } }),
+      ],
+    });
+
+    expect(cfg.foo.tar.fof.get()).toBe(99);
+    expect(cfg.foo.tar.other.get()).toBe("from-source-1");
+  });
+
+  test("nested groups mix independently-typed siblings at multiple depths", async () => {
+    const treeShape = {
+      port: numeric({ default: 3000 }),
+      server: {
+        host: string({ default: "localhost" }),
+        tls: {
+          enabled: boolean({ default: false }),
+          cert: string(),
+        },
+      },
+    };
+
+    const cfg = await create(treeShape, {
+      sources: [testSource({ port: "8080", server: { host: "example.com", tls: { enabled: "true", cert: "cert.pem" } } })],
+    });
+
+    expect(cfg.port.get()).toBe(8080);
+    expect(cfg.server.host.get()).toBe("example.com");
+    expect(cfg.server.tls.enabled.get()).toBe(true);
+    expect(cfg.server.tls.cert.get()).toBe("cert.pem");
+  });
+});
+
+describe("create — live updates", () => {
+  test("a source that keeps publishing new snapshots updates the already-returned Store in place", async () => {
+    const { source, push } = liveTestSource({ port: "3000" });
+    const cfg = await create({ port: numeric() }, { sources: [source] });
+
+    expect(cfg.port.get()).toBe(3000);
+
+    push({ port: "4000" });
+
+    expect(cfg.port.get()).toBe(4000);
+  });
+
+  test("a live update to a nested leaf updates that leaf's Store, without disturbing its siblings", async () => {
+    const { source, push } = liveTestSource({ server: { port: "3000", host: "a.example.com" } });
+    const cfg = await create({ server: { port: numeric(), host: string() } }, { sources: [source] });
+
+    expect(cfg.server.port.get()).toBe(3000);
+    expect(cfg.server.host.get()).toBe("a.example.com");
+
+    push({ server: { port: "4000", host: "a.example.com" } });
+
+    expect(cfg.server.port.get()).toBe(4000);
+    expect(cfg.server.host.get()).toBe("a.example.com");
+  });
+
+  test("a live update from a lower-priority source is still shadowed by an earlier source that already has the field", async () => {
+    const { source: liveSource, push } = liveTestSource<{ port?: string }>({});
+    const cfg = await create(
+      { port: numeric({ default: 0 }) },
+      { sources: [testSource({ port: "1111" }), liveSource] },
+    );
+
+    expect(cfg.port.get()).toBe(1111);
+
+    push({ port: "2222" });
+
+    // testSource's snapshot never changes — it still wins, since it comes first.
+    expect(cfg.port.get()).toBe(1111);
+  });
+});
+
+describe("create — parser failures", () => {
+  test("a raw value that fails the field's own parser rejects the awaited node with a ConfigError", async () => {
+    const cfg = create({ port: numeric() }, { sources: [testSource({ port: "not-a-number" })] });
+
+    // No source has opened yet, so the field falls back to null — no throw before that.
+    expect(cfg.port.get()).toBeNull();
+
+    await expect(Promise.resolve(cfg)).rejects.toThrow(ConfigError);
+  });
+
+  test("shape() with required:true rejects the awaited node instead of logging", async () => {
+    const cfg = create(
+      { jwt: shape({ schema: z.object({ issuer: z.string() }), required: true }) },
+      { sources: [testSource({ jwt: { issuer: 42 } })] },
+    );
+
+    await expect(Promise.resolve(cfg)).rejects.toThrow(ConfigError);
+  });
+
+  test("shape() without required:true logs the failure and resolves the field to null instead of throwing", async () => {
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const resolved = await create(
+        { jwt: shape({ schema: z.object({ issuer: z.string() }) }) },
+        { sources: [testSource({ jwt: { issuer: 42 } })] },
+      );
+
+      expect(resolved.jwt.get()).toBeNull();
+      expect(errorSpy).toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+});
+
+describe("create — every field builder resolves its raw value at runtime", () => {
+  test("string()/numeric()/boolean()/url()/choice() coerce their raw string values", async () => {
+    const cfg = await create(
+      {
+        host: string({ pattern: /^[\w.-]+$/ }),
+        port: numeric(),
+        debug: boolean(),
+        endpoint: url(),
+        logLevel: choice({ options: ["debug", "info", "warn", "error"] as const }),
+      },
+      {
+        sources: [
+          testSource({
+            host: "example.com",
+            port: "8080",
+            debug: "true",
+            endpoint: "https://example.com",
+            logLevel: "warn",
+          }),
+        ],
+      },
+    );
+
+    expect(cfg.host.get()).toBe("example.com");
+    expect(cfg.port.get()).toBe(8080);
+    expect(cfg.debug.get()).toBe(true);
+    expect(cfg.endpoint.get()).toEqual(new URL("https://example.com"));
+    expect(cfg.logLevel.get()).toBe("warn");
+  });
+
+  test("choice() rejects a raw value outside its declared options", async () => {
+    const cfg = create(
+      { logLevel: choice({ options: ["debug", "info"] as const }) },
+      { sources: [testSource({ logLevel: "not-a-level" })] },
+    );
+
+    await expect(Promise.resolve(cfg)).rejects.toThrow(ConfigError);
+  });
+
+  test("url() rejects a raw value that isn't a valid URL", async () => {
+    const cfg = create({ endpoint: url() }, { sources: [testSource({ endpoint: "not a url" })] });
+
+    await expect(Promise.resolve(cfg)).rejects.toThrow(ConfigError);
+  });
+
+  test("shape() without a schema passes any object value through untyped", async () => {
+    const cfg = await create({ metadata: shape() }, { sources: [testSource({ metadata: { any: "thing" } })] });
+
+    expect(cfg.metadata.get()).toEqual({ any: "thing" });
   });
 });
