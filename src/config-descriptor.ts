@@ -3,7 +3,22 @@ import { Store } from "./utils/store.js";
 import { tSync } from "./utils/t.js";
 import { ConfigError } from "./errors.js";
 
-export type FieldType = "string" | "number" | "boolean" | "url" | "shape" | "file";
+/**
+ * Re-exported for anyone writing their own `ConfigDescriptor`-shaped object by hand instead of
+ * constructing a real `new ConfigDescriptor(type, parser, options)` (see the README's "Writing a
+ * custom ConfigDescriptor" section) — this is the one marker `isConfigDescriptor()` requires
+ * alongside a callable `.parse()`, set to `true`. A `Symbol.for()` registry symbol, not a plain
+ * `Symbol()` — see its own module doc for why.
+ */
+export { CONFIG_DESCRIPTOR_TAG } from "./utils/config-descriptor-tag.js";
+
+/**
+ * The built-in labels get their own literals (kept for autocomplete/documentation); the trailing
+ * `(string & {})` still accepts any other string unchanged — `ConfigDescriptor.type` is otherwise
+ * purely informational once a `parser` is supplied directly (see the README's "Writing a custom
+ * `ConfigDescriptor`" section), so a custom field type isn't restricted to this package's own set.
+ */
+export type FieldType = "string" | "number" | "boolean" | "url" | "shape" | "file" | (string & {});
 
 interface BaseFieldSchema {
   summary?: string;

@@ -312,6 +312,25 @@ function resolveRawValue(sources: Store<any>[], path: string[]): unknown {
   return undefined;
 }
 
+/**
+ * A genuine `ConfigDescriptor` instance's *synchronous* counterpart to what its own `.parse()`
+ * eventually publishes — same default-then-parser logic, just run immediately (via `.parser`
+ * directly, never through the legacy `coerce()`/`toFieldSchema()` dispatch) so a field backed by
+ * one is already correct the moment it's first read, not just once its `.parse()` promise settles
+ * a microtask later. Only ever called for a real `ConfigDescriptor` (checked via `instanceof` in
+ * `fieldFor`) — a hand-written custom descriptor (tag + `.parse()` only, no `.parser`) has no such
+ * synchronous path and starts at `null` until its own `.parse()` resolves instead (see the
+ * README's "Writing a custom ConfigDescriptor" section).
+ */
+function resolveDescriptorInitial(descriptor: ConfigDescriptor<any, object>, sources: Store<any>[], path: string[]): unknown {
+  const raw = resolveRawValue(sources, path);
+  if (raw === undefined) {
+    const defaultValue = (descriptor.options as { default?: unknown }).default;
+    return defaultValue !== undefined ? defaultValue : null;
+  }
+  return descriptor.parser(raw, path);
+}
+
 function collectEmbeddedStates(shape: SchemaShape): ConfigNodeState<any>[] {
   const result: ConfigNodeState<any>[] = [];
   for (const key of Object.keys(shape)) {
@@ -427,14 +446,23 @@ class ConfigNodeState<S extends SchemaShape> {
     let field = this.fields.get(key);
     if (!field) {
       const node = this.shape[key];
-      const schema = toFieldSchema(node);
-      // A ConfigDescriptor exposes its own `.key` directly — resolved via that, not by first
-      // building a full FieldSchema just to read `.key` back off it. A legacy (non-descriptor)
-      // shape entry has no such surface of its own, so it still goes through `schema.key`.
-      const path = isConfigDescriptor(node) ? pathFor(node.key, this.basePath, key) : resolvePath(schema, this.basePath, key);
-      field = new ConfigField(this.resolveField(schema, path));
-      this.fields.set(key, field);
-      if (isConfigDescriptor(node)) this.wireDescriptorField(node, key, path, schema, field);
+      if (isConfigDescriptor(node)) {
+        // A ConfigDescriptor exposes its own `.key` directly — resolved via that, never through a
+        // reconstructed FieldSchema. A real instance also has its own synchronous `.parser`, used
+        // directly (never through the generic `coerce()`/`toFieldSchema()` dispatch, which only
+        // understands the built-in field types) — a hand-written custom descriptor (tag + `.parse()`
+        // only) has no such synchronous path and starts at `null` until its `.parse()` resolves.
+        const path = pathFor(node.key, this.basePath, key);
+        const initial = node instanceof ConfigDescriptor ? resolveDescriptorInitial(node, this.rootStores, path) : null;
+        field = new ConfigField(initial);
+        this.fields.set(key, field);
+        this.wireDescriptorField(node, key, path, field);
+      } else {
+        const schema = toFieldSchema(node);
+        const path = resolvePath(schema, this.basePath, key);
+        field = new ConfigField(this.resolveField(schema, path));
+        this.fields.set(key, field);
+      }
     }
     return field;
   }
@@ -448,14 +476,14 @@ class ConfigNodeState<S extends SchemaShape> {
    * publishes (immediately, then on every live update) is mirrored onto `field` here.
    */
   private wireDescriptorField(
-    descriptor: ConfigDescriptor<any, object>,
+    descriptor: ConfigDescriptor<unknown, object>,
     key: string,
     path: string[],
-    schema: FieldSchema,
     field: ConfigField<any>,
   ): void {
     const rawStore = new Store<unknown>(resolveRawValue(this.rootStores, path));
-    if (!schema.readonly) this.rawStores.set(key, rawStore);
+    const readonly = (descriptor as { options?: { readonly?: boolean } }).options?.readonly === true;
+    if (!readonly) this.rawStores.set(key, rawStore);
     descriptor.parse(rawStore, path).then(({ store }) => {
       store.subscribe((value) => {
         if (value !== field.get()) field._update(value);
