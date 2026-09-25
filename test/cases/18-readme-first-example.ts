@@ -1,17 +1,18 @@
-// Case: the README's first example — a top-level logLevel choice() field,
+// Case: the README's first example — a top-level logLevel choice() field
+// read from envSource() with a local ./.env fileSource() fallback,
 // envSource() with explicit `key`s for a flat server group, a nested
 // server.tls group with file() fields reading a cert and key from disk, a
 // nested features group (promotionalDialog plus a
 // ui.menuOrientation/sidebarCollapsed pair) with its own fetchSource
 // (against a `data:` URL), and a nested database group with its own
-// pullSource standing in for a secrets manager SDK call. file() is
-// node:fs-backed, so a browser bundle stubs it out — run there anyway to
-// document the breakage instead of skipping it (see manifest.ts's
+// pullSource standing in for a secrets manager SDK call. file()/fileSource()
+// are node:fs-backed, so a browser bundle stubs them out — run there anyway
+// to document the breakage instead of skipping it (see manifest.ts's
 // tolerateFailureEngines for this case).
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, choice, numeric, string, boolean, envSource, fetchSource, pullSource } from "@jondotsoy/configs";
+import { create, choice, numeric, string, boolean, envSource, fetchSource, fileSource, pullSource } from "@jondotsoy/configs";
 import { file, FileBlob } from "@jondotsoy/configs/node";
 
 function assert(cond: unknown, message: string): void {
@@ -41,8 +42,10 @@ const dir = await mkdtemp(join(tmpdir(), "configs-readme-case-"));
 try {
   const certPath = join(dir, "server.pem");
   const keyPath = join(dir, "server-key.pem");
+  const dotEnvPath = join(dir, ".env");
   await writeFile(certPath, "-----BEGIN CERTIFICATE-----");
   await writeFile(keyPath, "-----BEGIN PRIVATE KEY-----");
+  await writeFile(dotEnvPath, "LOG_LEVEL=debug\n");
 
   const cfg = await create(
     {
@@ -88,10 +91,13 @@ try {
         { sources: [pullSource({ pull: getDatabaseSecret, interval: 10 })] },
       ),
     },
-    { sources: [envSource({ env: { HOST: "example.com", PORT: "8080", LOG_LEVEL: "warn" } })] },
+    { sources: [envSource({ env: { HOST: "example.com", PORT: "8080", LOG_LEVEL: "warn" } }), fileSource(dotEnvPath)] },
   );
 
-  assert(cfg.logLevel.get() === "warn", "LOG_LEVEL resolves to logLevel via an explicit key");
+  assert(
+    cfg.logLevel.get() === "warn",
+    "LOG_LEVEL resolves to logLevel via an explicit key, envSource() taking priority over the ./.env fileSource() fallback",
+  );
   assert(cfg.server.host.get() === "example.com", "HOST resolves to server.host via an explicit key");
   assert(cfg.server.port.get() === 8080, "PORT resolves to server.port via an explicit key");
   assert(
@@ -115,6 +121,14 @@ try {
   );
 
   await cfg.close();
+
+  // Without a real LOG_LEVEL env var, the ./.env fileSource() fallback kicks in.
+  const cfgNoEnvVar = await create(
+    { logLevel: choice({ options: ["debug", "info", "warn", "error"], default: "info", key: "LOG_LEVEL" }) },
+    { sources: [envSource({ env: {} }), fileSource(dotEnvPath)] },
+  );
+  assert(cfgNoEnvVar.logLevel.get() === "debug", "with no real LOG_LEVEL set, the ./.env fileSource() fallback resolves logLevel");
+  await cfgNoEnvVar.close();
 } finally {
   await rm(dir, { recursive: true, force: true });
 }

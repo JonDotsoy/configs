@@ -15,12 +15,15 @@ the moment a source pushes a new value.
 import { create, choice, numeric, string, boolean } from "@jondotsoy/configs";
 import { envSource } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+import { fileSource } from "@jondotsoy/configs/sources/file";
 import { pullSource } from "@jondotsoy/configs/sources/pull";
 import { file } from "@jondotsoy/configs/node";
 
 // HOST=localhost PORT=3000 → { server: { host: "localhost", port: "3000" } }
 // server.tls.cert/.key are read eagerly from disk, decoded into FileBlobs
-// LOG_LEVEL=warn → app log verbosity, restricted to one of a fixed set of levels
+// LOG_LEVEL=warn → app log verbosity, restricted to one of a fixed set of levels — envSource()
+//   (the real process env) takes priority; a local ./.env file (fileSource, live via fs.watch)
+//   is the fallback, so a developer can set LOG_LEVEL=debug there without exporting it in the shell
 // GET https://example.com/features → { experimental: { home: { promotionalDialog: true } },
 //   ui: { menuOrientation: "vertical", sidebarCollapsed: true } } (polled every 30s)
 // secretsManager.getSecretValue("prod/db") → { host, port, user, password } — your AWS/GCP/Vault
@@ -71,7 +74,7 @@ const cfg = await create(
       { sources: [pullSource({ pull: () => secretsManager.getSecretValue("prod/db"), interval: 5 * 60_000 })] },
     ),
   },
-  { sources: [envSource()] },
+  { sources: [envSource(), fileSource(".env")] },
 );
 
 console.log(`listening on ${cfg.server.host.get()}:${cfg.server.port.get()}`);
