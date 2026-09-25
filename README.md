@@ -26,8 +26,10 @@ import { file } from "@jondotsoy/configs/node";
 const cfg = await create(
   {
     server: {
-      host: string({ summary: "bind host", default: "localhost", key: "HOST" }),
-      port: numeric({ summary: "HTTP port", default: 3000, key: "PORT" }),
+      // freeze: true — host/port are read once at boot; changing them at runtime
+      // wouldn't rebind the already-listening server anyway.
+      host: string({ summary: "bind host", default: "localhost", key: "HOST", freeze: true }),
+      port: numeric({ summary: "HTTP port", default: 3000, key: "PORT", freeze: true }),
       tls: {
         cert: file({ summary: "TLS certificate", default: new URL("file:///etc/ssl/certs/server.pem") }),
         key: file({ summary: "TLS private key", default: new URL("file:///etc/ssl/private/server-key.pem") }),
@@ -56,11 +58,10 @@ const cfg = await create(
   { sources: [envSource()] },
 );
 
-// React to changes
-cfg.server.port.subscribe((port) => {
-  console.log(`listening on port ${port}`);
-});
+console.log(`listening on ${cfg.server.host.get()}:${cfg.server.port.get()}`);
+// listening on localhost:3000
 
+// React to changes
 cfg.features.experimental.home.promotionalDialog.subscribe((enabled) => {
   console.log(`promotional dialog ${enabled ? "enabled" : "disabled"}`);
 });
@@ -71,9 +72,6 @@ cfg.features.experimental.home.promotionalDialog.subscribe((enabled) => {
 cfg.database.password.subscribe((password) => {
   reconnectPool({ host: cfg.database.host.get(), port: cfg.database.port.get(), user: cfg.database.user.get(), password });
 });
-
-console.log(cfg.server.port.get());
-// 3000
 
 console.log(await cfg.server.tls.cert.get()?.text());
 // -----BEGIN CERTIFICATE-----...

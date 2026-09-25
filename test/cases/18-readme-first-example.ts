@@ -42,8 +42,8 @@ try {
   const cfg = await create(
     {
       server: {
-        host: string({ summary: "bind host", default: "localhost", key: "HOST" }),
-        port: numeric({ summary: "HTTP port", default: 3000, key: "PORT" }),
+        host: string({ summary: "bind host", default: "localhost", key: "HOST", freeze: true }),
+        port: numeric({ summary: "HTTP port", default: 3000, key: "PORT", freeze: true }),
         tls: {
           cert: file({ summary: "TLS certificate", default: toFileURL(certPath) }),
           key: file({ summary: "TLS private key", default: toFileURL(keyPath) }),
