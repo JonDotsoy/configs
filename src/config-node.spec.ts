@@ -1,8 +1,9 @@
 import { describe, expect, expectTypeOf, test } from "bun:test";
-import { create, type ConfigsNodePending } from "./config-node.ts";
-import { numeric, string } from "./config-descriptor.ts";
+import { create, type ConfigsNode, type ConfigsNodePending, type ConfigsShape, type Options } from "./config-node.ts";
+import { boolean, choice, numeric, shape, string, url } from "./config-descriptor.ts";
 import { Source } from "./sources/source.ts";
 import { Store, type ReadOnlyStore } from "./utils/store.ts";
+import { z } from "zod";
 
 function testSource<T>(value: T): Source<T> {
   return new Source<T>({
@@ -91,10 +92,100 @@ describe("create — nested groups", () => {
   });
 
   test("types: create({ server: { port: numeric() } }) resolves to { server: { port: ReadOnlyStore<number | null> } }", () => {
-    const shape = { server: { port: numeric() } };
-    const cfg = create(shape);
+    const cfg = create({ server: { port: numeric() } });
 
     expectTypeOf(cfg.server).toEqualTypeOf<{ port: Store<number | null> }>();
     expectTypeOf(cfg.server.port).toMatchTypeOf<ReadOnlyStore<number | null>>();
+  });
+});
+
+describe("types — every field builder", () => {
+  test("without a default, every builder's field is Store<T | null>", () => {
+    const cfg = create({
+      host: string(),
+      port: numeric(),
+      debug: boolean(),
+      endpoint: url(),
+      logLevel: choice({ options: ["debug", "info", "warn", "error"] as const }),
+      metadata: shape(),
+      jwt: shape({ schema: z.object({ issuer: z.string(), ttl: z.number() }) }),
+    });
+
+    expectTypeOf(cfg.host).toEqualTypeOf<Store<string | null>>();
+    expectTypeOf(cfg.port).toEqualTypeOf<Store<number | null>>();
+    expectTypeOf(cfg.debug).toEqualTypeOf<Store<boolean | null>>();
+    expectTypeOf(cfg.endpoint).toEqualTypeOf<Store<URL | null>>();
+    expectTypeOf(cfg.logLevel).toEqualTypeOf<Store<"debug" | "info" | "warn" | "error" | null>>();
+    expectTypeOf(cfg.metadata).toEqualTypeOf<Store<unknown>>();
+    expectTypeOf(cfg.jwt).toEqualTypeOf<Store<{ issuer: string; ttl: number } | null>>();
+  });
+
+  test("with a default, every builder's field narrows out null", () => {
+    const cfg = create({
+      host: string({ default: "localhost" }),
+      port: numeric({ default: 3000 }),
+      debug: boolean({ default: false }),
+      endpoint: url({ default: new URL("http://localhost") }),
+      logLevel: choice({ options: ["debug", "info", "warn", "error"] as const, default: "info" }),
+      jwt: shape({ schema: z.object({ issuer: z.string(), ttl: z.number() }), default: { issuer: "a", ttl: 1 } }),
+    });
+
+    expectTypeOf(cfg.host).toEqualTypeOf<Store<string>>();
+    expectTypeOf(cfg.port).toEqualTypeOf<Store<number>>();
+    expectTypeOf(cfg.debug).toEqualTypeOf<Store<boolean>>();
+    expectTypeOf(cfg.endpoint).toEqualTypeOf<Store<URL>>();
+    expectTypeOf(cfg.logLevel).toEqualTypeOf<Store<"debug" | "info" | "warn" | "error">>();
+    expectTypeOf(cfg.jwt).toEqualTypeOf<Store<{ issuer: string; ttl: number }>>();
+  });
+});
+
+describe("types — ConfigsNode / ConfigsNodePending / Options", () => {
+  test("ConfigsNode<T> maps a flat shape's keys straight to Store<T>", () => {
+    type Shape = { port: ReturnType<typeof numeric<{ default: 3000 }>> };
+    expectTypeOf<ConfigsNode<Shape>>().toEqualTypeOf<{ port: Store<number> }>();
+  });
+
+  test("ConfigsNode<T> recurses into a nested shape entry", () => {
+    type Shape = { server: { port: ReturnType<typeof numeric> } };
+    expectTypeOf<ConfigsNode<Shape>>().toEqualTypeOf<{ server: { port: Store<number | null> } }>();
+  });
+
+  test("ConfigsNodePending<T> is ConfigsNode<T> plus a then() that resolves to ConfigsNode<T>", () => {
+    type Shape = { port: ReturnType<typeof numeric> };
+    expectTypeOf<ConfigsNodePending<Shape>>().toMatchTypeOf<ConfigsNode<Shape>>();
+    expectTypeOf<Awaited<ConfigsNodePending<Shape>>>().toEqualTypeOf<ConfigsNode<Shape>>();
+  });
+
+  test("create()'s return type is exactly ConfigsNodePending<typeof shape>, and awaiting it drops `then`", async () => {
+    const shape = { port: numeric({ default: 3000 }) };
+    const cfg = create(shape);
+
+    expectTypeOf(cfg).toEqualTypeOf<ConfigsNodePending<typeof shape>>();
+
+    const resolved = await cfg;
+    expectTypeOf(resolved).toEqualTypeOf<ConfigsNode<typeof shape>>();
+  });
+
+  test("Options.sources accepts an array of Source<any> and is itself optional", () => {
+    expectTypeOf<Options>().toEqualTypeOf<{ sources?: Source<any>[] }>();
+
+    type Shape = { port: ReturnType<typeof numeric> };
+    // create()'s second parameter is optional and, when given, must be an `Options`.
+    create<Shape>({ port: numeric() });
+    create<Shape>({ port: numeric() }, {});
+    create<Shape>({ port: numeric() }, { sources: [] });
+  });
+
+  test("ConfigsShape allows both a leaf ConfigDescriptor and an arbitrarily nested plain object", () => {
+    const shape = {
+      port: numeric(),
+      server: {
+        host: string(),
+        tls: { cert: string(), key: string() },
+      },
+    } satisfies ConfigsShape;
+
+    const cfg = create(shape);
+    expectTypeOf(cfg.server.tls).toEqualTypeOf<{ cert: Store<string | null>; key: Store<string | null> }>();
   });
 });
