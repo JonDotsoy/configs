@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, expectTypeOf, spyOn, test } from "bun:test";
-import { boolean, ConfigDescriptor, create, load, numeric, shape, string, url } from "./configs.js";
+import { boolean, choice, ConfigDescriptor, create, load, numeric, shape, string, url } from "./configs.js";
 import { envSource, mapKey } from "./sources/env.js";
 import { fetchSource } from "./sources/fetch.js";
 import { literalSource } from "./sources/literal.js";
@@ -340,6 +340,54 @@ describe("url() field builder", () => {
 
     expect(cfg.datasource.uri.get()).toBe(fallback);
     expectTypeOf(cfg.datasource.uri).toEqualTypeOf<ReadOnlyStore<URL>>();
+  });
+});
+
+describe("choice() field builder", () => {
+  test("choice() builds a ConfigDescriptor carrying a { type: \"choice\" } schema", () => {
+    expectDescriptor(choice({ options: ["a", "b"] }), "choice", { options: ["a", "b"] });
+    expectDescriptor(choice({ options: ["a", "b"], default: "a" }), "choice", {
+      options: ["a", "b"],
+      default: "a",
+    });
+  });
+
+  test("resolves to one of the listed options", async () => {
+    const cfg = await create(
+      { logLevel: choice({ options: ["debug", "info", "warn", "error"] }) },
+      { sources: [testSource({ logLevel: "warn" })] },
+    );
+
+    expect(cfg.logLevel.get()).toBe("warn");
+    expectTypeOf(cfg.logLevel).toEqualTypeOf<ReadOnlyStore<"debug" | "info" | "warn" | "error" | null>>();
+  });
+
+  test("rejects a value not in the list", async () => {
+    const cfg = await create(
+      { logLevel: choice({ options: ["debug", "info", "warn", "error"] }) },
+      { sources: [testSource({ logLevel: "verbose" })] },
+    );
+
+    expect(() => cfg.get()).toThrow(ConfigError);
+  });
+
+  test("resolves to null when unset and there's no default", async () => {
+    const cfg = await create(
+      { logLevel: choice({ options: ["debug", "info", "warn", "error"] }) },
+      { sources: [testSource({})] },
+    );
+
+    expect(cfg.logLevel.get()).toBeNull();
+  });
+
+  test("falls back to default when unset", async () => {
+    const cfg = await create(
+      { logLevel: choice({ options: ["debug", "info", "warn", "error"], default: "info" }) },
+      { sources: [testSource({})] },
+    );
+
+    expect(cfg.logLevel.get()).toBe("info");
+    expectTypeOf(cfg.logLevel).toEqualTypeOf<ReadOnlyStore<"debug" | "info" | "warn" | "error">>();
   });
 });
 

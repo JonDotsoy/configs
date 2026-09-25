@@ -124,9 +124,10 @@ npm install @jondotsoy/configs
 
 ### Field types
 
-A field's `type` is `"string"`, `"number"`, `"boolean"`, `"url"`, or `"shape"`. The first three
-coerce and validate primitives (numeric/boolean-ish strings, an optional `pattern` for strings).
-`"url"` parses a string into a `URL` instance, throwing a `ConfigError` if it isn't a valid one.
+A field's `type` is `"string"`, `"number"`, `"boolean"`, `"url"`, `"choice"`, or `"shape"`. The first
+three coerce and validate primitives (numeric/boolean-ish strings, an optional `pattern` for
+strings). `"url"` parses a string into a `URL` instance, throwing a `ConfigError` if it isn't a
+valid one. `"choice"` accepts only one of a fixed list of strings, rejecting anything else.
 `"shape"` hands the raw value to a `schema` you provide — anything with a `parse(value: unknown): T`
 method, which is exactly the shape `zod`, `valibot`, and most other validation libraries already
 export — so there's no dependency on any specific one.
@@ -135,8 +136,8 @@ export — so there's no dependency on any specific one.
 > **Writing a field as an object literal — `{ type: "string", ... }` and friends — is
 > deprecated.** It still works exactly as documented below (nothing breaks, nothing is removed),
 > but it now logs a one-time `console.warn` and its `Field*Schema` types carry `@deprecated` tags.
-> Use `string()`, `numeric()`, `boolean()`, `url()`, or `shape()` instead — same options, same
-> inference, just without repeating `type` yourself. See the next section.
+> Use `string()`, `numeric()`, `boolean()`, `url()`, `choice()`, or `shape()` instead — same
+> options, same inference, just without repeating `type` yourself. See the next section.
 
 ```ts
 import { create, shape } from "@jondotsoy/configs";
@@ -153,16 +154,17 @@ const cfg = await create(
 // return type, no manual annotation needed.
 ```
 
-`string()`, `numeric()`, `boolean()`, `url()`, and `shape()` are the **recommended** way to write
-the field schemas above, superseding the object-literal form — `numeric({ default: 3000 })` is
-exactly `{ type: "number", default: 3000 }`, just without repeating `type` yourself. Each returns
-a `ConfigDescriptor` instance (also exported, for anyone writing a `numeric(...): ConfigDescriptor<number>`
-helper of their own) instead of a plain object, but it resolves and infers identically either way.
-They accept the same options as their object-literal form (`summary`, `required`, `freeze`,
-`default`, `key`, `pattern` for `string()`, and `schema` for `shape()`):
+`string()`, `numeric()`, `boolean()`, `url()`, `choice()`, and `shape()` are the **recommended** way
+to write the field schemas above, superseding the object-literal form — `numeric({ default: 3000
+})` is exactly `{ type: "number", default: 3000 }`, just without repeating `type` yourself. Each
+returns a `ConfigDescriptor` instance (also exported, for anyone writing a `numeric(...):
+ConfigDescriptor<number>` helper of their own) instead of a plain object, but it resolves and
+infers identically either way. They accept the same options as their object-literal form
+(`summary`, `required`, `freeze`, `default`, `key`, `pattern` for `string()`, `options` for
+`choice()`, and `schema` for `shape()`):
 
 ```ts
-import { create, boolean, numeric, shape, string, url } from "@jondotsoy/configs";
+import { create, boolean, choice, numeric, shape, string, url } from "@jondotsoy/configs";
 import { z } from "zod";
 
 const cfg = await create(
@@ -171,6 +173,7 @@ const cfg = await create(
     host: string({ summary: "bind host", pattern: /^[\w.-]+$/, default: "localhost" }),
     debug: boolean({ summary: "enable verbose logging", default: false }),
     databaseUrl: url({ summary: "database connection string" }),
+    logLevel: choice({ summary: "log verbosity", options: ["debug", "info", "warn", "error"], default: "info" }),
     jwt: shape({ schema: z.object({ issuer: z.string(), ttl: z.number() }) }),
   },
   { sources: [/* ... */] },
@@ -178,6 +181,8 @@ const cfg = await create(
 
 // cfg.databaseUrl.get() is typed as URL | null — a valid URL string is parsed into an instance,
 // an invalid one throws a ConfigError.
+// cfg.logLevel.get() is typed as "debug" | "info" | "warn" | "error" — narrowed by the `default`,
+// and rejecting (via ConfigError) any value outside `options`.
 // cfg.jwt.get() is typed as { issuer: string; ttl: number } | null — inferred from `schema.parse`'s
 // return type.
 ```
@@ -231,8 +236,8 @@ is deprecated, since that's the one `string()`/`numeric()`/`boolean()`/`url()`/`
 
 ### Writing a custom `ConfigDescriptor`
 
-`string()`, `numeric()`, `boolean()`, `url()`, and `shape()` all build the same kind of object —
-a `ConfigDescriptor` — and that's the whole extension point: any shape entry that's a
+`string()`, `numeric()`, `boolean()`, `url()`, `choice()`, and `shape()` all build the same kind of
+object — a `ConfigDescriptor` — and that's the whole extension point: any shape entry that's a
 `ConfigDescriptor` gets the same treatment from `create()`/`load()`, whether it came from one of
 these builders or you built it yourself.
 

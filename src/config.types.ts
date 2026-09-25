@@ -20,6 +20,7 @@ import {
 
 export {
   boolean,
+  choice,
   ConfigDescriptor,
   numeric,
   shape,
@@ -28,6 +29,7 @@ export {
   isConfigDescriptor,
   type BooleanFieldOptions,
   type BooleanFieldSchema,
+  type ChoiceFieldOptions,
   type FieldSchema,
   type FieldType,
   type NumberFieldOptions,
