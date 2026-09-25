@@ -244,11 +244,11 @@ You don't need to extend the class or reach for `CONFIG_DESCRIPTOR_TAG` for this
 Descriptor(...)` already carries the internal tag `create()` uses to recognize it, same as every
 built-in field type.
 
-The tag itself (`CONFIG_DESCRIPTOR_TAG`, also exported) is only there for the rarer case of
-writing the whole thing by hand instead of constructing the class — say, to avoid importing it
-across an unusual bundling setup. The contract is the same two things: the tag symbol set to
-`true`, and a `start(raw, path?)` method returning `T` synchronously (a `key` on top, if you need
-one):
+The tag itself (`CONFIG_DESCRIPTOR_TAG`, also exported, but **deprecated** — prefer `new
+Descriptor(...)` above) is only there for the rarer case of writing the whole thing by hand instead
+of constructing the class — say, to avoid importing it across an unusual bundling setup. The
+contract is the same two things: the tag symbol set to `true`, and a `start(raw, path?)` method
+returning `T` synchronously (a `key` on top, if you need one):
 
 ```ts
 import { CONFIG_DESCRIPTOR_TAG, create } from "@jondotsoy/configs";

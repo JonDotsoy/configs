@@ -71,7 +71,7 @@ El punto de entrada público (`src/config-node.ts`, re-exportado desde
   que `create()` llama una vez por campo desde el `.close()` del nodo.
   Extensible a mano (`new Descriptor({ type, options, start, reduce?,
   close? })`, o el contrato completo vía `CONFIG_DESCRIPTOR_TAG` +
-  `.start()`).
+  `.start()` — **deprecado**, preferir siempre `new Descriptor(...)`).
 - **`string(options?)`** — coerción a `string`; `pattern` opcional
   (`RegExp`) para validar el valor.
 - **`numeric(options?)`** — coerciona un string numérico (o `number`

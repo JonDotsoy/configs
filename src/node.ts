@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Descriptor, shapeFailure, type Parser } from "./config-descriptor.js";
+import { Descriptor, shapeFailure } from "./config-descriptor.js";
 import { ConfigError } from "./errors.js";
 import { tSync } from "./utils/t.js";
 
@@ -233,14 +233,14 @@ type FileFieldReturn<O extends FileFieldOptions> = O extends { required: true }
   : Descriptor<FileBlob, O>;
 
 /**
- * `file()`'s own `Parser<FileBlob>` — decodes a raw string value (as base64 or text, per `format`
- * or inferred — see `FileFieldOptions.format`) into a `FileBlob`; an already-`FileBlob` value (its
+ * `file()`'s own `start` — decodes a raw string value (as base64 or text, per `format` or
+ * inferred — see `FileFieldOptions.format`) into a `FileBlob`; an already-`FileBlob` value (its
  * own resolved `default`) passes through as-is. A decoding failure — a non-string/non-`FileBlob`
  * raw value, or `atob()` rejecting invalid base64 — is logged and resolves to `null` unless
  * `required` escalates it into a thrown `ConfigError`, same "log unless required" rule every
  * schema-based field (`shape()`, `file()`) follows (see `shapeFailure`).
  */
-function fileParser(options: Pick<FileFieldOptions, "required" | "format">): Parser<FileBlob> {
+function fileStart(options: Pick<FileFieldOptions, "required" | "format">): (raw: unknown, path: string[]) => FileBlob {
   return (raw, path) => {
     if (raw instanceof FileBlob) return raw;
     if (typeof raw !== "string") {
@@ -283,5 +283,5 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): FileFi
   const resolvedDefault = resolveDefault(opts.default, opts.format);
   if (resolvedDefault !== undefined) runtimeOptions.default = resolvedDefault;
 
-  return new Descriptor({ type: "file", options: runtimeOptions, start: fileParser(runtimeOptions) }) as unknown as FileFieldReturn<O>;
+  return new Descriptor({ type: "file", options: runtimeOptions, start: fileStart(runtimeOptions) }) as unknown as FileFieldReturn<O>;
 }

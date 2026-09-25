@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Deprecated — `CONFIG_DESCRIPTOR_TAG`
+
+Still required internally (`isConfigDescriptor()`/`create()` still check for it, and every real
+`Descriptor` still carries it), but writing the whole hand-written descriptor contract yourself
+(this tag plus a `.start()`) is no longer the recommended extension point — construct `new
+Descriptor({ type, options, start, reduce?, close? })` instead, which already carries the tag for
+you. See the README's "Writing a custom `Descriptor`" section.
+
 ### Added — `Descriptor`/`create()` cleanup via `close()`
 
 `new Descriptor({ ... })` accepts an optional `close(): Promise<void>` hook, for releasing whatever

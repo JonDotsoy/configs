@@ -5,10 +5,12 @@ import { ConfigError } from "./errors.js";
 
 /**
  * Re-exported for anyone writing their own `Descriptor`-shaped object by hand instead of
- * constructing a real `new Descriptor({ type, options, start, reduce? })` (see the README's
- * "Writing a custom Descriptor" section) — this is the one marker `isConfigDescriptor()` requires
- * alongside a callable `.start()`, set to `true`. A `Symbol.for()` registry symbol, not a plain
- * `Symbol()` — see its own module doc for why.
+ * constructing a real `new Descriptor({ type, options, start, reduce?, close? })` — this is the
+ * one marker `isConfigDescriptor()` requires alongside a callable `.start()`, set to `true`. A
+ * `Symbol.for()` registry symbol, not a plain `Symbol()` — see its own module doc for why.
+ *
+ * @deprecated Prefer `new Descriptor(...)` (see the README's "Writing a custom `Descriptor`"
+ * section) — it already carries this tag for you, so most code never needs to import it directly.
  */
 export { CONFIG_DESCRIPTOR_TAG } from "./utils/config-descriptor-tag.js";
 
