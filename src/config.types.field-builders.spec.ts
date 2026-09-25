@@ -6,7 +6,7 @@ import { literalSource } from "./sources/literal.js";
 import { Source } from "./sources/source.js";
 import { ConfigError } from "./errors.js";
 import { z } from "zod";
-import { __resetDeprecatedFieldSchemaWarningForTests } from "./config.types.js";
+import { __resetDeprecatedFieldSchemaWarningForTests } from "./config-descriptor.js";
 import type { ReadOnlyStore } from "./config.types.js";
 
 /** Builds a `Source` that immediately publishes `value` and closes. */

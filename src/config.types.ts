@@ -1,161 +1,38 @@
 import { Source } from "./sources/source.js";
-import { CONFIG_DESCRIPTOR_TAG } from "./utils/config-descriptor-tag.js";
 import { Store, type Subscriber, type Unsubscribe } from "./utils/store.js";
-import { tSync } from "./utils/t.js";
 import { ConfigError } from "./errors.js";
+import {
+  ConfigDescriptor,
+  coerce,
+  isBareParseable,
+  isConfigDescriptor,
+  toFieldSchema,
+  type FieldSchema,
+  type FieldType,
+  type Parseable,
+} from "./config-descriptor.js";
 
-export type FieldType = "string" | "number" | "boolean" | "url" | "shape" | "file";
-
-interface BaseFieldSchema {
-  summary?: string;
-  required?: boolean;
-  /** Freezes the field at its first resolved value: later source updates no longer reach `.get()`. */
-  readonly?: boolean;
-  /**
-   * Overrides where this field reads from in each source's snapshot: an explicit path, checked
-   * instead of the field's own position in the shape tree (its key, prefixed by every ancestor
-   * group's own key). A single string is a one-segment path — `key: "PORT"` reads the source
-   * snapshot's top-level `PORT`, ignoring how deeply the field is nested under `create()` groups.
-   */
-  key?: string | string[];
-}
-
-/**
- * Structural stand-in for a validation library's schema (zod, valibot, superstruct, ...): anything
- * exposing `parse(value: unknown): T`. Kept minimal on purpose so this package stays dependency-free
- * while still inferring `T` from whatever schema object a caller passes in.
- */
-export interface Parseable<T> {
-  parse(value: unknown): T;
-}
-
-/**
- * Split out generic (unlike the other `FieldSchema` members) purely so `default`'s type stays
- * tied to the same `T` as `schema` when a caller writes `ShapeFieldSchema<T>` directly, instead of
- * a hardcoded `unknown`. `FieldSchema` itself instantiates `T` as `unknown` (below) since it isn't
- * generic — same as every other `FieldSchema` member, a field's real value/default type comes from
- * matching the caller's own literal shape structurally (see `PrimitiveOfField`), not from this
- * declared type. `schema` itself is optional: a `"shape"` field with no `schema` is passed through
- * as-is (only checked for `typeof value === "object"`), for callers who just want a free-form object.
- *
- * @deprecated Write `shape({ schema, ... })` instead of `{ type: "shape", schema, ... }` — same
- * options, same inference, still fully supported, just no longer the recommended form.
- */
-interface ShapeFieldSchema<T> extends BaseFieldSchema {
-  type: "shape";
-  schema?: Parseable<T>;
-  default?: T;
-}
-
-/**
- * `{ schema: z.number() }` — the same as `{ type: "shape", schema: z.number() }`, minus the tag.
- * `schema` stays *required* here (unlike `ShapeFieldSchema`, where it's optional) specifically so
- * this doesn't become a "weak type" indistinguishable from any other object — a nested group
- * (`SchemaGroupNode`, just `{ shape }`) or an unrelated typo'd shape entry has no `schema` property
- * to match against, so it's never mistaken for this. `type?: never` (rather than leaving `type` out
- * of the interface) rejects an object that *does* carry a `type` — string/number/boolean/`"shape"`
- * fields keep going through their own tagged member instead of this one.
- */
-interface UntaggedShapeFieldSchema<T> extends BaseFieldSchema {
-  type?: never;
-  schema: Parseable<T>;
-  default?: T;
-}
-
-/**
- * Same shape as `ShapeFieldSchema<T>` — schema-based coercion, `schema` optional — tagged `"file"`
- * instead: what `file()` (`./node.js`) builds via `ConfigDescriptor`, so its `.type` reads "file"
- * (a `file()` field, not a generic shape) while going through the exact same schema-based
- * coercion path in `coerce()`.
- */
-interface FileFieldSchema<T> extends BaseFieldSchema {
-  type: "file";
-  schema?: Parseable<T>;
-  default?: T;
-}
-
-/** @deprecated Write `string({ ... })` instead of `{ type: "string", ... }` — same options, same inference, still fully supported, just no longer the recommended form. */
-export type StringFieldSchema = BaseFieldSchema & { type: "string"; pattern?: RegExp; default?: string };
-/** @deprecated Write `numeric({ ... })` instead of `{ type: "number", ... }` — same options, same inference, still fully supported, just no longer the recommended form. */
-export type NumberFieldSchema = BaseFieldSchema & { type: "number"; default?: number };
-/** @deprecated Write `boolean({ ... })` instead of `{ type: "boolean", ... }` — same options, same inference, still fully supported, just no longer the recommended form. */
-export type BooleanFieldSchema = BaseFieldSchema & { type: "boolean"; default?: boolean };
-/**
- * A `"url"` field parses a string value into a `URL` instance (and validates it's actually one), same as `numeric()` does for numbers.
- * @deprecated Write `url({ ... })` instead of `{ type: "url", ... }` — same options, same inference, still fully supported, just no longer the recommended form.
- */
-export type UrlFieldSchema = BaseFieldSchema & { type: "url"; default?: URL };
-
-/**
- * The object-literal shape a field entry normalizes to — still what every builder
- * (`string()`/`numeric()`/`boolean()`/`url()`/`shape()`) produces under the hood via
- * `ConfigDescriptor`, and still what `toFieldSchema()` returns either way, so this type itself
- * isn't deprecated. Writing one of its *tagged* members directly as an object literal
- * (`{ type: "string", ... }` and friends) is what's deprecated — see each member's own tag.
- */
-export type FieldSchema =
-  | StringFieldSchema
-  | NumberFieldSchema
-  | BooleanFieldSchema
-  | UrlFieldSchema
-  | ShapeFieldSchema<unknown>
-  | UntaggedShapeFieldSchema<unknown>
-  | FileFieldSchema<unknown>;
-
-export type StringFieldOptions = Omit<StringFieldSchema, "type">;
-export type NumberFieldOptions = Omit<NumberFieldSchema, "type">;
-export type BooleanFieldOptions = Omit<BooleanFieldSchema, "type">;
-export type UrlFieldOptions = Omit<UrlFieldSchema, "type">;
-export type ShapeFieldOptions = Omit<ShapeFieldSchema<unknown>, "type">;
-
-/**
- * What `string()`/`numeric()`/`boolean()` build. Carries its field `type` plus the exact `options`
- * object the caller passed in, generic over both `T` (the field's value type) and `O` (the caller's
- * own literal `options` type — inferred via a `const` type parameter on each builder, the same way
- * an inline `{ type: "number", default: 3000 }` object literal already preserves its own `default`
- * as a literal). `InferField` reads `HasDefault` off `O` directly, so `numeric()` narrows out `null`
- * exactly when the caller's own call included a `default`, same as the object-literal form.
- */
-export class ConfigDescriptor<T, O extends object = object> {
-  /** @internal Tags instances for `isConfigDescriptor` — see `CONFIG_DESCRIPTOR_TAG`'s doc. */
-  readonly [CONFIG_DESCRIPTOR_TAG] = true;
-
-  constructor(
-    readonly type: FieldType,
-    readonly options: O,
-  ) {}
-
-  /**
-   * This field's explicit path override, if any (`options.key`) — exposed directly so a
-   * `ConfigNode` can resolve this field's path itself (`key` as-is, or `[...basePath, key]`
-   * without one) without reaching into `options`/a reconstructed `FieldSchema` to find it.
-   */
-  get key(): string | string[] | undefined {
-    return (this.options as { key?: string | string[] }).key;
-  }
-
-  /**
-   * Coerces/validates this field from `rawStore` — a `Store` already holding this field's own
-   * merged raw value (or `undefined`/`null` when no source has it), built and kept live by
-   * whichever `ConfigNode` owns the shape tree this descriptor sits in. The descriptor knows
-   * nothing about `sources`, sibling fields, or where in the tree it lives — only its own
-   * `options` (`default`, `pattern`, `required`, ...) and, for error messages, the `path` label
-   * the caller passes in. The returned `store` stays live: it re-derives from `rawStore` on
-   * every change, so a caller only needs to read/subscribe to it, never call `parse()` again for
-   * the same field.
-   */
-  async parse(rawStore: Store<unknown>, path: string[] = []): Promise<{ store: Store<T> }> {
-    const schema = toFieldSchema(this);
-    const compute = (raw: unknown): T =>
-      (raw === undefined || raw === null ? (schema.default !== undefined ? schema.default : null) : coerce(schema, raw, path)) as T;
-    const store = new Store<T>(compute(rawStore.get()));
-    rawStore.listen((raw) => {
-      const next = compute(raw);
-      if (next !== store.get()) store.set(next);
-    });
-    return { store };
-  }
-}
+export {
+  boolean,
+  ConfigDescriptor,
+  numeric,
+  shape,
+  string,
+  url,
+  isConfigDescriptor,
+  type BooleanFieldOptions,
+  type BooleanFieldSchema,
+  type FieldSchema,
+  type FieldType,
+  type NumberFieldOptions,
+  type NumberFieldSchema,
+  type Parseable,
+  type ShapeFieldOptions,
+  type StringFieldOptions,
+  type StringFieldSchema,
+  type UrlFieldOptions,
+  type UrlFieldSchema,
+} from "./config-descriptor.js";
 
 /**
  * Non-generic stand-in for `ConfigDescriptor<T, O>` inside the `SchemaNode` union — same reason
@@ -169,46 +46,6 @@ export class ConfigDescriptor<T, O extends object = object> {
 interface ConfigDescriptorNode {
   readonly type: FieldType;
   readonly options: object;
-}
-
-/** Builds a `"string"` field descriptor — same options as `{ type: "string", ... }`, returned as a `ConfigDescriptor` instead of a plain object. */
-export function string<const O extends StringFieldOptions = {}>(options?: O): ConfigDescriptor<string, O> {
-  return new ConfigDescriptor("string", (options ?? {}) as O);
-}
-
-/** Builds a `"number"` field descriptor — same options as `{ type: "number", ... }`, returned as a `ConfigDescriptor` instead of a plain object. */
-export function numeric<const O extends NumberFieldOptions = {}>(options?: O): ConfigDescriptor<number, O> {
-  return new ConfigDescriptor("number", (options ?? {}) as O);
-}
-
-/** Builds a `"boolean"` field descriptor — same options as `{ type: "boolean", ... }`, returned as a `ConfigDescriptor` instead of a plain object. */
-export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): ConfigDescriptor<boolean, O> {
-  return new ConfigDescriptor("boolean", (options ?? {}) as O);
-}
-
-/** Builds a `"url"` field descriptor — same options as `{ type: "url", ... }`, returned as a `ConfigDescriptor` instead of a plain object. Parses (and validates) a string value into a `URL` instance. */
-export function url<const O extends UrlFieldOptions = {}>(options?: O): ConfigDescriptor<URL, O> {
-  return new ConfigDescriptor("url", (options ?? {}) as O);
-}
-
-/**
- * Extracts a `shape()` call's value type straight off the caller's own `options` — same source
- * `{ type: "shape", schema: z.object(...) }` already infers from (see `InferSchemaType`/
- * `PrimitiveOfField` below) — rather than from a separately-inferred type parameter, since `O` alone
- * (captured via the `const` type parameter on `shape()`) already carries the caller's literal
- * `schema`, unwidened.
- */
-type InferShapeOptionValue<O> = O extends { schema: infer Z } ? (Z extends { parse(value: unknown): infer R } ? R : unknown) : unknown;
-
-/**
- * Builds a `"shape"` field descriptor — same options as `{ type: "shape", ... }`, returned as a
- * `ConfigDescriptor` instead of a plain object. Infers its value type from `schema`'s `parse`
- * return type, same as the object-literal form; omitting `schema` (`shape()` alone) infers `unknown`.
- */
-export function shape<const O extends ShapeFieldOptions = {}>(
-  options?: O,
-): ConfigDescriptor<InferShapeOptionValue<O>, O> {
-  return new ConfigDescriptor("shape", (options ?? {}) as O);
 }
 
 export interface CreateOptions {
@@ -378,7 +215,8 @@ export type PendingConfigNode<S extends SchemaShape> = ConfigNode<S> & {
 export type SchemaGroup<S extends SchemaShape = SchemaShape> = PendingConfigNode<S>;
 
 // ---------------------------------------------------------------------------
-// Runtime helpers: field coercion/validation
+// Runtime helpers: the shape tree engine (path resolution, live stores) —
+// field coercion/validation itself lives in `./config-descriptor.js`.
 // ---------------------------------------------------------------------------
 
 function readNestedValue(data: unknown, path: string[]): unknown {
@@ -388,79 +226,6 @@ function readNestedValue(data: unknown, path: string[]): unknown {
     node = (node as Record<string, unknown>)[key];
   }
   return node;
-}
-
-function typeMismatch(field: FieldSchema, value: unknown, path: string[]): never {
-  throw new ConfigError(`Expected ${field.type} at "${path.join(".")}", got ${JSON.stringify(value)}`);
-}
-
-function validate(field: FieldSchema, value: unknown, path: string[]): void {
-  if (typeof value !== field.type) {
-    typeMismatch(field, value, path);
-  }
-  if (field.type === "string" && field.pattern && !field.pattern.test(value as string)) {
-    throw new ConfigError(`Value at "${path.join(".")}" does not match pattern ${field.pattern}`);
-  }
-}
-
-/**
- * A `"shape"` field that fails to parse doesn't take down the whole config tree by default — data
- * comes from sources outside this package's control, so a malformed value is logged via
- * `console.error` and the field resolves to `null`, same as a source that simply doesn't have it.
- * Only an explicit `required: true` escalates that failure into a thrown `ConfigError`.
- */
-function shapeFailure(field: FieldSchema, error: ConfigError): unknown {
-  if (field.required) throw error;
-  console.error(error);
-  return null;
-}
-
-function coerce(field: FieldSchema, raw: unknown, path: string[]): unknown {
-  if (field.type === "shape" || field.type === "file") {
-    if (!field.schema) {
-      if (typeof raw !== "object" || raw === null) {
-        return shapeFailure(
-          field,
-          new ConfigError(`Expected ${field.type} at "${path.join(".")}", got ${JSON.stringify(raw)}`),
-        );
-      }
-      return raw;
-    }
-    const schema = field.schema;
-    const [ok, err, result] = tSync(() => schema.parse(raw));
-    if (ok) return result;
-    const message = err instanceof Error ? err.message : String(err);
-    return shapeFailure(field, new ConfigError(`Value at "${path.join(".")}" failed schema validation: ${message}`));
-  }
-
-  if (field.type === "url") {
-    if (raw instanceof URL) return raw;
-    if (typeof raw !== "string") typeMismatch(field, raw, path);
-    try {
-      return new URL(raw);
-    } catch {
-      throw new ConfigError(`Value at "${path.join(".")}" is not a valid URL: ${JSON.stringify(raw)}`);
-    }
-  }
-
-  let value: unknown = raw;
-
-  if (field.type === "number" && typeof value !== "number") {
-    const num = Number(value);
-    if (typeof value !== "string" || value.trim() === "" || Number.isNaN(num)) {
-      typeMismatch(field, raw, path);
-    }
-    value = num;
-  } else if (field.type === "boolean" && typeof value !== "boolean") {
-    if (value === "true" || value === "1") value = true;
-    else if (value === "false" || value === "0") value = false;
-    else typeMismatch(field, raw, path);
-  } else if (field.type === "string" && typeof value !== "string") {
-    typeMismatch(field, raw, path);
-  }
-
-  validate(field, value, path);
-  return value;
 }
 
 /** Structural equality for plain trees of primitives/nested objects — what `InferShape<S>` produces. */
@@ -496,101 +261,18 @@ function isEmbeddedNode(value: unknown): value is object {
 }
 
 /**
- * A genuine `ConfigDescriptor` needs both markers to count as one: the `CONFIG_DESCRIPTOR_TAG`
- * symbol alone doesn't prove the rest of the contract (`.key`, `.parse()`) is actually there —
- * every builder (`string()`/`numeric()`/`boolean()`/`url()`/`shape()`, and `file()` from
- * `./node.js`) satisfies both by construction, since they all return a real `ConfigDescriptor`
- * instance, but this check doesn't take that on faith.
- */
-function isConfigDescriptor(node: unknown): node is ConfigDescriptor<unknown, object> {
-  if (typeof node !== "object" || node === null) return false;
-  if ((node as Record<symbol, unknown>)[CONFIG_DESCRIPTOR_TAG] !== true) return false;
-  return typeof (node as { parse?: unknown }).parse === "function";
-}
-
-/**
  * Detects a plain object used directly as a nested group's shape (`server: { port: numeric(...) } }`)
  * instead of wrapping it in `create({...})`. Only a genuine plain-object shape entry qualifies: not
  * an embedded `create()` node, not a `ConfigDescriptor`, not a bare/untagged schema, and not an
- * explicit tagged `FieldSchema` (`type` present) — the same exclusions `toFieldSchema` already
- * applies, checked here so this kind of entry never reaches it.
+ * explicit tagged `FieldSchema` (`type` present) — the same exclusions `toFieldSchema` (in
+ * `./config-descriptor.js`) already applies, checked here so this kind of entry never reaches it.
  */
 function isPlainShapeNode(node: unknown): node is SchemaShape {
   if (typeof node !== "object" || node === null) return false;
-  if (isEmbeddedNode(node) || isConfigDescriptor(node) || isBareParseable(node as SchemaNode)) return false;
+  if (isEmbeddedNode(node) || isConfigDescriptor(node) || isBareParseable(node)) return false;
   if ("type" in node || "schema" in node) return false;
   const proto = Object.getPrototypeOf(node);
   return proto === Object.prototype || proto === null;
-}
-
-/**
- * Detects a bare schema object used directly as a shape entry (`port: z.number()`), as opposed to
- * an explicit `FieldSchema` (`port: { type: "shape", schema: z.number() }`). A `type` property
- * isn't a reliable discriminator by itself — many schema libraries' own instances (zod's included)
- * carry a `type` property of their own (e.g. `"number"`), which could collide with one of this
- * package's `FieldType`s. What's actually different is *shape*: an explicit `FieldSchema` is always
- * a plain object literal (`Object.prototype` or `null` as its prototype), while a schema library's
- * instance is built by a factory/class (`z.number()`, `v.number()`, ...) and so isn't.
- */
-function isBareParseable(node: SchemaNode | undefined): node is Parseable<unknown> {
-  if (typeof node !== "object" || node === null) return false;
-  if (typeof (node as Parseable<unknown>).parse !== "function") return false;
-  const proto = Object.getPrototypeOf(node);
-  return proto !== Object.prototype && proto !== null;
-}
-
-let warnedAboutObjectLiteralFieldSchema = false;
-
-/**
- * One-time, process-wide nudge off the deprecated `{ type: "...", ... }` object-literal field
- * form (still fully supported — see each `Field*Schema` type's own `@deprecated` tag) toward its
- * `ConfigDescriptor`-returning builder equivalent (`string()`/`numeric()`/`boolean()`/`url()`/
- * `shape()`). Fires at most once per process no matter how many literal fields, across however
- * many `create()` calls, actually use the old form — deprecation warnings are meant to be noticed
- * once, not repeated on every field resolution.
- */
-function warnDeprecatedFieldSchema(): void {
-  if (warnedAboutObjectLiteralFieldSchema) return;
-  warnedAboutObjectLiteralFieldSchema = true;
-  console.warn(
-    '[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use ' +
-      "string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.",
-  );
-}
-
-/**
- * @internal Test-only: clears the one-time flag above so a spec can assert the warning fires
- * again, independent of whichever other spec file already tripped it earlier in the same test
- * run. Not part of the public API — never re-exported from `configs.ts`.
- */
-export function __resetDeprecatedFieldSchemaWarningForTests(): void {
-  warnedAboutObjectLiteralFieldSchema = false;
-}
-
-/**
- * Normalizes a shape entry to a `FieldSchema`. Two shorthands both collapse to an explicit
- * `{ type: "shape", ... }`: a bare schema object (`port: z.number()`, see `isBareParseable`), and a
- * plain `FieldSchema`-shaped object that has `schema` but omits `type` entirely (`port: { schema:
- * z.number() }`) — the latter is only recognized when `type` is genuinely absent (an actual
- * `type: "string"`/`"number"`/`"boolean"`/`"shape"` object always passes through as itself, but logs
- * the deprecation warning above — unlike these two `type`-less shorthands, which aren't deprecated).
- * Only called for entries that aren't nested groups (checked separately via `isEmbeddedNode`), so a
- * `SchemaGroupNode` (no `schema` property) never reaches here.
- */
-function toFieldSchema(node: SchemaNode | undefined): FieldSchema {
-  if (isConfigDescriptor(node)) {
-    return { type: node.type, ...(node.options as object) } as FieldSchema;
-  }
-  if (isBareParseable(node)) {
-    return { type: "shape", schema: node };
-  }
-  if (typeof node === "object" && node !== null && !("type" in node) && "schema" in node) {
-    return { ...(node as object), type: "shape" } as FieldSchema;
-  }
-  if (typeof node === "object" && node !== null && "type" in node) {
-    warnDeprecatedFieldSchema();
-  }
-  return node as FieldSchema;
 }
 
 /** An explicit `key` override (if set) is taken as-is instead of `[...basePath, key]`. */
