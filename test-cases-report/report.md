@@ -1174,15 +1174,15 @@ ok - a failed sseSource connection leaves the field null instead of throwing
 ALL_CHECKS_PASSED
 
 sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): fetch failed
-    at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-f2I3aS/node_modules/@jondotsoy/configs/dist/configs.js:578:9)
-    at async t (file:///tmp/jondotsoy-configs-test-cases-f2I3aS/node_modules/@jondotsoy/configs/dist/configs.js:612:20)
-    at async Object.start (file:///tmp/jondotsoy-configs-test-cases-f2I3aS/node_modules/@jondotsoy/configs/dist/configs.js:873:51) {
+    at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-4G7Iwn/node_modules/@jondotsoy/configs/dist/configs.js:578:9)
+    at async t (file:///tmp/jondotsoy-configs-test-cases-4G7Iwn/node_modules/@jondotsoy/configs/dist/configs.js:612:20)
+    at async Object.start (file:///tmp/jondotsoy-configs-test-cases-4G7Iwn/node_modules/@jondotsoy/configs/dist/configs.js:873:51) {
   [cause]: TypeError: fetch failed
       at node:internal/deps/undici/undici:14976:13
-      at async download (file:///tmp/jondotsoy-configs-test-cases-f2I3aS/node_modules/@jondotsoy/configs/dist/configs.js:553:20)
-      at async downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-f2I3aS/node_modules/@jondotsoy/configs/dist/configs.js:568:14)
-      at async t (file:///tmp/jondotsoy-configs-test-cases-f2I3aS/node_modules/@jondotsoy/configs/dist/configs.js:612:20)
-      at async Object.start (file:///tmp/jondotsoy-configs-test-cases-f2I3aS/node_modules/@jondotsoy/configs/dist/configs.js:873:51) {
+      at async download (file:///tmp/jondotsoy-configs-test-cases-4G7Iwn/node_modules/@jondotsoy/configs/dist/configs.js:553:20)
+      at async downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-4G7Iwn/node_modules/@jondotsoy/configs/dist/configs.js:568:14)
+      at async t (file:///tmp/jondotsoy-configs-test-cases-4G7Iwn/node_modules/@jondotsoy/configs/dist/configs.js:612:20)
+      at async Object.start (file:///tmp/jondotsoy-configs-test-cases-4G7Iwn/node_modules/@jondotsoy/configs/dist/configs.js:873:51) {
     [cause]: Error: bad port
         at makeNetworkError (node:internal/deps/undici/undici:9495:35)
         at mainFetch (node:internal/deps/undici/undici:10721:20)
@@ -1190,10 +1190,10 @@ sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" Attempt
         at fetch (node:internal/deps/undici/undici:10576:20)
         at fetch (node:internal/deps/undici/undici:14974:10)
         at fetch (node:internal/bootstrap/web/exposed-window-or-worker:75:12)
-        at download (file:///tmp/jondotsoy-configs-test-cases-f2I3aS/node_modules/@jondotsoy/configs/dist/configs.js:553:26)
-        at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-f2I3aS/node_modules/@jondotsoy/configs/dist/configs.js:568:20)
-        at file:///tmp/jondotsoy-configs-test-cases-f2I3aS/node_modules/@jondotsoy/configs/dist/configs.js:873:65
-        at t (file:///tmp/jondotsoy-configs-test-cases-f2I3aS/node_modules/@jondotsoy/configs/dist/configs.js:612:59)
+        at download (file:///tmp/jondotsoy-configs-test-cases-4G7Iwn/node_modules/@jondotsoy/configs/dist/configs.js:553:26)
+        at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-4G7Iwn/node_modules/@jondotsoy/configs/dist/configs.js:568:20)
+        at file:///tmp/jondotsoy-configs-test-cases-4G7Iwn/node_modules/@jondotsoy/configs/dist/configs.js:873:65
+        at t (file:///tmp/jondotsoy-configs-test-cases-4G7Iwn/node_modules/@jondotsoy/configs/dist/configs.js:612:59)
   }
 }
 [@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
@@ -1239,9 +1239,9 @@ sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" 573 |  
 578 |   throw new AttemptsExhaustedError(maxAttempts, lastError);
               ^
 AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): Unable to connect. Is the computer able to access the url?
-      at downloadWithRetry (/tmp/jondotsoy-configs-test-cases-f2I3aS/node_modules/@jondotsoy/configs/dist/configs.js:578:9)
-      at async t (/tmp/jondotsoy-configs-test-cases-f2I3aS/node_modules/@jondotsoy/configs/dist/configs.js:612:71)
-      at async start (/tmp/jondotsoy-configs-test-cases-f2I3aS/node_modules/@jondotsoy/configs/dist/configs.js:873:57)
+      at downloadWithRetry (/tmp/jondotsoy-configs-test-cases-4G7Iwn/node_modules/@jondotsoy/configs/dist/configs.js:578:9)
+      at async t (/tmp/jondotsoy-configs-test-cases-4G7Iwn/node_modules/@jondotsoy/configs/dist/configs.js:612:71)
+      at async start (/tmp/jondotsoy-configs-test-cases-4G7Iwn/node_modules/@jondotsoy/configs/dist/configs.js:873:57)
 
 error: Unable to connect. Is the computer able to access the url?
   path: "http://127.0.0.1:9/nobody-listens-here",
@@ -1315,9 +1315,9 @@ Compile: `$ bun build test/cases/08-sse-source-connection-failure.ts --target br
 [PASSED]
 Failed to load resource: net::ERR_UNSAFE_PORT
 sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): Failed to fetch
-    at downloadWithRetry (http://localhost:36831/:344:9)
-    at async t (http://localhost:36831/:348:20)
-    at async Object.start (http://localhost:36831/:443:51)
+    at downloadWithRetry (http://localhost:38795/:344:9)
+    at async t (http://localhost:38795/:348:20)
+    at async Object.start (http://localhost:38795/:443:51)
 [@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ok - a failed sseSource connection leaves the field null instead of throwing
 ALL_CHECKS_PASSED
@@ -2859,10 +2859,10 @@ Compile: `$ bun build test/cases/16-shell-source-runs-command.ts --target browse
 ```
 [WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
 shellSource: failed to run "echo {"port":7070}" AttemptsExhaustedError: shellSource: failed after 1 attempt(s): spawn is not a function
-    at runWithRetry (http://localhost:34999/:379:9)
-    at async t (http://localhost:34999/:291:20)
-    at async shellRound (http://localhost:34999/:383:37)
-    at async Object.start (http://localhost:34999/:433:21)
+    at runWithRetry (http://localhost:40907/:379:9)
+    at async t (http://localhost:40907/:291:20)
+    at async shellRound (http://localhost:40907/:383:37)
+    at async Object.start (http://localhost:40907/:433:21)
 [@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 RESULT: FAIL: FAIL: shellSource runs a command and parses its stdout as JSON
 ```
@@ -3233,18 +3233,18 @@ Compile: `$ bun build test/cases/17-node-file-field.ts --target browser --format
 ```
 [WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
 ConfigError2: Value at "key" could not be decoded as a file: mkdtempSync is not a function
-    at ConfigDescriptor.parser (http://localhost:45507/:1304:44)
-    at resolveDescriptorInitial (http://localhost:45507/:730:21)
-    at ConfigNodeState.fieldFor (http://localhost:45507/:829:43)
-    at Object.get (http://localhost:45507/:915:105)
-    at http://localhost:45507/:1332:18
+    at ConfigDescriptor.parser (http://localhost:35841/:1312:44)
+    at resolveDescriptorInitial (http://localhost:35841/:730:21)
+    at ConfigNodeState.fieldFor (http://localhost:35841/:829:43)
+    at Object.get (http://localhost:35841/:920:105)
+    at http://localhost:35841/:1340:18
 ConfigError2: Value at "key" could not be decoded as a file: mkdtempSync is not a function
-    at ConfigDescriptor.parser (http://localhost:45507/:1304:44)
-    at compute (http://localhost:45507/:1149:122)
-    at ConfigDescriptor.parse (http://localhost:45507/:1150:32)
-    at ConfigNodeState.wireDescriptorField (http://localhost:45507/:847:16)
-    at ConfigNodeState.fieldFor (http://localhost:45507/:832:14)
-    at Object.get (http://localhost:45507/:915:105)
-    at http://localhost:45507/:1332:18
+    at ConfigDescriptor.parser (http://localhost:35841/:1312:44)
+    at compute (http://localhost:35841/:1157:122)
+    at ConfigDescriptor.parse (http://localhost:35841/:1158:32)
+    at ConfigNodeState.wireDescriptorField (http://localhost:35841/:846:16)
+    at ConfigNodeState.fieldFor (http://localhost:35841/:832:14)
+    at Object.get (http://localhost:35841/:920:105)
+    at http://localhost:35841/:1340:18
 RESULT: FAIL: FAIL: a source's text value resolves to a FileBlob
 ```
