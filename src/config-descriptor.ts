@@ -108,12 +108,32 @@ export type UrlFieldOptions = Omit<UrlFieldSchema, "type">;
 export type ShapeFieldOptions = Omit<ShapeFieldSchema<unknown>, "type">;
 
 /**
- * What `string()`/`numeric()`/`boolean()` build. Carries its field `type` plus the exact `options`
- * object the caller passed in, generic over both `T` (the field's value type) and `O` (the caller's
- * own literal `options` type — inferred via a `const` type parameter on each builder, the same way
- * an inline `{ type: "number", default: 3000 }` object literal already preserves its own `default`
- * as a literal). `InferField` reads `HasDefault` off `O` directly, so `numeric()` narrows out `null`
- * exactly when the caller's own call included a `default`, same as the object-literal form.
+ * Coerces/validates one already-resolved raw value into `T`, throwing/logging per whatever rules
+ * the descriptor that built this closure captured from its own `options` (a `required` shape
+ * throws on failure instead of logging, a `string` checks its own `pattern`, ...). `path` is only
+ * ever used to label an error message — it carries no information back into the parser.
+ */
+export type Parser<T> = (raw: unknown, path: string[]) => T;
+
+/**
+ * Builds the `Parser<T>` a builder (`string()`/`numeric()`/`boolean()`/`url()`/`shape()`, and
+ * `file()` from `./node.js`) hands its `ConfigDescriptor` — a thin closure over `coerce()`, so
+ * every field type shares the exact same coercion rules the deprecated `{ type: "...", ... }`
+ * object-literal form still goes through (see `toFieldSchema`), without `ConfigDescriptor` itself
+ * needing to know `coerce()`/`toFieldSchema()` exist.
+ */
+export function makeParser<T>(type: FieldType, options: object): Parser<T> {
+  return (raw, path) => coerce({ type, ...options } as FieldSchema, raw, path) as T;
+}
+
+/**
+ * What `string()`/`numeric()`/`boolean()` build. Carries its field `type`, its `parser` (see
+ * `makeParser()`), and the exact `options` object the caller passed in, generic over both `T`
+ * (the field's value type) and `O` (the caller's own literal `options` type — inferred via a
+ * `const` type parameter on each builder, the same way an inline `{ type: "number", default: 3000
+ * }` object literal already preserves its own `default` as a literal). `InferField` reads
+ * `HasDefault` off `O` directly, so `numeric()` narrows out `null` exactly when the caller's own
+ * call included a `default`, same as the object-literal form.
  */
 export class ConfigDescriptor<T, O extends object = object> {
   /** @internal Tags instances for `isConfigDescriptor` — see `CONFIG_DESCRIPTOR_TAG`'s doc. */
@@ -121,6 +141,7 @@ export class ConfigDescriptor<T, O extends object = object> {
 
   constructor(
     readonly type: FieldType,
+    readonly parser: Parser<T>,
     readonly options: O,
   ) {}
 
@@ -134,19 +155,18 @@ export class ConfigDescriptor<T, O extends object = object> {
   }
 
   /**
-   * Coerces/validates this field from `rawStore` — a `Store` already holding this field's own
+   * Runs this field's own `parser` against `rawStore` — a `Store` already holding this field's
    * merged raw value (or `undefined`/`null` when no source has it), built and kept live by
    * whichever `ConfigNode` owns the shape tree this descriptor sits in. The descriptor knows
    * nothing about `sources`, sibling fields, or where in the tree it lives — only its own
-   * `options` (`default`, `pattern`, `required`, ...) and, for error messages, the `path` label
-   * the caller passes in. The returned `store` stays live: it re-derives from `rawStore` on
-   * every change, so a caller only needs to read/subscribe to it, never call `parse()` again for
-   * the same field.
+   * `parser`/`options.default` and, for error messages, the `path` label the caller passes in.
+   * The returned `store` stays live: it re-derives from `rawStore` on every change, so a caller
+   * only needs to read/subscribe to it, never call `parse()` again for the same field.
    */
   async parse(rawStore: Store<unknown>, path: string[] = []): Promise<{ store: Store<T> }> {
-    const schema = toFieldSchema(this);
+    const defaultValue = (this.options as { default?: T }).default;
     const compute = (raw: unknown): T =>
-      (raw === undefined || raw === null ? (schema.default !== undefined ? schema.default : null) : coerce(schema, raw, path)) as T;
+      raw === undefined || raw === null ? (defaultValue !== undefined ? defaultValue : (null as T)) : this.parser(raw, path);
     const store = new Store<T>(compute(rawStore.get()));
     rawStore.listen((raw) => {
       const next = compute(raw);
@@ -158,22 +178,26 @@ export class ConfigDescriptor<T, O extends object = object> {
 
 /** Builds a `"string"` field descriptor — same options as `{ type: "string", ... }`, returned as a `ConfigDescriptor` instead of a plain object. */
 export function string<const O extends StringFieldOptions = {}>(options?: O): ConfigDescriptor<string, O> {
-  return new ConfigDescriptor("string", (options ?? {}) as O);
+  const opts = (options ?? {}) as O;
+  return new ConfigDescriptor("string", makeParser<string>("string", opts), opts);
 }
 
 /** Builds a `"number"` field descriptor — same options as `{ type: "number", ... }`, returned as a `ConfigDescriptor` instead of a plain object. */
 export function numeric<const O extends NumberFieldOptions = {}>(options?: O): ConfigDescriptor<number, O> {
-  return new ConfigDescriptor("number", (options ?? {}) as O);
+  const opts = (options ?? {}) as O;
+  return new ConfigDescriptor("number", makeParser<number>("number", opts), opts);
 }
 
 /** Builds a `"boolean"` field descriptor — same options as `{ type: "boolean", ... }`, returned as a `ConfigDescriptor` instead of a plain object. */
 export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): ConfigDescriptor<boolean, O> {
-  return new ConfigDescriptor("boolean", (options ?? {}) as O);
+  const opts = (options ?? {}) as O;
+  return new ConfigDescriptor("boolean", makeParser<boolean>("boolean", opts), opts);
 }
 
 /** Builds a `"url"` field descriptor — same options as `{ type: "url", ... }`, returned as a `ConfigDescriptor` instead of a plain object. Parses (and validates) a string value into a `URL` instance. */
 export function url<const O extends UrlFieldOptions = {}>(options?: O): ConfigDescriptor<URL, O> {
-  return new ConfigDescriptor("url", (options ?? {}) as O);
+  const opts = (options ?? {}) as O;
+  return new ConfigDescriptor("url", makeParser<URL>("url", opts), opts);
 }
 
 /**
@@ -193,7 +217,8 @@ type InferShapeOptionValue<O> = O extends { schema: infer Z } ? (Z extends { par
 export function shape<const O extends ShapeFieldOptions = {}>(
   options?: O,
 ): ConfigDescriptor<InferShapeOptionValue<O>, O> {
-  return new ConfigDescriptor("shape", (options ?? {}) as O);
+  const opts = (options ?? {}) as O;
+  return new ConfigDescriptor("shape", makeParser<InferShapeOptionValue<O>>("shape", opts), opts);
 }
 
 /**
