@@ -52,6 +52,7 @@ export { DataTypes } from "./utils/data-types.js";
 export { DotEnv } from "./utils/dotenv.js";
 export { ConfigError } from "./errors.js";
 
+/** @deprecated Use `create()` from `./config-node.js` instead. */
 export const configs: ConfigsApi = {
   create: createConfigNode,
 };

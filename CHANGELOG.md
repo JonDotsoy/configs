@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`create()` in `src/config-node.ts`**: a new, from-scratch, minimal config-node implementation,
+  unrelated to `configs.create()`'s engine. Given a flat shape of `ConfigDescriptor`s (e.g. `{
+  port: numeric() }`), it returns a plain object exposing each key as a live `Store` — no `Proxy`,
+  and no `.get()` on the root. The returned object is also `then`able: `await`ing it resolves once
+  every source in `options.sources` has published its first snapshot, into the same plain shape
+  (no longer `then`able).
+
+### Deprecated
+
+- **`configs` (the default-export-backing namespace object in `src/configs.ts`) is deprecated** in
+  favor of `create()` from `./config-node.js`.
+
 ## [1.2.6] - 2026-09-25
 
 ### Changed
