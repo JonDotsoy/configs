@@ -444,11 +444,10 @@ export function urlParser(options: UrlFieldOptions): (raw: unknown, path: string
   return (raw, path) => {
     if (raw instanceof URL) return raw;
     if (typeof raw !== "string") typeMismatch("url", raw, path);
-    try {
-      return base === undefined ? new URL(raw) : new URL(raw, base);
-    } catch {
+    if (!URL.canParse(raw, base?.toString())) {
       throw new ConfigError(`Value at "${path.join(".")}" is not a valid URL: ${JSON.stringify(raw)}`);
     }
+    return new URL(raw, base);
   };
 }
 
