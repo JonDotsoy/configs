@@ -264,5 +264,5 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): FileFi
   const resolvedDefault = resolveDefault(opts.default, opts.format);
   if (resolvedDefault !== undefined) runtimeOptions.default = resolvedDefault;
 
-  return new ConfigDescriptor("shape", runtimeOptions) as unknown as FileFieldReturn<O>;
+  return new ConfigDescriptor("file", runtimeOptions) as unknown as FileFieldReturn<O>;
 }

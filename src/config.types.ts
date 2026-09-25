@@ -4,7 +4,7 @@ import { Store, type Subscriber, type Unsubscribe } from "./utils/store.js";
 import { tSync } from "./utils/t.js";
 import { ConfigError } from "./errors.js";
 
-export type FieldType = "string" | "number" | "boolean" | "url" | "shape";
+export type FieldType = "string" | "number" | "boolean" | "url" | "shape" | "file";
 
 interface BaseFieldSchema {
   summary?: string;
@@ -62,6 +62,18 @@ interface UntaggedShapeFieldSchema<T> extends BaseFieldSchema {
   default?: T;
 }
 
+/**
+ * Same shape as `ShapeFieldSchema<T>` — schema-based coercion, `schema` optional — tagged `"file"`
+ * instead: what `file()` (`./node.js`) builds via `ConfigDescriptor`, so its `.type` reads "file"
+ * (a `file()` field, not a generic shape) while going through the exact same schema-based
+ * coercion path in `coerce()`.
+ */
+interface FileFieldSchema<T> extends BaseFieldSchema {
+  type: "file";
+  schema?: Parseable<T>;
+  default?: T;
+}
+
 /** @deprecated Write `string({ ... })` instead of `{ type: "string", ... }` — same options, same inference, still fully supported, just no longer the recommended form. */
 export type StringFieldSchema = BaseFieldSchema & { type: "string"; pattern?: RegExp; default?: string };
 /** @deprecated Write `numeric({ ... })` instead of `{ type: "number", ... }` — same options, same inference, still fully supported, just no longer the recommended form. */
@@ -87,7 +99,8 @@ export type FieldSchema =
   | BooleanFieldSchema
   | UrlFieldSchema
   | ShapeFieldSchema<unknown>
-  | UntaggedShapeFieldSchema<unknown>;
+  | UntaggedShapeFieldSchema<unknown>
+  | FileFieldSchema<unknown>;
 
 export type StringFieldOptions = Omit<StringFieldSchema, "type">;
 export type NumberFieldOptions = Omit<NumberFieldSchema, "type">;
@@ -403,12 +416,12 @@ function shapeFailure(field: FieldSchema, error: ConfigError): unknown {
 }
 
 function coerce(field: FieldSchema, raw: unknown, path: string[]): unknown {
-  if (field.type === "shape") {
+  if (field.type === "shape" || field.type === "file") {
     if (!field.schema) {
       if (typeof raw !== "object" || raw === null) {
         return shapeFailure(
           field,
-          new ConfigError(`Expected shape at "${path.join(".")}", got ${JSON.stringify(raw)}`),
+          new ConfigError(`Expected ${field.type} at "${path.join(".")}", got ${JSON.stringify(raw)}`),
         );
       }
       return raw;
