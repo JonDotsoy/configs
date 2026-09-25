@@ -20,7 +20,7 @@ function testSource<T>(value: T): Source<T> {
   });
 }
 
-/** A `ConfigDescriptor` carries its own `parser` closure (see `makeParser()`), never equal by reference across two calls — assert `.type`/`.options`/`.parser` shape instead of a full `toEqual` against a hand-built instance. */
+/** A `ConfigDescriptor` carries its own `parser` closure (e.g. `stringParser()`), never equal by reference across two calls — assert `.type`/`.options`/`.parser` shape instead of a full `toEqual` against a hand-built instance. */
 function expectDescriptor(descriptor: unknown, type: FieldType, options: object): void {
   expect(descriptor).toBeInstanceOf(ConfigDescriptor);
   expect((descriptor as ConfigDescriptor<unknown>).type).toBe(type);

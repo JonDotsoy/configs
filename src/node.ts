@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigDescriptor, makeParser, type Parseable, type ShapeFieldOptions } from "./config-descriptor.js";
+import { ConfigDescriptor, shapeParser, type Parseable, type ShapeFieldOptions } from "./config-descriptor.js";
 import { ConfigError } from "./errors.js";
 
 /**
@@ -264,5 +264,5 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): FileFi
   const resolvedDefault = resolveDefault(opts.default, opts.format);
   if (resolvedDefault !== undefined) runtimeOptions.default = resolvedDefault;
 
-  return new ConfigDescriptor("file", makeParser<FileBlob>("file", runtimeOptions), runtimeOptions) as unknown as FileFieldReturn<O>;
+  return new ConfigDescriptor("file", shapeParser<FileBlob>(runtimeOptions, "file"), runtimeOptions) as unknown as FileFieldReturn<O>;
 }

@@ -131,19 +131,8 @@ export type ShapeFieldOptions = Omit<ShapeFieldSchema<unknown>, "type">;
 export type Parser<T> = (raw: unknown, path: string[]) => T;
 
 /**
- * Builds the `Parser<T>` a builder (`string()`/`numeric()`/`boolean()`/`url()`/`shape()`, and
- * `file()` from `./node.js`) hands its `ConfigDescriptor` — a thin closure over `coerce()`, so
- * every field type shares the exact same coercion rules the deprecated `{ type: "...", ... }`
- * object-literal form still goes through (see `toFieldSchema`), without `ConfigDescriptor` itself
- * needing to know `coerce()`/`toFieldSchema()` exist.
- */
-export function makeParser<T>(type: FieldType, options: object): Parser<T> {
-  return (raw, path) => coerce({ type, ...options } as FieldSchema, raw, path) as T;
-}
-
-/**
- * What `string()`/`numeric()`/`boolean()` build. Carries its field `type`, its `parser` (see
- * `makeParser()`), and the exact `options` object the caller passed in, generic over both `T`
+ * What `string()`/`numeric()`/`boolean()` build. Carries its field `type`, its own `parser` (e.g.
+ * `stringParser()`), and the exact `options` object the caller passed in, generic over both `T`
  * (the field's value type) and `O` (the caller's own literal `options` type — inferred via a
  * `const` type parameter on each builder, the same way an inline `{ type: "number", default: 3000
  * }` object literal already preserves its own `default` as a literal). `InferField` reads
@@ -194,25 +183,25 @@ export class ConfigDescriptor<T, O extends object = object> {
 /** Builds a `"string"` field descriptor — same options as `{ type: "string", ... }`, returned as a `ConfigDescriptor` instead of a plain object. */
 export function string<const O extends StringFieldOptions = {}>(options?: O): ConfigDescriptor<string, O> {
   const opts = (options ?? {}) as O;
-  return new ConfigDescriptor("string", makeParser<string>("string", opts), opts);
+  return new ConfigDescriptor("string", stringParser(opts), opts);
 }
 
 /** Builds a `"number"` field descriptor — same options as `{ type: "number", ... }`, returned as a `ConfigDescriptor` instead of a plain object. */
 export function numeric<const O extends NumberFieldOptions = {}>(options?: O): ConfigDescriptor<number, O> {
   const opts = (options ?? {}) as O;
-  return new ConfigDescriptor("number", makeParser<number>("number", opts), opts);
+  return new ConfigDescriptor("number", numberParser(opts), opts);
 }
 
 /** Builds a `"boolean"` field descriptor — same options as `{ type: "boolean", ... }`, returned as a `ConfigDescriptor` instead of a plain object. */
 export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): ConfigDescriptor<boolean, O> {
   const opts = (options ?? {}) as O;
-  return new ConfigDescriptor("boolean", makeParser<boolean>("boolean", opts), opts);
+  return new ConfigDescriptor("boolean", booleanParser(opts), opts);
 }
 
 /** Builds a `"url"` field descriptor — same options as `{ type: "url", ... }`, returned as a `ConfigDescriptor` instead of a plain object. Parses (and validates) a string value into a `URL` instance. */
 export function url<const O extends UrlFieldOptions = {}>(options?: O): ConfigDescriptor<URL, O> {
   const opts = (options ?? {}) as O;
-  return new ConfigDescriptor("url", makeParser<URL>("url", opts), opts);
+  return new ConfigDescriptor("url", urlParser(opts), opts);
 }
 
 /**
@@ -233,7 +222,11 @@ export function shape<const O extends ShapeFieldOptions = {}>(
   options?: O,
 ): ConfigDescriptor<InferShapeOptionValue<O>, O> {
   const opts = (options ?? {}) as O;
-  return new ConfigDescriptor("shape", makeParser<InferShapeOptionValue<O>>("shape", opts), opts);
+  return new ConfigDescriptor(
+    "shape",
+    shapeParser<InferShapeOptionValue<O>>(opts as { schema?: Parseable<InferShapeOptionValue<O>>; required?: boolean }, "shape"),
+    opts,
+  );
 }
 
 /**
@@ -319,76 +312,105 @@ export function toFieldSchema(node: unknown): FieldSchema {
   return node as FieldSchema;
 }
 
-function typeMismatch(field: FieldSchema, value: unknown, path: string[]): never {
-  throw new ConfigError(`Expected ${field.type} at "${path.join(".")}", got ${JSON.stringify(value)}`);
-}
-
-function validate(field: FieldSchema, value: unknown, path: string[]): void {
-  if (typeof value !== field.type) {
-    typeMismatch(field, value, path);
-  }
-  if (field.type === "string" && field.pattern && !field.pattern.test(value as string)) {
-    throw new ConfigError(`Value at "${path.join(".")}" does not match pattern ${field.pattern}`);
-  }
+function typeMismatch(type: FieldType, value: unknown, path: string[]): never {
+  throw new ConfigError(`Expected ${type} at "${path.join(".")}", got ${JSON.stringify(value)}`);
 }
 
 /**
- * A `"shape"` field that fails to parse doesn't take down the whole config tree by default — data
- * comes from sources outside this package's control, so a malformed value is logged via
- * `console.error` and the field resolves to `null`, same as a source that simply doesn't have it.
- * Only an explicit `required: true` escalates that failure into a thrown `ConfigError`.
+ * A `"shape"`/`"file"` field that fails to parse doesn't take down the whole config tree by
+ * default — data comes from sources outside this package's control, so a malformed value is
+ * logged via `console.error` and the field resolves to `null`, same as a source that simply
+ * doesn't have it. Only an explicit `required: true` escalates that failure into a thrown
+ * `ConfigError`.
  */
-function shapeFailure(field: FieldSchema, error: ConfigError): unknown {
-  if (field.required) throw error;
+function shapeFailure(required: boolean | undefined, error: ConfigError): unknown {
+  if (required) throw error;
   console.error(error);
   return null;
 }
 
-/** Coerces/validates `raw` (already resolved from some source) against `field`, throwing/logging per its own options — this is `ConfigDescriptor.parse()`'s (and the legacy field engine's) sole coercion path. */
-export function coerce(field: FieldSchema, raw: unknown, path: string[]): unknown {
-  if (field.type === "shape" || field.type === "file") {
-    if (!field.schema) {
-      if (typeof raw !== "object" || raw === null) {
-        return shapeFailure(
-          field,
-          new ConfigError(`Expected ${field.type} at "${path.join(".")}", got ${JSON.stringify(raw)}`),
-        );
-      }
-      return raw;
+/** `string()`'s own `Parser<string>` — the coercion/validation rules a `"string"` field applies, including its own `pattern`. */
+function stringParser(options: StringFieldOptions): Parser<string> {
+  return (raw, path) => {
+    if (typeof raw !== "string") typeMismatch("string", raw, path);
+    if (options.pattern && !options.pattern.test(raw)) {
+      throw new ConfigError(`Value at "${path.join(".")}" does not match pattern ${options.pattern}`);
     }
-    const schema = field.schema;
-    const [ok, err, result] = tSync(() => schema.parse(raw));
-    if (ok) return result;
-    const message = err instanceof Error ? err.message : String(err);
-    return shapeFailure(field, new ConfigError(`Value at "${path.join(".")}" failed schema validation: ${message}`));
-  }
+    return raw;
+  };
+}
 
-  if (field.type === "url") {
+/** `numeric()`'s own `Parser<number>` — a numeric-looking string is coerced, anything else is rejected. */
+function numberParser(_options: NumberFieldOptions): Parser<number> {
+  return (raw, path) => {
+    if (typeof raw === "number") return raw;
+    const num = Number(raw);
+    if (typeof raw !== "string" || raw.trim() === "" || Number.isNaN(num)) typeMismatch("number", raw, path);
+    return num;
+  };
+}
+
+/** `boolean()`'s own `Parser<boolean>` — `"true"`/`"1"` and `"false"`/`"0"` are coerced, anything else is rejected. */
+function booleanParser(_options: BooleanFieldOptions): Parser<boolean> {
+  return (raw, path) => {
+    if (typeof raw === "boolean") return raw;
+    if (raw === "true" || raw === "1") return true;
+    if (raw === "false" || raw === "0") return false;
+    typeMismatch("boolean", raw, path);
+  };
+}
+
+/** `url()`'s own `Parser<URL>` — a string is parsed (and validated) into a `URL` instance; an already-`URL` value passes through as-is. */
+function urlParser(_options: UrlFieldOptions): Parser<URL> {
+  return (raw, path) => {
     if (raw instanceof URL) return raw;
-    if (typeof raw !== "string") typeMismatch(field, raw, path);
+    if (typeof raw !== "string") typeMismatch("url", raw, path);
     try {
       return new URL(raw);
     } catch {
       throw new ConfigError(`Value at "${path.join(".")}" is not a valid URL: ${JSON.stringify(raw)}`);
     }
-  }
+  };
+}
 
-  let value: unknown = raw;
-
-  if (field.type === "number" && typeof value !== "number") {
-    const num = Number(value);
-    if (typeof value !== "string" || value.trim() === "" || Number.isNaN(num)) {
-      typeMismatch(field, raw, path);
+/**
+ * `shape()`'s (and `file()`'s, from `./node.js`) own `Parser<T>` — hands the raw value to
+ * `options.schema.parse` when one is given, otherwise passes any object value through as-is;
+ * either way, a failure resolves to `null` (logged) or throws, per `options.required` (see
+ * `shapeFailure`). `typeLabel` is only used to name the field's own type in an error message —
+ * `shape()` passes `"shape"`, `file()` passes `"file"`.
+ */
+export function shapeParser<T>(options: { schema?: Parseable<T>; required?: boolean }, typeLabel: FieldType): Parser<T> {
+  return (raw, path) => {
+    if (!options.schema) {
+      if (typeof raw !== "object" || raw === null) {
+        return shapeFailure(
+          options.required,
+          new ConfigError(`Expected ${typeLabel} at "${path.join(".")}", got ${JSON.stringify(raw)}`),
+        ) as T;
+      }
+      return raw as T;
     }
-    value = num;
-  } else if (field.type === "boolean" && typeof value !== "boolean") {
-    if (value === "true" || value === "1") value = true;
-    else if (value === "false" || value === "0") value = false;
-    else typeMismatch(field, raw, path);
-  } else if (field.type === "string" && typeof value !== "string") {
-    typeMismatch(field, raw, path);
-  }
+    const schema = options.schema;
+    const [ok, err, result] = tSync(() => schema.parse(raw));
+    if (ok) return result;
+    const message = err instanceof Error ? err.message : String(err);
+    return shapeFailure(options.required, new ConfigError(`Value at "${path.join(".")}" failed schema validation: ${message}`)) as T;
+  };
+}
 
-  validate(field, value, path);
-  return value;
+/**
+ * Coerces/validates `raw` (already resolved from some source) against `field`, by dispatching to
+ * the same per-type `Parser<T>` (`stringParser`/`numberParser`/`booleanParser`/`urlParser`/
+ * `shapeParser`) each builder hands its own `ConfigDescriptor` — this is what the deprecated
+ * `{ type: "...", ... }` object-literal field form (and any other bare/untagged shape entry, via
+ * `toFieldSchema()`) still goes through in `./config.types.js`'s legacy field engine, since it
+ * never gets a `ConfigDescriptor`/`parser` of its own to call directly.
+ */
+export function coerce(field: FieldSchema, raw: unknown, path: string[]): unknown {
+  if (field.type === "shape" || field.type === "file") return shapeParser(field, field.type)(raw, path);
+  if (field.type === "url") return urlParser(field)(raw, path);
+  if (field.type === "number") return numberParser(field)(raw, path);
+  if (field.type === "boolean") return booleanParser(field)(raw, path);
+  return stringParser(field as StringFieldSchema)(raw, path);
 }
