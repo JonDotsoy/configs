@@ -19,7 +19,7 @@ qué no, y por qué.
 | Raíz expone | `.get()`/`.subscribe()`/`.listen()`/`.close()`/`[Symbol.asyncDispose]` + cada campo | **solo** cada campo (ningún método de agregación en la raíz) |
 | Cálculo de campos | perezoso y cacheado (`fieldFor()`/`childNode()`, `Map`) | eager: todo el árbol se construye una vez, al llamar a `create()` — sin `Map` de caché, porque no hace falta decidir nada dos veces |
 | Resolución de un campo | `ConfigDescriptor.parse()` (async, se suscribe a un `Store<unknown>` en vivo) | `ConfigDescriptor.reduce()` (sync, recibe un `Store<unknown>` — la `KeyStore` de ese campo — y se suscribe a ella igual que `parse()`) |
-| Grupos anidados | `configs.create({...})` embebido — puede traer **sus propias `sources`**, independientes del padre | objeto plano anidado en el shape — **siempre comparte** las `sources` del `create()` raíz |
+| Grupos anidados | `configs.create({...})` embebido — puede traer **sus propias `sources`**, independientes del padre, o compartir las del padre, según reciba `options` o no | objeto plano → comparte las `sources` del `create()` raíz; **otro `create()` embebido** → resuelve con sus propias `sources`, detectado vía `isConfigsNode()` |
 | `key` (path override) | soportado (`descriptor.key`) | **no soportado** — el path de resolución es siempre la ruta de anidamiento del shape |
 | `freeze` | soportado (`wireDescriptorField` deja de escuchar tras el primer valor) | **no soportado** — cada campo se queda suscrito a su `KeyStore` para siempre |
 | Actualizaciones en vivo | por campo, vía suscripción a cada `Store` de origen | por campo también, pero vía una cadena `Source → KeyStore → FieldStore` propia de cada campo — sin recorrer el resto del árbol |
@@ -101,12 +101,28 @@ independiente** del árbol que lo contiene (`ownsResolution`); si no, comparte d
 `rootStores` del padre (`ConfigNodeState.rootStores` getter). Esto es lo que permite el caso cubierto en `src/config.types.field-builders.spec.ts` bajo
 `describe("a nested create() with its own sources scopes key lookups to those sources only")`.
 
-En la nueva implementación, un grupo anidado es simplemente **un objeto plano** dentro del shape
-(`{ server: { port: numeric() } }`, sin ningún `create()` de por medio) — no existe la noción de
-"grupo con sources propias": todo el árbol, sin importar cuán anidado esté, se resuelve siempre
-contra las mismas `options.sources` del `create()` raíz, buscando en cada fuente el path completo
-anidado (`["server", "port"]`). No hay forma de que un subárbol lea de una fuente distinta a la del
-resto — si se necesita eso, hay que usar el motor legado.
+En la nueva implementación hay **dos formas** de anidar, y se distinguen por si el valor del shape
+es un objeto plano o el resultado de `create()`:
+
+- **Objeto plano** (`{ server: { port: numeric() } }`, sin ningún `create()` de por medio) —
+  siempre comparte las `options.sources` del `create()` raíz, buscando en cada fuente el path
+  completo anidado (`["server", "port"]"`). Es la forma sin superficie propia: no expone `then()`
+  ni ningún método de agregación — es literalmente el mismo objeto plano que cualquier otro nivel
+  del árbol.
+- **Otro `create()` embebido** (`{ server: { tls: create({ cert: string() }, { sources: [...] })
+  } }`) — equivalente al caso de "sources propias" del legado: `buildNode()` lo detecta vía
+  `isConfigsNode()` (una función exportada que comprueba un `Symbol.for()` marcador puesto en todo
+  nodo que `create()` devuelve) y lo **adopta tal cual**, sin reconstruirlo ni tocar su `path` —
+  sigue resolviendo únicamente contra sus propias `sources`, nunca contra las del padre. El
+  `then()` del padre también espera la resolución de cada nodo embebido (`embeddedReady` en
+  `buildNode()`/`create()`), igual que el legado agrega el `readyPromise` de cada grupo embebido
+  al suyo propio (`collectEmbeddedStates` en `config.types.ts`).
+
+La diferencia real con el legado es de tipado, no de comportamiento: en el legado, "grupo con
+sources propias" y "grupo que comparte las del padre" son la **misma sintaxis**
+(`configs.create({...})`, con o sin `options`) — la forma en runtime decide cuál es. En la nueva
+implementación son dos formas sintácticas distintas (objeto plano vs. llamar a `create()` primero),
+así que el propio shape ya dice, a simple vista, cuál caso es cada rama.
 
 ## Superficie del nodo devuelto
 
@@ -142,8 +158,9 @@ La diferencia de tipos que sí importa es la forma del nodo resultante:
 - **Código existente que ya usa `configs.create()`/`load()`**: sigue funcionando — está deprecado,
   no eliminado — pero no recibe features nuevas (no va a ganar, por ejemplo, `reduce()`-based
   resolution ni ningún cambio de este documento). Migrar tiene sentido cuando el código no depende
-  de lo que el nuevo motor no tiene: `key`, `freeze`, grupos anidados con `sources` propias, o los
-  métodos de agregación en la raíz (`.get()`/`.subscribe()`/`.close()`).
+  de lo que el nuevo motor no tiene: `key`, `freeze`, o los métodos de agregación en la raíz
+  (`.get()`/`.subscribe()`/`.close()`). Un grupo anidado con `sources` propias sí tiene equivalente
+  en el nuevo motor — embeber otro `create()` — así que eso solo no bloquea la migración.
 
 ## Ver también
 

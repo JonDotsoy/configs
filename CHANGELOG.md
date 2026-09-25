@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the moment `create()` is called; once that source's own `open()` resolves, its value (and every
   later update) forwards into the placeholder and ripples through only the fields whose path it
   can affect.
+
+  A shape entry can also be **another `create()` result** (`{ server: { tls: create({ cert:
+  string() }, { sources: [...] }) } }`) — it's adopted as-is: it resolves independently from its
+  own `sources`, never looked up against the parent's, and the parent's own `then()` also waits
+  for it. `isConfigsNode(value)` (also exported) tells such an embedded node apart from a plain
+  nested shape.
 - **`ConfigDescriptor.reduce(rawStore, path?)`**: the reactive counterpart to `.parse()`, and what
   it's now built on. Takes a live `Store<unknown>` (not a bare raw value) and returns a live
   `Store<T>` that recomputes on every `rawStore` change — falling back to `options.default` when

@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, spyOn, test } from "bun:test";
-import { create, type ConfigsNode, type ConfigsNodePending, type ConfigsShape, type Options } from "./config-node.ts";
+import { create, isConfigsNode, type ConfigsNode, type ConfigsNodePending, type ConfigsShape, type Options } from "./config-node.ts";
 import { boolean, choice, numeric, shape, string, url } from "./config-descriptor.ts";
 import { ConfigError } from "./errors.ts";
 import { Source } from "./sources/source.ts";
@@ -109,6 +109,91 @@ describe("create — nested groups", () => {
 
     expectTypeOf(cfg.server).toEqualTypeOf<{ port: Store<number | null> }>();
     expectTypeOf(cfg.server.port).toMatchTypeOf<ReadOnlyStore<number | null>>();
+  });
+});
+
+describe("create — embedding another create() result", () => {
+  test("isConfigsNode() recognizes a node returned by create(), and nothing else", () => {
+    const node = create({ port: numeric() });
+
+    expect(isConfigsNode(node)).toBe(true);
+    expect(isConfigsNode({ port: numeric() })).toBe(false);
+    expect(isConfigsNode(null)).toBe(false);
+    expect(isConfigsNode(42)).toBe(false);
+  });
+
+  test("an embedded create() result is adopted as-is — same Store identity, resolved from its own sources", async () => {
+    const tls = create(
+      { cert: string(), key: string() },
+      { sources: [testSource({ cert: "cert.pem", key: "key.pem" })] },
+    );
+
+    const cfg = create({
+      port: numeric({ default: 3000 }),
+      server: { tls },
+    });
+
+    // Adopted by reference: the parent doesn't rebuild it.
+    expect(cfg.server.tls).toBe(tls);
+
+    const resolved = await cfg;
+
+    expect(resolved.port.get()).toBe(3000);
+    expect(resolved.server.tls.cert.get()).toBe("cert.pem");
+    expect(resolved.server.tls.key.get()).toBe("key.pem");
+  });
+
+  test("an embedded node's own sources are independent of the parent's — never looked up against the parent's path", async () => {
+    const tls = create({ cert: string({ default: "default.pem" }) }, { sources: [testSource({ cert: "inner.pem" })] });
+
+    // The parent's own source publishes something at "server.tls.cert" too — the embedded node
+    // must never see it, since it resolves only from its own sources.
+    const cfg = await create(
+      { server: { tls } },
+      { sources: [testSource({ server: { tls: { cert: "outer.pem" } } })] },
+    );
+
+    expect(cfg.server.tls.cert.get()).toBe("inner.pem");
+  });
+
+  test("awaiting the outer node also waits for the embedded node's own (slower) sources", async () => {
+    const opened: string[] = [];
+    const delayedSource = new Source<{ tar: string }>({
+      async start(control) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        opened.push("inner");
+        control.set({ tar: "42" });
+        control.close();
+      },
+    });
+
+    const inner = create({ tar: numeric() }, { sources: [delayedSource] });
+    const cfg = create({ foo: inner });
+
+    const resolved = await cfg;
+
+    expect(opened).toEqual(["inner"]);
+    expect(resolved.foo.tar.get()).toBe(42);
+  });
+
+  test("a live update in the embedded node's own source updates its Store in place, visible through the parent", async () => {
+    const { source, push } = liveTestSource({ port: "3000" });
+    const inner = create({ port: numeric() }, { sources: [source] });
+    const cfg = await create({ server: inner });
+
+    expect(cfg.server.port.get()).toBe(3000);
+
+    push({ port: "4000" });
+
+    expect(cfg.server.port.get()).toBe(4000);
+  });
+
+  test("types: an embedded create() result's field types flow through the parent's ConfigsNode", () => {
+    const tls = create({ cert: string(), key: string({ default: "k" }) });
+    const cfg = create({ server: { tls } });
+
+    expectTypeOf(cfg.server.tls.cert).toEqualTypeOf<Store<string | null>>();
+    expectTypeOf(cfg.server.tls.key).toEqualTypeOf<Store<string>>();
   });
 });
 
