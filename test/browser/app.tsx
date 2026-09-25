@@ -1,6 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { configs, Source } from "../../src/configs";
+import { create, Source } from "../../src/configs";
+import { boolean } from "../../src/config-descriptor";
 import { Store } from "../../src/utils/store";
 import { useConfig } from "../../src/react";
 
@@ -24,7 +25,7 @@ function App() {
 
 // A source that only publishes after a short delay, so `cfg.foo` starts out
 // `null` and the component below reads it — via useConfig — before
-// `configs.create()`'s returned node has resolved at all.
+// `create()`'s returned node has resolved at all.
 const delayedSource = new Source<{ foo: boolean }>({
   async start(control) {
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -32,7 +33,7 @@ const delayedSource = new Source<{ foo: boolean }>({
     control.close();
   },
 });
-const cfg = configs.create({ foo: { type: "boolean", required: true } }, { sources: [delayedSource] });
+const cfg = create({ foo: boolean({ required: true }) }, { sources: [delayedSource] });
 
 function AsyncApp() {
   const foo = useConfig(cfg.foo);

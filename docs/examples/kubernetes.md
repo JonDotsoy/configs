@@ -12,14 +12,14 @@ runtime (Node, Bun) — see
 ## `server.ts`
 
 ```ts
-import { create } from "@jondotsoy/configs";
+import { create, boolean } from "@jondotsoy/configs";
 import { fileSource } from "@jondotsoy/configs/sources/file";
 
 const cfg = await create(
   {
-    features: create({
-      promoService: { type: "boolean", summary: "enable the promo service", default: false },
-    }),
+    features: {
+      promoService: boolean({ summary: "enable the promo service", default: false }),
+    },
   },
   // fileSource re-reads the file every time kubelet syncs the mounted ConfigMap
   { sources: [fileSource("/etc/config/configs.json")] },

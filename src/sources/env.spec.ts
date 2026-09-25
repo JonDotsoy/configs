@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { configs } from "../configs";
+import { create } from "../configs";
+import { numeric, string } from "../config-descriptor";
 import type { GaugeMetric } from "../utils/metric";
 import { envSource, mapKey } from "./env";
 
@@ -158,13 +159,13 @@ describe("envSource", () => {
     expect(store.get()).toEqual({ server: { port: "3000" } });
   });
 
-  test("wires into configs.create as a source", async () => {
-    const cfg = await configs.create(
+  test("wires into create() as a source", async () => {
+    const cfg = await create(
       {
-        server: configs.create({
-          port: { type: "number", required: true },
-          host: { type: "string", required: true },
-        }),
+        server: {
+          port: numeric({ required: true }),
+          host: string({ required: true }),
+        },
       },
       {
         sources: [

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { configs } from "../configs";
+import { create } from "../configs";
+import { numeric, string } from "../config-descriptor";
 import { literalSource } from "./literal";
 
 describe("literalSource", () => {
@@ -17,9 +18,9 @@ describe("literalSource", () => {
     await expect(source.close()).resolves.toBeUndefined();
   });
 
-  test("wires into configs.create as a source", async () => {
-    const cfg = await configs.create(
-      { port: { type: "number", required: true } },
+  test("wires into create() as a source", async () => {
+    const cfg = await create(
+      { port: numeric({ required: true }) },
       { sources: [literalSource({ port: 3000 })] },
     );
 
@@ -27,10 +28,10 @@ describe("literalSource", () => {
   });
 
   test("acts as a static fallback behind an earlier source that's missing a field", async () => {
-    const cfg = await configs.create(
+    const cfg = await create(
       {
-        port: { type: "number", required: true },
-        host: { type: "string", required: true },
+        port: numeric({ required: true }),
+        host: string({ required: true }),
       },
       {
         sources: [literalSource({ port: 8080 }), literalSource({ port: 3000, host: "localhost" })],

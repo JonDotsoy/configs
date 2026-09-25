@@ -23,8 +23,8 @@ Every documented top-level export resolves from the root entry point.
 // Case: importing the root entry point (`@jondotsoy/configs`) exposes every
 // documented top-level export, under every supported engine.
 import {
-  configs,
   create,
+  load,
   envSource,
   fetchSource,
   fileSource,
@@ -42,8 +42,8 @@ function assert(cond: unknown, message: string): void {
   console.log("ok - " + message);
 }
 
-assert(typeof configs.create === "function", "configs.create is a function");
 assert(typeof create === "function", "create is exported from root");
+assert(typeof load === "function", "load is exported from root");
 assert(typeof envSource === "function", "envSource is exported from root");
 assert(typeof fetchSource === "function", "fetchSource is exported from root");
 assert(typeof fileSource === "function", "fileSource is exported from root");
@@ -65,8 +65,8 @@ Compile: `$ node --experimental-strip-types --no-warnings test/cases/01-import-r
 
 ```
 [PASSED]
-ok - configs.create is a function
 ok - create is exported from root
+ok - load is exported from root
 ok - envSource is exported from root
 ok - fetchSource is exported from root
 ok - fileSource is exported from root
@@ -91,8 +91,8 @@ Every documented top-level export resolves from the root entry point.
 // Case: importing the root entry point (`@jondotsoy/configs`) exposes every
 // documented top-level export, under every supported engine.
 import {
-  configs,
   create,
+  load,
   envSource,
   fetchSource,
   fileSource,
@@ -110,8 +110,8 @@ function assert(cond: unknown, message: string): void {
   console.log("ok - " + message);
 }
 
-assert(typeof configs.create === "function", "configs.create is a function");
 assert(typeof create === "function", "create is exported from root");
+assert(typeof load === "function", "load is exported from root");
 assert(typeof envSource === "function", "envSource is exported from root");
 assert(typeof fetchSource === "function", "fetchSource is exported from root");
 assert(typeof fileSource === "function", "fileSource is exported from root");
@@ -133,8 +133,8 @@ Compile: `$ bun test/cases/01-import-root.ts (running the copy installed against
 
 ```
 [PASSED]
-ok - configs.create is a function
 ok - create is exported from root
+ok - load is exported from root
 ok - envSource is exported from root
 ok - fetchSource is exported from root
 ok - fileSource is exported from root
@@ -159,8 +159,8 @@ Every documented top-level export resolves from the root entry point.
 // Case: importing the root entry point (`@jondotsoy/configs`) exposes every
 // documented top-level export, under every supported engine.
 import {
-  configs,
   create,
+  load,
   envSource,
   fetchSource,
   fileSource,
@@ -178,8 +178,8 @@ function assert(cond: unknown, message: string): void {
   console.log("ok - " + message);
 }
 
-assert(typeof configs.create === "function", "configs.create is a function");
 assert(typeof create === "function", "create is exported from root");
+assert(typeof load === "function", "load is exported from root");
 assert(typeof envSource === "function", "envSource is exported from root");
 assert(typeof fetchSource === "function", "fetchSource is exported from root");
 assert(typeof fileSource === "function", "fileSource is exported from root");
@@ -212,8 +212,8 @@ Every documented top-level export resolves from the root entry point.
 // Case: importing the root entry point (`@jondotsoy/configs`) exposes every
 // documented top-level export, under every supported engine.
 import {
-  configs,
   create,
+  load,
   envSource,
   fetchSource,
   fileSource,
@@ -231,8 +231,8 @@ function assert(cond: unknown, message: string): void {
   console.log("ok - " + message);
 }
 
-assert(typeof configs.create === "function", "configs.create is a function");
 assert(typeof create === "function", "create is exported from root");
+assert(typeof load === "function", "load is exported from root");
 assert(typeof envSource === "function", "envSource is exported from root");
 assert(typeof fetchSource === "function", "fetchSource is exported from root");
 assert(typeof fileSource === "function", "fileSource is exported from root");
@@ -254,8 +254,8 @@ Compile: `$ bun build test/cases/01-import-root.ts --target browser --format esm
 
 ```
 [PASSED]
-ok - configs.create is a function
 ok - create is exported from root
+ok - load is exported from root
 ok - envSource is exported from root
 ok - fetchSource is exported from root
 ok - fileSource is exported from root
@@ -659,12 +659,12 @@ RESULT: PASS
 
 ## case test/cases/05-create-with-literal-source.ts — node
 
-configs.create() + literalSource: publish once, read two leaf fields, close.
+create() + literalSource: publish once, read two leaf fields, close the source.
 
 ```ts
-// Case: configs.create() + literalSource — the simplest end-to-end path:
+// Case: create() + literalSource — the simplest end-to-end path:
 // a source that publishes once, a leaf field reading it, then a clean close.
-import { configs, literalSource } from "@jondotsoy/configs";
+import { create, literalSource, numeric, string } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -672,10 +672,10 @@ function assert(cond: unknown, message: string): void {
 }
 
 const source = literalSource({ port: 4321, host: "10.0.0.1" });
-const cfg = await configs.create(
+const cfg = await create(
   {
-    port: { type: "number" },
-    host: { type: "string" },
+    port: numeric(),
+    host: string(),
   },
   { sources: [source] },
 );
@@ -683,8 +683,8 @@ const cfg = await configs.create(
 assert(cfg.port.get() === 4321, "cfg.port.get() reads the literal value");
 assert(cfg.host.get() === "10.0.0.1", "cfg.host.get() reads the literal value");
 
-await cfg.close();
-assert(true, "cfg.close() resolves without throwing");
+await source.close();
+assert(true, "source.close() resolves without throwing");
 
 console.log("ALL_CHECKS_PASSED");
 ```
@@ -695,20 +695,18 @@ Compile: `$ node --experimental-strip-types --no-warnings test/cases/05-create-w
 [PASSED]
 ok - cfg.port.get() reads the literal value
 ok - cfg.host.get() reads the literal value
-ok - cfg.close() resolves without throwing
+ok - source.close() resolves without throwing
 ALL_CHECKS_PASSED
-
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/05-create-with-literal-source.ts — bun
 
-configs.create() + literalSource: publish once, read two leaf fields, close.
+create() + literalSource: publish once, read two leaf fields, close the source.
 
 ```ts
-// Case: configs.create() + literalSource — the simplest end-to-end path:
+// Case: create() + literalSource — the simplest end-to-end path:
 // a source that publishes once, a leaf field reading it, then a clean close.
-import { configs, literalSource } from "@jondotsoy/configs";
+import { create, literalSource, numeric, string } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -716,10 +714,10 @@ function assert(cond: unknown, message: string): void {
 }
 
 const source = literalSource({ port: 4321, host: "10.0.0.1" });
-const cfg = await configs.create(
+const cfg = await create(
   {
-    port: { type: "number" },
-    host: { type: "string" },
+    port: numeric(),
+    host: string(),
   },
   { sources: [source] },
 );
@@ -727,8 +725,8 @@ const cfg = await configs.create(
 assert(cfg.port.get() === 4321, "cfg.port.get() reads the literal value");
 assert(cfg.host.get() === "10.0.0.1", "cfg.host.get() reads the literal value");
 
-await cfg.close();
-assert(true, "cfg.close() resolves without throwing");
+await source.close();
+assert(true, "source.close() resolves without throwing");
 
 console.log("ALL_CHECKS_PASSED");
 ```
@@ -739,20 +737,18 @@ Compile: `$ bun test/cases/05-create-with-literal-source.ts (running the copy in
 [PASSED]
 ok - cfg.port.get() reads the literal value
 ok - cfg.host.get() reads the literal value
-ok - cfg.close() resolves without throwing
+ok - source.close() resolves without throwing
 ALL_CHECKS_PASSED
-
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/05-create-with-literal-source.ts — deno
 
-configs.create() + literalSource: publish once, read two leaf fields, close.
+create() + literalSource: publish once, read two leaf fields, close the source.
 
 ```ts
-// Case: configs.create() + literalSource — the simplest end-to-end path:
+// Case: create() + literalSource — the simplest end-to-end path:
 // a source that publishes once, a leaf field reading it, then a clean close.
-import { configs, literalSource } from "@jondotsoy/configs";
+import { create, literalSource, numeric, string } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -760,10 +756,10 @@ function assert(cond: unknown, message: string): void {
 }
 
 const source = literalSource({ port: 4321, host: "10.0.0.1" });
-const cfg = await configs.create(
+const cfg = await create(
   {
-    port: { type: "number" },
-    host: { type: "string" },
+    port: numeric(),
+    host: string(),
   },
   { sources: [source] },
 );
@@ -771,8 +767,8 @@ const cfg = await configs.create(
 assert(cfg.port.get() === 4321, "cfg.port.get() reads the literal value");
 assert(cfg.host.get() === "10.0.0.1", "cfg.host.get() reads the literal value");
 
-await cfg.close();
-assert(true, "cfg.close() resolves without throwing");
+await source.close();
+assert(true, "source.close() resolves without throwing");
 
 console.log("ALL_CHECKS_PASSED");
 ```
@@ -786,12 +782,12 @@ Compile: `$ deno test/cases/05-create-with-literal-source.ts`
 
 ## case test/cases/05-create-with-literal-source.ts — browser
 
-configs.create() + literalSource: publish once, read two leaf fields, close.
+create() + literalSource: publish once, read two leaf fields, close the source.
 
 ```ts
-// Case: configs.create() + literalSource — the simplest end-to-end path:
+// Case: create() + literalSource — the simplest end-to-end path:
 // a source that publishes once, a leaf field reading it, then a clean close.
-import { configs, literalSource } from "@jondotsoy/configs";
+import { create, literalSource, numeric, string } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -799,10 +795,10 @@ function assert(cond: unknown, message: string): void {
 }
 
 const source = literalSource({ port: 4321, host: "10.0.0.1" });
-const cfg = await configs.create(
+const cfg = await create(
   {
-    port: { type: "number" },
-    host: { type: "string" },
+    port: numeric(),
+    host: string(),
   },
   { sources: [source] },
 );
@@ -810,8 +806,8 @@ const cfg = await configs.create(
 assert(cfg.port.get() === 4321, "cfg.port.get() reads the literal value");
 assert(cfg.host.get() === "10.0.0.1", "cfg.host.get() reads the literal value");
 
-await cfg.close();
-assert(true, "cfg.close() resolves without throwing");
+await source.close();
+assert(true, "source.close() resolves without throwing");
 
 console.log("ALL_CHECKS_PASSED");
 ```
@@ -820,10 +816,9 @@ Compile: `$ bun build test/cases/05-create-with-literal-source.ts --target brows
 
 ```
 [PASSED]
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ok - cfg.port.get() reads the literal value
 ok - cfg.host.get() reads the literal value
-ok - cfg.close() resolves without throwing
+ok - source.close() resolves without throwing
 ALL_CHECKS_PASSED
 RESULT: PASS
 ```
@@ -836,7 +831,7 @@ envSource + mapKey.snakeCase over an explicit env object maps keys into a nested
 // Case: envSource + mapKey.snakeCase, against an explicit `env` object
 // (rather than process.env) so the same script runs unmodified in a browser,
 // which has no process.env.
-import { configs, envSource, mapKey } from "@jondotsoy/configs";
+import { create, envSource, mapKey, numeric, string } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -848,15 +843,15 @@ const source = envSource({
   mapKey: mapKey.snakeCase(),
 });
 
-const cfg = await configs.create(
-  { server: configs.create({ port: { type: "number" }, host: { type: "string" } }) },
+const cfg = await create(
+  { server: { port: numeric(), host: string() } },
   { sources: [source] },
 );
 
 assert(cfg.server.port.get() === 8080, "SERVER_PORT maps to server.port via snakeCase");
 assert(cfg.server.host.get() === "example.com", "SERVER_HOST maps to server.host via snakeCase");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -867,8 +862,6 @@ Compile: `$ node --experimental-strip-types --no-warnings test/cases/06-create-w
 ok - SERVER_PORT maps to server.port via snakeCase
 ok - SERVER_HOST maps to server.host via snakeCase
 ALL_CHECKS_PASSED
-
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/06-create-with-env-source.ts — bun
@@ -879,7 +872,7 @@ envSource + mapKey.snakeCase over an explicit env object maps keys into a nested
 // Case: envSource + mapKey.snakeCase, against an explicit `env` object
 // (rather than process.env) so the same script runs unmodified in a browser,
 // which has no process.env.
-import { configs, envSource, mapKey } from "@jondotsoy/configs";
+import { create, envSource, mapKey, numeric, string } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -891,15 +884,15 @@ const source = envSource({
   mapKey: mapKey.snakeCase(),
 });
 
-const cfg = await configs.create(
-  { server: configs.create({ port: { type: "number" }, host: { type: "string" } }) },
+const cfg = await create(
+  { server: { port: numeric(), host: string() } },
   { sources: [source] },
 );
 
 assert(cfg.server.port.get() === 8080, "SERVER_PORT maps to server.port via snakeCase");
 assert(cfg.server.host.get() === "example.com", "SERVER_HOST maps to server.host via snakeCase");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -910,8 +903,6 @@ Compile: `$ bun test/cases/06-create-with-env-source.ts (running the copy instal
 ok - SERVER_PORT maps to server.port via snakeCase
 ok - SERVER_HOST maps to server.host via snakeCase
 ALL_CHECKS_PASSED
-
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/06-create-with-env-source.ts — deno
@@ -922,7 +913,7 @@ envSource + mapKey.snakeCase over an explicit env object maps keys into a nested
 // Case: envSource + mapKey.snakeCase, against an explicit `env` object
 // (rather than process.env) so the same script runs unmodified in a browser,
 // which has no process.env.
-import { configs, envSource, mapKey } from "@jondotsoy/configs";
+import { create, envSource, mapKey, numeric, string } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -934,15 +925,15 @@ const source = envSource({
   mapKey: mapKey.snakeCase(),
 });
 
-const cfg = await configs.create(
-  { server: configs.create({ port: { type: "number" }, host: { type: "string" } }) },
+const cfg = await create(
+  { server: { port: numeric(), host: string() } },
   { sources: [source] },
 );
 
 assert(cfg.server.port.get() === 8080, "SERVER_PORT maps to server.port via snakeCase");
 assert(cfg.server.host.get() === "example.com", "SERVER_HOST maps to server.host via snakeCase");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -961,7 +952,7 @@ envSource + mapKey.snakeCase over an explicit env object maps keys into a nested
 // Case: envSource + mapKey.snakeCase, against an explicit `env` object
 // (rather than process.env) so the same script runs unmodified in a browser,
 // which has no process.env.
-import { configs, envSource, mapKey } from "@jondotsoy/configs";
+import { create, envSource, mapKey, numeric, string } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -973,15 +964,15 @@ const source = envSource({
   mapKey: mapKey.snakeCase(),
 });
 
-const cfg = await configs.create(
-  { server: configs.create({ port: { type: "number" }, host: { type: "string" } }) },
+const cfg = await create(
+  { server: { port: numeric(), host: string() } },
   { sources: [source] },
 );
 
 assert(cfg.server.port.get() === 8080, "SERVER_PORT maps to server.port via snakeCase");
 assert(cfg.server.host.get() === "example.com", "SERVER_HOST maps to server.host via snakeCase");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -989,7 +980,6 @@ Compile: `$ bun build test/cases/06-create-with-env-source.ts --target browser -
 
 ```
 [PASSED]
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ok - SERVER_PORT maps to server.port via snakeCase
 ok - SERVER_HOST maps to server.host via snakeCase
 ALL_CHECKS_PASSED
@@ -1004,7 +994,7 @@ fetchSource performs a real fetch (against a data: URL) and applies treePath.
 // Case: fetchSource against a `data:` URL — no server needed, so the exact
 // same script exercises a real HTTP round trip (fetch + JSON parsing +
 // treePath selection) under node, bun, deno, and a real browser alike.
-import { configs, fetchSource } from "@jondotsoy/configs";
+import { create, fetchSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1015,11 +1005,11 @@ const body = JSON.stringify({ app: { port: 5050 } });
 const url = `data:application/json,${encodeURIComponent(body)}`;
 
 const source = fetchSource<{ port: number }>({ url, treePath: ["app"] });
-const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+const cfg = await create({ port: numeric() }, { sources: [source] });
 
 assert(cfg.port.get() === 5050, "fetchSource fetches a data: URL and applies treePath");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -1029,8 +1019,6 @@ Compile: `$ node --experimental-strip-types --no-warnings test/cases/07-fetch-so
 [PASSED]
 ok - fetchSource fetches a data: URL and applies treePath
 ALL_CHECKS_PASSED
-
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/07-fetch-source-data-url.ts — bun
@@ -1041,7 +1029,7 @@ fetchSource performs a real fetch (against a data: URL) and applies treePath.
 // Case: fetchSource against a `data:` URL — no server needed, so the exact
 // same script exercises a real HTTP round trip (fetch + JSON parsing +
 // treePath selection) under node, bun, deno, and a real browser alike.
-import { configs, fetchSource } from "@jondotsoy/configs";
+import { create, fetchSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1052,11 +1040,11 @@ const body = JSON.stringify({ app: { port: 5050 } });
 const url = `data:application/json,${encodeURIComponent(body)}`;
 
 const source = fetchSource<{ port: number }>({ url, treePath: ["app"] });
-const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+const cfg = await create({ port: numeric() }, { sources: [source] });
 
 assert(cfg.port.get() === 5050, "fetchSource fetches a data: URL and applies treePath");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -1066,8 +1054,6 @@ Compile: `$ bun test/cases/07-fetch-source-data-url.ts (running the copy install
 [PASSED]
 ok - fetchSource fetches a data: URL and applies treePath
 ALL_CHECKS_PASSED
-
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/07-fetch-source-data-url.ts — deno
@@ -1078,7 +1064,7 @@ fetchSource performs a real fetch (against a data: URL) and applies treePath.
 // Case: fetchSource against a `data:` URL — no server needed, so the exact
 // same script exercises a real HTTP round trip (fetch + JSON parsing +
 // treePath selection) under node, bun, deno, and a real browser alike.
-import { configs, fetchSource } from "@jondotsoy/configs";
+import { create, fetchSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1089,11 +1075,11 @@ const body = JSON.stringify({ app: { port: 5050 } });
 const url = `data:application/json,${encodeURIComponent(body)}`;
 
 const source = fetchSource<{ port: number }>({ url, treePath: ["app"] });
-const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+const cfg = await create({ port: numeric() }, { sources: [source] });
 
 assert(cfg.port.get() === 5050, "fetchSource fetches a data: URL and applies treePath");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -1112,7 +1098,7 @@ fetchSource performs a real fetch (against a data: URL) and applies treePath.
 // Case: fetchSource against a `data:` URL — no server needed, so the exact
 // same script exercises a real HTTP round trip (fetch + JSON parsing +
 // treePath selection) under node, bun, deno, and a real browser alike.
-import { configs, fetchSource } from "@jondotsoy/configs";
+import { create, fetchSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1123,11 +1109,11 @@ const body = JSON.stringify({ app: { port: 5050 } });
 const url = `data:application/json,${encodeURIComponent(body)}`;
 
 const source = fetchSource<{ port: number }>({ url, treePath: ["app"] });
-const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+const cfg = await create({ port: numeric() }, { sources: [source] });
 
 assert(cfg.port.get() === 5050, "fetchSource fetches a data: URL and applies treePath");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -1135,7 +1121,6 @@ Compile: `$ bun build test/cases/07-fetch-source-data-url.ts --target browser --
 
 ```
 [PASSED]
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ok - fetchSource fetches a data: URL and applies treePath
 ALL_CHECKS_PASSED
 RESULT: PASS
@@ -1150,7 +1135,7 @@ sseSource against an address nothing listens on fails gracefully into null inste
 // via console.error and leave the store empty (null) instead of throwing.
 // Exercised without a live SSE server so it runs identically under every
 // engine, including a browser page.
-import { configs, sseSource } from "@jondotsoy/configs";
+import { create, sseSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1158,11 +1143,11 @@ function assert(cond: unknown, message: string): void {
 }
 
 const source = sseSource({ url: "http://127.0.0.1:9/nobody-listens-here" });
-const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+const cfg = await create({ port: numeric() }, { sources: [source] });
 
 assert(cfg.port.get() === null, "a failed sseSource connection leaves the field null instead of throwing");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -1174,15 +1159,15 @@ ok - a failed sseSource connection leaves the field null instead of throwing
 ALL_CHECKS_PASSED
 
 sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): fetch failed
-    at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-O8RvAe/node_modules/@jondotsoy/configs/dist/configs.js:578:9)
-    at async t (file:///tmp/jondotsoy-configs-test-cases-O8RvAe/node_modules/@jondotsoy/configs/dist/configs.js:612:20)
-    at async Object.start (file:///tmp/jondotsoy-configs-test-cases-O8RvAe/node_modules/@jondotsoy/configs/dist/configs.js:873:51) {
+    at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-XQbfqa/node_modules/@jondotsoy/configs/dist/configs.js:578:9)
+    at async t (file:///tmp/jondotsoy-configs-test-cases-XQbfqa/node_modules/@jondotsoy/configs/dist/configs.js:612:20)
+    at async Object.start (file:///tmp/jondotsoy-configs-test-cases-XQbfqa/node_modules/@jondotsoy/configs/dist/configs.js:873:51) {
   [cause]: TypeError: fetch failed
       at node:internal/deps/undici/undici:14976:13
-      at async download (file:///tmp/jondotsoy-configs-test-cases-O8RvAe/node_modules/@jondotsoy/configs/dist/configs.js:553:20)
-      at async downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-O8RvAe/node_modules/@jondotsoy/configs/dist/configs.js:568:14)
-      at async t (file:///tmp/jondotsoy-configs-test-cases-O8RvAe/node_modules/@jondotsoy/configs/dist/configs.js:612:20)
-      at async Object.start (file:///tmp/jondotsoy-configs-test-cases-O8RvAe/node_modules/@jondotsoy/configs/dist/configs.js:873:51) {
+      at async download (file:///tmp/jondotsoy-configs-test-cases-XQbfqa/node_modules/@jondotsoy/configs/dist/configs.js:553:20)
+      at async downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-XQbfqa/node_modules/@jondotsoy/configs/dist/configs.js:568:14)
+      at async t (file:///tmp/jondotsoy-configs-test-cases-XQbfqa/node_modules/@jondotsoy/configs/dist/configs.js:612:20)
+      at async Object.start (file:///tmp/jondotsoy-configs-test-cases-XQbfqa/node_modules/@jondotsoy/configs/dist/configs.js:873:51) {
     [cause]: Error: bad port
         at makeNetworkError (node:internal/deps/undici/undici:9495:35)
         at mainFetch (node:internal/deps/undici/undici:10721:20)
@@ -1190,13 +1175,12 @@ sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" Attempt
         at fetch (node:internal/deps/undici/undici:10576:20)
         at fetch (node:internal/deps/undici/undici:14974:10)
         at fetch (node:internal/bootstrap/web/exposed-window-or-worker:75:12)
-        at download (file:///tmp/jondotsoy-configs-test-cases-O8RvAe/node_modules/@jondotsoy/configs/dist/configs.js:553:26)
-        at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-O8RvAe/node_modules/@jondotsoy/configs/dist/configs.js:568:20)
-        at file:///tmp/jondotsoy-configs-test-cases-O8RvAe/node_modules/@jondotsoy/configs/dist/configs.js:873:65
-        at t (file:///tmp/jondotsoy-configs-test-cases-O8RvAe/node_modules/@jondotsoy/configs/dist/configs.js:612:59)
+        at download (file:///tmp/jondotsoy-configs-test-cases-XQbfqa/node_modules/@jondotsoy/configs/dist/configs.js:553:26)
+        at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-XQbfqa/node_modules/@jondotsoy/configs/dist/configs.js:568:20)
+        at file:///tmp/jondotsoy-configs-test-cases-XQbfqa/node_modules/@jondotsoy/configs/dist/configs.js:873:65
+        at t (file:///tmp/jondotsoy-configs-test-cases-XQbfqa/node_modules/@jondotsoy/configs/dist/configs.js:612:59)
   }
 }
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/08-sse-source-connection-failure.ts — bun
@@ -1208,7 +1192,7 @@ sseSource against an address nothing listens on fails gracefully into null inste
 // via console.error and leave the store empty (null) instead of throwing.
 // Exercised without a live SSE server so it runs identically under every
 // engine, including a browser page.
-import { configs, sseSource } from "@jondotsoy/configs";
+import { create, sseSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1216,11 +1200,11 @@ function assert(cond: unknown, message: string): void {
 }
 
 const source = sseSource({ url: "http://127.0.0.1:9/nobody-listens-here" });
-const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+const cfg = await create({ port: numeric() }, { sources: [source] });
 
 assert(cfg.port.get() === null, "a failed sseSource connection leaves the field null instead of throwing");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -1239,17 +1223,14 @@ sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" 573 |  
 578 |   throw new AttemptsExhaustedError(maxAttempts, lastError);
               ^
 AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): Unable to connect. Is the computer able to access the url?
-      at downloadWithRetry (/tmp/jondotsoy-configs-test-cases-O8RvAe/node_modules/@jondotsoy/configs/dist/configs.js:578:9)
-      at async t (/tmp/jondotsoy-configs-test-cases-O8RvAe/node_modules/@jondotsoy/configs/dist/configs.js:612:71)
-      at async start (/tmp/jondotsoy-configs-test-cases-O8RvAe/node_modules/@jondotsoy/configs/dist/configs.js:873:57)
+      at downloadWithRetry (/tmp/jondotsoy-configs-test-cases-XQbfqa/node_modules/@jondotsoy/configs/dist/configs.js:578:9)
+      at async t (/tmp/jondotsoy-configs-test-cases-XQbfqa/node_modules/@jondotsoy/configs/dist/configs.js:612:71)
+      at async start (/tmp/jondotsoy-configs-test-cases-XQbfqa/node_modules/@jondotsoy/configs/dist/configs.js:873:57)
 
 error: Unable to connect. Is the computer able to access the url?
   path: "http://127.0.0.1:9/nobody-listens-here",
  errno: 0,
   code: "ConnectionRefused"
-
-
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/08-sse-source-connection-failure.ts — deno
@@ -1261,7 +1242,7 @@ sseSource against an address nothing listens on fails gracefully into null inste
 // via console.error and leave the store empty (null) instead of throwing.
 // Exercised without a live SSE server so it runs identically under every
 // engine, including a browser page.
-import { configs, sseSource } from "@jondotsoy/configs";
+import { create, sseSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1269,11 +1250,11 @@ function assert(cond: unknown, message: string): void {
 }
 
 const source = sseSource({ url: "http://127.0.0.1:9/nobody-listens-here" });
-const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+const cfg = await create({ port: numeric() }, { sources: [source] });
 
 assert(cfg.port.get() === null, "a failed sseSource connection leaves the field null instead of throwing");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -1293,7 +1274,7 @@ sseSource against an address nothing listens on fails gracefully into null inste
 // via console.error and leave the store empty (null) instead of throwing.
 // Exercised without a live SSE server so it runs identically under every
 // engine, including a browser page.
-import { configs, sseSource } from "@jondotsoy/configs";
+import { create, sseSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1301,11 +1282,11 @@ function assert(cond: unknown, message: string): void {
 }
 
 const source = sseSource({ url: "http://127.0.0.1:9/nobody-listens-here" });
-const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+const cfg = await create({ port: numeric() }, { sources: [source] });
 
 assert(cfg.port.get() === null, "a failed sseSource connection leaves the field null instead of throwing");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -1315,10 +1296,9 @@ Compile: `$ bun build test/cases/08-sse-source-connection-failure.ts --target br
 [PASSED]
 Failed to load resource: net::ERR_UNSAFE_PORT
 sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): Failed to fetch
-    at downloadWithRetry (http://localhost:37761/:344:9)
-    at async t (http://localhost:37761/:348:20)
-    at async Object.start (http://localhost:37761/:443:51)
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
+    at downloadWithRetry (http://localhost:41033/:344:9)
+    at async t (http://localhost:41033/:348:20)
+    at async Object.start (http://localhost:41033/:443:51)
 ok - a failed sseSource connection leaves the field null instead of throwing
 ALL_CHECKS_PASSED
 RESULT: PASS
@@ -1331,7 +1311,7 @@ pullSource pulls immediately, then on every interval, until closed.
 ```ts
 // Case: pullSource calls `pull` immediately, then again every `interval` ms,
 // until the source is closed.
-import { configs, pullSource } from "@jondotsoy/configs";
+import { create, pullSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1347,14 +1327,14 @@ const source = pullSource({
   interval: 10,
 });
 
-const cfg = await configs.create({ rounds: { type: "number" } }, { sources: [source] });
+const cfg = await create({ rounds: numeric() }, { sources: [source] });
 
-assert(cfg.rounds.get() === 1, "the first pull() round runs before configs.create() resolves");
+assert(cfg.rounds.get() === 1, "the first pull() round runs before create() resolves");
 
 await new Promise((resolve) => setTimeout(resolve, 50));
 assert(cfg.rounds.get()! >= 2, "later rounds keep polling on the given interval");
 
-await cfg.close();
+await source.close();
 const afterClose = cfg.rounds.get();
 await new Promise((resolve) => setTimeout(resolve, 50));
 assert(cfg.rounds.get() === afterClose, "close() stops further polling");
@@ -1366,12 +1346,10 @@ Compile: `$ node --experimental-strip-types --no-warnings test/cases/09-pull-sou
 
 ```
 [PASSED]
-ok - the first pull() round runs before configs.create() resolves
+ok - the first pull() round runs before create() resolves
 ok - later rounds keep polling on the given interval
 ok - close() stops further polling
 ALL_CHECKS_PASSED
-
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/09-pull-source-polls-and-closes.ts — bun
@@ -1381,7 +1359,7 @@ pullSource pulls immediately, then on every interval, until closed.
 ```ts
 // Case: pullSource calls `pull` immediately, then again every `interval` ms,
 // until the source is closed.
-import { configs, pullSource } from "@jondotsoy/configs";
+import { create, pullSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1397,14 +1375,14 @@ const source = pullSource({
   interval: 10,
 });
 
-const cfg = await configs.create({ rounds: { type: "number" } }, { sources: [source] });
+const cfg = await create({ rounds: numeric() }, { sources: [source] });
 
-assert(cfg.rounds.get() === 1, "the first pull() round runs before configs.create() resolves");
+assert(cfg.rounds.get() === 1, "the first pull() round runs before create() resolves");
 
 await new Promise((resolve) => setTimeout(resolve, 50));
 assert(cfg.rounds.get()! >= 2, "later rounds keep polling on the given interval");
 
-await cfg.close();
+await source.close();
 const afterClose = cfg.rounds.get();
 await new Promise((resolve) => setTimeout(resolve, 50));
 assert(cfg.rounds.get() === afterClose, "close() stops further polling");
@@ -1416,12 +1394,10 @@ Compile: `$ bun test/cases/09-pull-source-polls-and-closes.ts (running the copy 
 
 ```
 [PASSED]
-ok - the first pull() round runs before configs.create() resolves
+ok - the first pull() round runs before create() resolves
 ok - later rounds keep polling on the given interval
 ok - close() stops further polling
 ALL_CHECKS_PASSED
-
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/09-pull-source-polls-and-closes.ts — deno
@@ -1431,7 +1407,7 @@ pullSource pulls immediately, then on every interval, until closed.
 ```ts
 // Case: pullSource calls `pull` immediately, then again every `interval` ms,
 // until the source is closed.
-import { configs, pullSource } from "@jondotsoy/configs";
+import { create, pullSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1447,14 +1423,14 @@ const source = pullSource({
   interval: 10,
 });
 
-const cfg = await configs.create({ rounds: { type: "number" } }, { sources: [source] });
+const cfg = await create({ rounds: numeric() }, { sources: [source] });
 
-assert(cfg.rounds.get() === 1, "the first pull() round runs before configs.create() resolves");
+assert(cfg.rounds.get() === 1, "the first pull() round runs before create() resolves");
 
 await new Promise((resolve) => setTimeout(resolve, 50));
 assert(cfg.rounds.get()! >= 2, "later rounds keep polling on the given interval");
 
-await cfg.close();
+await source.close();
 const afterClose = cfg.rounds.get();
 await new Promise((resolve) => setTimeout(resolve, 50));
 assert(cfg.rounds.get() === afterClose, "close() stops further polling");
@@ -1476,7 +1452,7 @@ pullSource pulls immediately, then on every interval, until closed.
 ```ts
 // Case: pullSource calls `pull` immediately, then again every `interval` ms,
 // until the source is closed.
-import { configs, pullSource } from "@jondotsoy/configs";
+import { create, pullSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1492,14 +1468,14 @@ const source = pullSource({
   interval: 10,
 });
 
-const cfg = await configs.create({ rounds: { type: "number" } }, { sources: [source] });
+const cfg = await create({ rounds: numeric() }, { sources: [source] });
 
-assert(cfg.rounds.get() === 1, "the first pull() round runs before configs.create() resolves");
+assert(cfg.rounds.get() === 1, "the first pull() round runs before create() resolves");
 
 await new Promise((resolve) => setTimeout(resolve, 50));
 assert(cfg.rounds.get()! >= 2, "later rounds keep polling on the given interval");
 
-await cfg.close();
+await source.close();
 const afterClose = cfg.rounds.get();
 await new Promise((resolve) => setTimeout(resolve, 50));
 assert(cfg.rounds.get() === afterClose, "close() stops further polling");
@@ -1511,8 +1487,7 @@ Compile: `$ bun build test/cases/09-pull-source-polls-and-closes.ts --target bro
 
 ```
 [PASSED]
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
-ok - the first pull() round runs before configs.create() resolves
+ok - the first pull() round runs before create() resolves
 ok - later rounds keep polling on the given interval
 ok - close() stops further polling
 ALL_CHECKS_PASSED
@@ -1901,13 +1876,12 @@ RESULT: PASS
 
 ## case test/cases/12-nested-config-groups.ts — node
 
-Nested configs.create() groups resolve fields at every depth and close() cascades.
+Nested plain-object groups resolve fields at every depth, from a single source.
 
 ```ts
-// Case: nested config groups — a shape built from `configs.create()` calls
-// embedded inside another `configs.create()`'s shape — resolve fields at
-// every depth and close() cascades into every nested source.
-import { configs, literalSource } from "@jondotsoy/configs";
+// Case: nested config groups — plain nested objects in create()'s shape,
+// several levels deep — resolve fields at every depth from the same source.
+import { create, literalSource, string } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1916,12 +1890,12 @@ function assert(cond: unknown, message: string): void {
 
 const source = literalSource({ database: { host: "db.internal", credentials: { user: "root" } } });
 
-const cfg = await configs.create(
+const cfg = await create(
   {
-    database: configs.create({
-      host: { type: "string" },
-      credentials: configs.create({ user: { type: "string" } }),
-    }),
+    database: {
+      host: string(),
+      credentials: { user: string() },
+    },
   },
   { sources: [source] },
 );
@@ -1929,7 +1903,7 @@ const cfg = await configs.create(
 assert(cfg.database.host.get() === "db.internal", "a first-level nested field resolves");
 assert(cfg.database.credentials.user.get() === "root", "a second-level nested field resolves");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -1940,19 +1914,16 @@ Compile: `$ node --experimental-strip-types --no-warnings test/cases/12-nested-c
 ok - a first-level nested field resolves
 ok - a second-level nested field resolves
 ALL_CHECKS_PASSED
-
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/12-nested-config-groups.ts — bun
 
-Nested configs.create() groups resolve fields at every depth and close() cascades.
+Nested plain-object groups resolve fields at every depth, from a single source.
 
 ```ts
-// Case: nested config groups — a shape built from `configs.create()` calls
-// embedded inside another `configs.create()`'s shape — resolve fields at
-// every depth and close() cascades into every nested source.
-import { configs, literalSource } from "@jondotsoy/configs";
+// Case: nested config groups — plain nested objects in create()'s shape,
+// several levels deep — resolve fields at every depth from the same source.
+import { create, literalSource, string } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1961,12 +1932,12 @@ function assert(cond: unknown, message: string): void {
 
 const source = literalSource({ database: { host: "db.internal", credentials: { user: "root" } } });
 
-const cfg = await configs.create(
+const cfg = await create(
   {
-    database: configs.create({
-      host: { type: "string" },
-      credentials: configs.create({ user: { type: "string" } }),
-    }),
+    database: {
+      host: string(),
+      credentials: { user: string() },
+    },
   },
   { sources: [source] },
 );
@@ -1974,7 +1945,7 @@ const cfg = await configs.create(
 assert(cfg.database.host.get() === "db.internal", "a first-level nested field resolves");
 assert(cfg.database.credentials.user.get() === "root", "a second-level nested field resolves");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -1985,19 +1956,16 @@ Compile: `$ bun test/cases/12-nested-config-groups.ts (running the copy installe
 ok - a first-level nested field resolves
 ok - a second-level nested field resolves
 ALL_CHECKS_PASSED
-
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/12-nested-config-groups.ts — deno
 
-Nested configs.create() groups resolve fields at every depth and close() cascades.
+Nested plain-object groups resolve fields at every depth, from a single source.
 
 ```ts
-// Case: nested config groups — a shape built from `configs.create()` calls
-// embedded inside another `configs.create()`'s shape — resolve fields at
-// every depth and close() cascades into every nested source.
-import { configs, literalSource } from "@jondotsoy/configs";
+// Case: nested config groups — plain nested objects in create()'s shape,
+// several levels deep — resolve fields at every depth from the same source.
+import { create, literalSource, string } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2006,12 +1974,12 @@ function assert(cond: unknown, message: string): void {
 
 const source = literalSource({ database: { host: "db.internal", credentials: { user: "root" } } });
 
-const cfg = await configs.create(
+const cfg = await create(
   {
-    database: configs.create({
-      host: { type: "string" },
-      credentials: configs.create({ user: { type: "string" } }),
-    }),
+    database: {
+      host: string(),
+      credentials: { user: string() },
+    },
   },
   { sources: [source] },
 );
@@ -2019,7 +1987,7 @@ const cfg = await configs.create(
 assert(cfg.database.host.get() === "db.internal", "a first-level nested field resolves");
 assert(cfg.database.credentials.user.get() === "root", "a second-level nested field resolves");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -2032,13 +2000,12 @@ Compile: `$ deno test/cases/12-nested-config-groups.ts`
 
 ## case test/cases/12-nested-config-groups.ts — browser
 
-Nested configs.create() groups resolve fields at every depth and close() cascades.
+Nested plain-object groups resolve fields at every depth, from a single source.
 
 ```ts
-// Case: nested config groups — a shape built from `configs.create()` calls
-// embedded inside another `configs.create()`'s shape — resolve fields at
-// every depth and close() cascades into every nested source.
-import { configs, literalSource } from "@jondotsoy/configs";
+// Case: nested config groups — plain nested objects in create()'s shape,
+// several levels deep — resolve fields at every depth from the same source.
+import { create, literalSource, string } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2047,12 +2014,12 @@ function assert(cond: unknown, message: string): void {
 
 const source = literalSource({ database: { host: "db.internal", credentials: { user: "root" } } });
 
-const cfg = await configs.create(
+const cfg = await create(
   {
-    database: configs.create({
-      host: { type: "string" },
-      credentials: configs.create({ user: { type: "string" } }),
-    }),
+    database: {
+      host: string(),
+      credentials: { user: string() },
+    },
   },
   { sources: [source] },
 );
@@ -2060,7 +2027,7 @@ const cfg = await configs.create(
 assert(cfg.database.host.get() === "db.internal", "a first-level nested field resolves");
 assert(cfg.database.credentials.user.get() === "root", "a second-level nested field resolves");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -2068,7 +2035,6 @@ Compile: `$ bun build test/cases/12-nested-config-groups.ts --target browser --f
 
 ```
 [PASSED]
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ok - a first-level nested field resolves
 ok - a second-level nested field resolves
 ALL_CHECKS_PASSED
@@ -2299,13 +2265,14 @@ RESULT: PASS
 A 'shape' field's schema failure throws when required, and is swallowed into null otherwise.
 
 ```ts
-// Case: a `"shape"` field with a custom `Parseable` schema. Fields resolve
-// lazily on first access — so a failed `required: true` field throws the
-// moment it's *read* (not when `configs.create()` itself resolves), while
-// the same failure on `required: false` is logged (via console.error) and
-// swallowed into `null` instead. No validation library needed: `Parseable<T>`
-// is just duck-typed as `{ parse(value: unknown): T }`.
-import { configs, literalSource } from "@jondotsoy/configs";
+// Case: a shape() field with a custom Parseable schema. Fields resolve
+// eagerly and reactively — so a failed `required: true` field rejects the
+// awaited create() call itself (thrown as soon as the bad value is parsed,
+// not deferred to whenever the field is next read), while the same failure
+// on `required: false` is logged (via console.error) and swallowed into
+// `null` instead. No validation library needed: `Parseable<T>` is just
+// duck-typed as `{ parse(value: unknown): T }`.
+import { create, literalSource, shape } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2319,29 +2286,30 @@ const numberSchema = {
   },
 };
 
-const badSource = literalSource({ port: "not-a-number" });
+const badSource1 = literalSource({ port: "not-a-number" });
 
-const cfg1 = await configs.create({ port: { schema: numberSchema, required: true } }, { sources: [badSource] });
 let threw = false;
 try {
-  cfg1.port.get();
+  await create({ port: shape({ schema: numberSchema, required: true }) }, { sources: [badSource1] });
 } catch {
   threw = true;
 }
-assert(threw, "reading a required shape field throws once its schema fails to parse the source value");
+assert(threw, "awaiting create() rejects once a required shape field fails to parse the source value");
 
 const originalConsoleError = console.error;
 console.error = () => {};
 let cfg2Value: number | null;
+const badSource2 = literalSource({ port: "not-a-number" });
 try {
-  const cfg2 = await configs.create({ port: { schema: numberSchema, required: false } }, { sources: [badSource] });
+  const cfg2 = await create({ port: shape({ schema: numberSchema, required: false }) }, { sources: [badSource2] });
   cfg2Value = cfg2.port.get();
 } finally {
   console.error = originalConsoleError;
 }
 assert(cfg2Value === null, "the same failure on a non-required shape field is swallowed into null instead");
 
-await cfg1.close();
+await badSource1.close();
+await badSource2.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -2349,7 +2317,7 @@ Compile: `$ node --experimental-strip-types --no-warnings test/cases/14-shape-sc
 
 ```
 [PASSED]
-ok - reading a required shape field throws once its schema fails to parse the source value
+ok - awaiting create() rejects once a required shape field fails to parse the source value
 ok - the same failure on a non-required shape field is swallowed into null instead
 ALL_CHECKS_PASSED
 ```
@@ -2359,13 +2327,14 @@ ALL_CHECKS_PASSED
 A 'shape' field's schema failure throws when required, and is swallowed into null otherwise.
 
 ```ts
-// Case: a `"shape"` field with a custom `Parseable` schema. Fields resolve
-// lazily on first access — so a failed `required: true` field throws the
-// moment it's *read* (not when `configs.create()` itself resolves), while
-// the same failure on `required: false` is logged (via console.error) and
-// swallowed into `null` instead. No validation library needed: `Parseable<T>`
-// is just duck-typed as `{ parse(value: unknown): T }`.
-import { configs, literalSource } from "@jondotsoy/configs";
+// Case: a shape() field with a custom Parseable schema. Fields resolve
+// eagerly and reactively — so a failed `required: true` field rejects the
+// awaited create() call itself (thrown as soon as the bad value is parsed,
+// not deferred to whenever the field is next read), while the same failure
+// on `required: false` is logged (via console.error) and swallowed into
+// `null` instead. No validation library needed: `Parseable<T>` is just
+// duck-typed as `{ parse(value: unknown): T }`.
+import { create, literalSource, shape } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2379,29 +2348,30 @@ const numberSchema = {
   },
 };
 
-const badSource = literalSource({ port: "not-a-number" });
+const badSource1 = literalSource({ port: "not-a-number" });
 
-const cfg1 = await configs.create({ port: { schema: numberSchema, required: true } }, { sources: [badSource] });
 let threw = false;
 try {
-  cfg1.port.get();
+  await create({ port: shape({ schema: numberSchema, required: true }) }, { sources: [badSource1] });
 } catch {
   threw = true;
 }
-assert(threw, "reading a required shape field throws once its schema fails to parse the source value");
+assert(threw, "awaiting create() rejects once a required shape field fails to parse the source value");
 
 const originalConsoleError = console.error;
 console.error = () => {};
 let cfg2Value: number | null;
+const badSource2 = literalSource({ port: "not-a-number" });
 try {
-  const cfg2 = await configs.create({ port: { schema: numberSchema, required: false } }, { sources: [badSource] });
+  const cfg2 = await create({ port: shape({ schema: numberSchema, required: false }) }, { sources: [badSource2] });
   cfg2Value = cfg2.port.get();
 } finally {
   console.error = originalConsoleError;
 }
 assert(cfg2Value === null, "the same failure on a non-required shape field is swallowed into null instead");
 
-await cfg1.close();
+await badSource1.close();
+await badSource2.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -2409,7 +2379,7 @@ Compile: `$ bun test/cases/14-shape-schema-required.ts (running the copy install
 
 ```
 [PASSED]
-ok - reading a required shape field throws once its schema fails to parse the source value
+ok - awaiting create() rejects once a required shape field fails to parse the source value
 ok - the same failure on a non-required shape field is swallowed into null instead
 ALL_CHECKS_PASSED
 ```
@@ -2419,13 +2389,14 @@ ALL_CHECKS_PASSED
 A 'shape' field's schema failure throws when required, and is swallowed into null otherwise.
 
 ```ts
-// Case: a `"shape"` field with a custom `Parseable` schema. Fields resolve
-// lazily on first access — so a failed `required: true` field throws the
-// moment it's *read* (not when `configs.create()` itself resolves), while
-// the same failure on `required: false` is logged (via console.error) and
-// swallowed into `null` instead. No validation library needed: `Parseable<T>`
-// is just duck-typed as `{ parse(value: unknown): T }`.
-import { configs, literalSource } from "@jondotsoy/configs";
+// Case: a shape() field with a custom Parseable schema. Fields resolve
+// eagerly and reactively — so a failed `required: true` field rejects the
+// awaited create() call itself (thrown as soon as the bad value is parsed,
+// not deferred to whenever the field is next read), while the same failure
+// on `required: false` is logged (via console.error) and swallowed into
+// `null` instead. No validation library needed: `Parseable<T>` is just
+// duck-typed as `{ parse(value: unknown): T }`.
+import { create, literalSource, shape } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2439,29 +2410,30 @@ const numberSchema = {
   },
 };
 
-const badSource = literalSource({ port: "not-a-number" });
+const badSource1 = literalSource({ port: "not-a-number" });
 
-const cfg1 = await configs.create({ port: { schema: numberSchema, required: true } }, { sources: [badSource] });
 let threw = false;
 try {
-  cfg1.port.get();
+  await create({ port: shape({ schema: numberSchema, required: true }) }, { sources: [badSource1] });
 } catch {
   threw = true;
 }
-assert(threw, "reading a required shape field throws once its schema fails to parse the source value");
+assert(threw, "awaiting create() rejects once a required shape field fails to parse the source value");
 
 const originalConsoleError = console.error;
 console.error = () => {};
 let cfg2Value: number | null;
+const badSource2 = literalSource({ port: "not-a-number" });
 try {
-  const cfg2 = await configs.create({ port: { schema: numberSchema, required: false } }, { sources: [badSource] });
+  const cfg2 = await create({ port: shape({ schema: numberSchema, required: false }) }, { sources: [badSource2] });
   cfg2Value = cfg2.port.get();
 } finally {
   console.error = originalConsoleError;
 }
 assert(cfg2Value === null, "the same failure on a non-required shape field is swallowed into null instead");
 
-await cfg1.close();
+await badSource1.close();
+await badSource2.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -2477,13 +2449,14 @@ Compile: `$ deno test/cases/14-shape-schema-required.ts`
 A 'shape' field's schema failure throws when required, and is swallowed into null otherwise.
 
 ```ts
-// Case: a `"shape"` field with a custom `Parseable` schema. Fields resolve
-// lazily on first access — so a failed `required: true` field throws the
-// moment it's *read* (not when `configs.create()` itself resolves), while
-// the same failure on `required: false` is logged (via console.error) and
-// swallowed into `null` instead. No validation library needed: `Parseable<T>`
-// is just duck-typed as `{ parse(value: unknown): T }`.
-import { configs, literalSource } from "@jondotsoy/configs";
+// Case: a shape() field with a custom Parseable schema. Fields resolve
+// eagerly and reactively — so a failed `required: true` field rejects the
+// awaited create() call itself (thrown as soon as the bad value is parsed,
+// not deferred to whenever the field is next read), while the same failure
+// on `required: false` is logged (via console.error) and swallowed into
+// `null` instead. No validation library needed: `Parseable<T>` is just
+// duck-typed as `{ parse(value: unknown): T }`.
+import { create, literalSource, shape } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2497,29 +2470,30 @@ const numberSchema = {
   },
 };
 
-const badSource = literalSource({ port: "not-a-number" });
+const badSource1 = literalSource({ port: "not-a-number" });
 
-const cfg1 = await configs.create({ port: { schema: numberSchema, required: true } }, { sources: [badSource] });
 let threw = false;
 try {
-  cfg1.port.get();
+  await create({ port: shape({ schema: numberSchema, required: true }) }, { sources: [badSource1] });
 } catch {
   threw = true;
 }
-assert(threw, "reading a required shape field throws once its schema fails to parse the source value");
+assert(threw, "awaiting create() rejects once a required shape field fails to parse the source value");
 
 const originalConsoleError = console.error;
 console.error = () => {};
 let cfg2Value: number | null;
+const badSource2 = literalSource({ port: "not-a-number" });
 try {
-  const cfg2 = await configs.create({ port: { schema: numberSchema, required: false } }, { sources: [badSource] });
+  const cfg2 = await create({ port: shape({ schema: numberSchema, required: false }) }, { sources: [badSource2] });
   cfg2Value = cfg2.port.get();
 } finally {
   console.error = originalConsoleError;
 }
 assert(cfg2Value === null, "the same failure on a non-required shape field is swallowed into null instead");
 
-await cfg1.close();
+await badSource1.close();
+await badSource2.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -2527,7 +2501,7 @@ Compile: `$ bun build test/cases/14-shape-schema-required.ts --target browser --
 
 ```
 [PASSED]
-ok - reading a required shape field throws once its schema fails to parse the source value
+ok - awaiting create() rejects once a required shape field fails to parse the source value
 ok - the same failure on a non-required shape field is swallowed into null instead
 ALL_CHECKS_PASSED
 RESULT: PASS
@@ -2546,7 +2520,7 @@ fileSource reads a real JSON file from disk once — node:fs-backed, so a browse
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configs, fileSource } from "@jondotsoy/configs";
+import { create, fileSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2560,11 +2534,11 @@ try {
   await writeFile(filePath, JSON.stringify({ port: 6060 }));
 
   const source = fileSource<{ port: number }>(filePath, { watch: false });
-  const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+  const cfg = await create({ port: numeric() }, { sources: [source] });
 
   assert(cfg.port.get() === 6060, "fileSource reads and parses a JSON file from disk");
 
-  await cfg.close();
+  await source.close();
 } finally {
   await rm(dir, { recursive: true, force: true });
 }
@@ -2578,8 +2552,6 @@ Compile: `$ node --experimental-strip-types --no-warnings test/cases/15-file-sou
 [PASSED]
 ok - fileSource reads and parses a JSON file from disk
 ALL_CHECKS_PASSED
-
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/15-file-source-reads-json.ts — bun
@@ -2595,7 +2567,7 @@ fileSource reads a real JSON file from disk once — node:fs-backed, so a browse
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configs, fileSource } from "@jondotsoy/configs";
+import { create, fileSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2609,11 +2581,11 @@ try {
   await writeFile(filePath, JSON.stringify({ port: 6060 }));
 
   const source = fileSource<{ port: number }>(filePath, { watch: false });
-  const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+  const cfg = await create({ port: numeric() }, { sources: [source] });
 
   assert(cfg.port.get() === 6060, "fileSource reads and parses a JSON file from disk");
 
-  await cfg.close();
+  await source.close();
 } finally {
   await rm(dir, { recursive: true, force: true });
 }
@@ -2627,8 +2599,6 @@ Compile: `$ bun test/cases/15-file-source-reads-json.ts (running the copy instal
 [PASSED]
 ok - fileSource reads and parses a JSON file from disk
 ALL_CHECKS_PASSED
-
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/15-file-source-reads-json.ts — deno
@@ -2644,7 +2614,7 @@ fileSource reads a real JSON file from disk once — node:fs-backed, so a browse
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configs, fileSource } from "@jondotsoy/configs";
+import { create, fileSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2658,11 +2628,11 @@ try {
   await writeFile(filePath, JSON.stringify({ port: 6060 }));
 
   const source = fileSource<{ port: number }>(filePath, { watch: false });
-  const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+  const cfg = await create({ port: numeric() }, { sources: [source] });
 
   assert(cfg.port.get() === 6060, "fileSource reads and parses a JSON file from disk");
 
-  await cfg.close();
+  await source.close();
 } finally {
   await rm(dir, { recursive: true, force: true });
 }
@@ -2690,7 +2660,7 @@ fileSource reads a real JSON file from disk once — node:fs-backed, so a browse
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configs, fileSource } from "@jondotsoy/configs";
+import { create, fileSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2704,11 +2674,11 @@ try {
   await writeFile(filePath, JSON.stringify({ port: 6060 }));
 
   const source = fileSource<{ port: number }>(filePath, { watch: false });
-  const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+  const cfg = await create({ port: numeric() }, { sources: [source] });
 
   assert(cfg.port.get() === 6060, "fileSource reads and parses a JSON file from disk");
 
-  await cfg.close();
+  await source.close();
 } finally {
   await rm(dir, { recursive: true, force: true });
 }
@@ -2733,7 +2703,7 @@ shellSource runs a command via node:child_process's spawn and publishes its pars
 // so a browser bundle stubs it out (see manifest.ts's tolerateFailureEngines
 // for this case) — run there anyway to document the breakage instead of
 // skipping it, same as fileSource's node:fs case (15).
-import { configs, shellSource } from "@jondotsoy/configs";
+import { create, shellSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2741,11 +2711,11 @@ function assert(cond: unknown, message: string): void {
 }
 
 const source = shellSource<{ port: number }>(["echo", JSON.stringify({ port: 7070 })]);
-const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+const cfg = await create({ port: numeric() }, { sources: [source] });
 
 assert(cfg.port.get() === 7070, "shellSource runs a command and parses its stdout as JSON");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -2755,8 +2725,6 @@ Compile: `$ node --experimental-strip-types --no-warnings test/cases/16-shell-so
 [PASSED]
 ok - shellSource runs a command and parses its stdout as JSON
 ALL_CHECKS_PASSED
-
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/16-shell-source-runs-command.ts — bun
@@ -2769,7 +2737,7 @@ shellSource runs a command via node:child_process's spawn and publishes its pars
 // so a browser bundle stubs it out (see manifest.ts's tolerateFailureEngines
 // for this case) — run there anyway to document the breakage instead of
 // skipping it, same as fileSource's node:fs case (15).
-import { configs, shellSource } from "@jondotsoy/configs";
+import { create, shellSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2777,11 +2745,11 @@ function assert(cond: unknown, message: string): void {
 }
 
 const source = shellSource<{ port: number }>(["echo", JSON.stringify({ port: 7070 })]);
-const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+const cfg = await create({ port: numeric() }, { sources: [source] });
 
 assert(cfg.port.get() === 7070, "shellSource runs a command and parses its stdout as JSON");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -2791,8 +2759,6 @@ Compile: `$ bun test/cases/16-shell-source-runs-command.ts (running the copy ins
 [PASSED]
 ok - shellSource runs a command and parses its stdout as JSON
 ALL_CHECKS_PASSED
-
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/16-shell-source-runs-command.ts — deno
@@ -2805,7 +2771,7 @@ shellSource runs a command via node:child_process's spawn and publishes its pars
 // so a browser bundle stubs it out (see manifest.ts's tolerateFailureEngines
 // for this case) — run there anyway to document the breakage instead of
 // skipping it, same as fileSource's node:fs case (15).
-import { configs, shellSource } from "@jondotsoy/configs";
+import { create, shellSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2813,11 +2779,11 @@ function assert(cond: unknown, message: string): void {
 }
 
 const source = shellSource<{ port: number }>(["echo", JSON.stringify({ port: 7070 })]);
-const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+const cfg = await create({ port: numeric() }, { sources: [source] });
 
 assert(cfg.port.get() === 7070, "shellSource runs a command and parses its stdout as JSON");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -2838,7 +2804,7 @@ shellSource runs a command via node:child_process's spawn and publishes its pars
 // so a browser bundle stubs it out (see manifest.ts's tolerateFailureEngines
 // for this case) — run there anyway to document the breakage instead of
 // skipping it, same as fileSource's node:fs case (15).
-import { configs, shellSource } from "@jondotsoy/configs";
+import { create, shellSource, numeric } from "@jondotsoy/configs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2846,11 +2812,11 @@ function assert(cond: unknown, message: string): void {
 }
 
 const source = shellSource<{ port: number }>(["echo", JSON.stringify({ port: 7070 })]);
-const cfg = await configs.create({ port: { type: "number" } }, { sources: [source] });
+const cfg = await create({ port: numeric() }, { sources: [source] });
 
 assert(cfg.port.get() === 7070, "shellSource runs a command and parses its stdout as JSON");
 
-await cfg.close();
+await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
@@ -2859,11 +2825,10 @@ Compile: `$ bun build test/cases/16-shell-source-runs-command.ts --target browse
 ```
 [WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
 shellSource: failed to run "echo {"port":7070}" AttemptsExhaustedError: shellSource: failed after 1 attempt(s): spawn is not a function
-    at runWithRetry (http://localhost:39875/:379:9)
-    at async t (http://localhost:39875/:291:20)
-    at async shellRound (http://localhost:39875/:383:37)
-    at async Object.start (http://localhost:39875/:433:21)
-[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
+    at runWithRetry (http://localhost:34497/:372:9)
+    at async t (http://localhost:34497/:291:20)
+    at async shellRound (http://localhost:34497/:376:37)
+    at async Object.start (http://localhost:34497/:426:21)
 RESULT: FAIL: FAIL: shellSource runs a command and parses its stdout as JSON
 ```
 
@@ -2880,7 +2845,7 @@ RESULT: FAIL: FAIL: shellSource runs a command and parses its stdout as JSON
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configs, literalSource } from "@jondotsoy/configs";
+import { create, literalSource } from "@jondotsoy/configs";
 import { FileBlob, file } from "@jondotsoy/configs/node";
 
 function assert(cond: unknown, message: string): void {
@@ -2893,52 +2858,51 @@ function toFileURL(path: string): URL {
   return new URL(`file://${path}`);
 }
 
-const cfg1 = await configs.create({ key: file() }, { sources: [literalSource({ key: "hello" })] });
+const source1 = literalSource({ key: "hello" });
+const cfg1 = await create({ key: file() }, { sources: [source1] });
 const blob1 = cfg1.key.get();
 assert(blob1 instanceof FileBlob, "a source's text value resolves to a FileBlob");
 assert((await blob1!.text()) === "hello", "FileBlob.text() decodes the text value");
 assert(blob1!.location instanceof URL, "a source-derived FileBlob still has a .location");
 assert((await readFile(blob1!.location!, "utf-8")) === "hello", ".location points at a temp file holding the decoded content");
-await cfg1.close();
+await source1.close();
 
-const cfg1c = await configs.create(
+const source1c = literalSource({ key: "hello" });
+const cfg1c = await create(
   { key: file({ required: true }) },
-  { sources: [literalSource({ key: "hello" })] },
+  { sources: [source1c] },
 );
 assert((await cfg1c.key.get().text()) === "hello", "required: true still resolves normally when a source has the value");
-await cfg1c.close();
+await source1c.close();
 
-const cfg1b = await configs.create(
+const cfg1b = await create(
   { key: file({ default: "foo=tar&biz=lol", format: "text" }) },
-  { sources: [] },
+  {},
 );
 const formData = await cfg1b.key.get().formData();
 assert(formData instanceof FormData, "FileBlob.formData() returns a FormData");
 assert(formData.get("foo") === "tar", "FileBlob.formData() parses application/x-www-form-urlencoded pairs");
 assert(formData.get("biz") === "lol", "FileBlob.formData() parses every pair");
-await cfg1b.close();
 
 const dir = await mkdtemp(join(tmpdir(), "configs-node-file-case-"));
 try {
   const path = join(dir, "cert.pem");
   await writeFile(path, "-----BEGIN CERTIFICATE-----");
 
-  const cfg2 = await configs.create(
+  const cfg2 = await create(
     { key: file({ default: toFileURL(path) }) },
-    { sources: [] },
+    {},
   );
   const blob2 = cfg2.key.get();
   assert(blob2 instanceof FileBlob, "a URL default loads a FileBlob from disk");
   assert((await blob2!.text()) === "-----BEGIN CERTIFICATE-----", "the loaded FileBlob has the file's content");
   assert(blob2!.type === "application/x-pem-file", "FileBlob.type infers a mimetype from the location's extension");
-  await cfg2.close();
 
-  const cfg3 = await configs.create(
+  const cfg3 = await create(
     { key: file({ default: toFileURL(join(dir, "missing.pem")) }) },
-    { sources: [] },
+    {},
   );
   assert(cfg3.key.get() === null, "a missing URL default resolves the field to null");
-  await cfg3.close();
 } finally {
   await rm(dir, { recursive: true, force: true });
 }
@@ -2978,7 +2942,7 @@ ALL_CHECKS_PASSED
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configs, literalSource } from "@jondotsoy/configs";
+import { create, literalSource } from "@jondotsoy/configs";
 import { FileBlob, file } from "@jondotsoy/configs/node";
 
 function assert(cond: unknown, message: string): void {
@@ -2991,52 +2955,51 @@ function toFileURL(path: string): URL {
   return new URL(`file://${path}`);
 }
 
-const cfg1 = await configs.create({ key: file() }, { sources: [literalSource({ key: "hello" })] });
+const source1 = literalSource({ key: "hello" });
+const cfg1 = await create({ key: file() }, { sources: [source1] });
 const blob1 = cfg1.key.get();
 assert(blob1 instanceof FileBlob, "a source's text value resolves to a FileBlob");
 assert((await blob1!.text()) === "hello", "FileBlob.text() decodes the text value");
 assert(blob1!.location instanceof URL, "a source-derived FileBlob still has a .location");
 assert((await readFile(blob1!.location!, "utf-8")) === "hello", ".location points at a temp file holding the decoded content");
-await cfg1.close();
+await source1.close();
 
-const cfg1c = await configs.create(
+const source1c = literalSource({ key: "hello" });
+const cfg1c = await create(
   { key: file({ required: true }) },
-  { sources: [literalSource({ key: "hello" })] },
+  { sources: [source1c] },
 );
 assert((await cfg1c.key.get().text()) === "hello", "required: true still resolves normally when a source has the value");
-await cfg1c.close();
+await source1c.close();
 
-const cfg1b = await configs.create(
+const cfg1b = await create(
   { key: file({ default: "foo=tar&biz=lol", format: "text" }) },
-  { sources: [] },
+  {},
 );
 const formData = await cfg1b.key.get().formData();
 assert(formData instanceof FormData, "FileBlob.formData() returns a FormData");
 assert(formData.get("foo") === "tar", "FileBlob.formData() parses application/x-www-form-urlencoded pairs");
 assert(formData.get("biz") === "lol", "FileBlob.formData() parses every pair");
-await cfg1b.close();
 
 const dir = await mkdtemp(join(tmpdir(), "configs-node-file-case-"));
 try {
   const path = join(dir, "cert.pem");
   await writeFile(path, "-----BEGIN CERTIFICATE-----");
 
-  const cfg2 = await configs.create(
+  const cfg2 = await create(
     { key: file({ default: toFileURL(path) }) },
-    { sources: [] },
+    {},
   );
   const blob2 = cfg2.key.get();
   assert(blob2 instanceof FileBlob, "a URL default loads a FileBlob from disk");
   assert((await blob2!.text()) === "-----BEGIN CERTIFICATE-----", "the loaded FileBlob has the file's content");
   assert(blob2!.type === "application/x-pem-file", "FileBlob.type infers a mimetype from the location's extension");
-  await cfg2.close();
 
-  const cfg3 = await configs.create(
+  const cfg3 = await create(
     { key: file({ default: toFileURL(join(dir, "missing.pem")) }) },
-    { sources: [] },
+    {},
   );
   assert(cfg3.key.get() === null, "a missing URL default resolves the field to null");
-  await cfg3.close();
 } finally {
   await rm(dir, { recursive: true, force: true });
 }
@@ -3076,7 +3039,7 @@ ALL_CHECKS_PASSED
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configs, literalSource } from "@jondotsoy/configs";
+import { create, literalSource } from "@jondotsoy/configs";
 import { FileBlob, file } from "@jondotsoy/configs/node";
 
 function assert(cond: unknown, message: string): void {
@@ -3089,52 +3052,51 @@ function toFileURL(path: string): URL {
   return new URL(`file://${path}`);
 }
 
-const cfg1 = await configs.create({ key: file() }, { sources: [literalSource({ key: "hello" })] });
+const source1 = literalSource({ key: "hello" });
+const cfg1 = await create({ key: file() }, { sources: [source1] });
 const blob1 = cfg1.key.get();
 assert(blob1 instanceof FileBlob, "a source's text value resolves to a FileBlob");
 assert((await blob1!.text()) === "hello", "FileBlob.text() decodes the text value");
 assert(blob1!.location instanceof URL, "a source-derived FileBlob still has a .location");
 assert((await readFile(blob1!.location!, "utf-8")) === "hello", ".location points at a temp file holding the decoded content");
-await cfg1.close();
+await source1.close();
 
-const cfg1c = await configs.create(
+const source1c = literalSource({ key: "hello" });
+const cfg1c = await create(
   { key: file({ required: true }) },
-  { sources: [literalSource({ key: "hello" })] },
+  { sources: [source1c] },
 );
 assert((await cfg1c.key.get().text()) === "hello", "required: true still resolves normally when a source has the value");
-await cfg1c.close();
+await source1c.close();
 
-const cfg1b = await configs.create(
+const cfg1b = await create(
   { key: file({ default: "foo=tar&biz=lol", format: "text" }) },
-  { sources: [] },
+  {},
 );
 const formData = await cfg1b.key.get().formData();
 assert(formData instanceof FormData, "FileBlob.formData() returns a FormData");
 assert(formData.get("foo") === "tar", "FileBlob.formData() parses application/x-www-form-urlencoded pairs");
 assert(formData.get("biz") === "lol", "FileBlob.formData() parses every pair");
-await cfg1b.close();
 
 const dir = await mkdtemp(join(tmpdir(), "configs-node-file-case-"));
 try {
   const path = join(dir, "cert.pem");
   await writeFile(path, "-----BEGIN CERTIFICATE-----");
 
-  const cfg2 = await configs.create(
+  const cfg2 = await create(
     { key: file({ default: toFileURL(path) }) },
-    { sources: [] },
+    {},
   );
   const blob2 = cfg2.key.get();
   assert(blob2 instanceof FileBlob, "a URL default loads a FileBlob from disk");
   assert((await blob2!.text()) === "-----BEGIN CERTIFICATE-----", "the loaded FileBlob has the file's content");
   assert(blob2!.type === "application/x-pem-file", "FileBlob.type infers a mimetype from the location's extension");
-  await cfg2.close();
 
-  const cfg3 = await configs.create(
+  const cfg3 = await create(
     { key: file({ default: toFileURL(join(dir, "missing.pem")) }) },
-    { sources: [] },
+    {},
   );
   assert(cfg3.key.get() === null, "a missing URL default resolves the field to null");
-  await cfg3.close();
 } finally {
   await rm(dir, { recursive: true, force: true });
 }
@@ -3162,7 +3124,7 @@ Compile: `$ deno test/cases/17-node-file-field.ts`
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configs, literalSource } from "@jondotsoy/configs";
+import { create, literalSource } from "@jondotsoy/configs";
 import { FileBlob, file } from "@jondotsoy/configs/node";
 
 function assert(cond: unknown, message: string): void {
@@ -3175,52 +3137,51 @@ function toFileURL(path: string): URL {
   return new URL(`file://${path}`);
 }
 
-const cfg1 = await configs.create({ key: file() }, { sources: [literalSource({ key: "hello" })] });
+const source1 = literalSource({ key: "hello" });
+const cfg1 = await create({ key: file() }, { sources: [source1] });
 const blob1 = cfg1.key.get();
 assert(blob1 instanceof FileBlob, "a source's text value resolves to a FileBlob");
 assert((await blob1!.text()) === "hello", "FileBlob.text() decodes the text value");
 assert(blob1!.location instanceof URL, "a source-derived FileBlob still has a .location");
 assert((await readFile(blob1!.location!, "utf-8")) === "hello", ".location points at a temp file holding the decoded content");
-await cfg1.close();
+await source1.close();
 
-const cfg1c = await configs.create(
+const source1c = literalSource({ key: "hello" });
+const cfg1c = await create(
   { key: file({ required: true }) },
-  { sources: [literalSource({ key: "hello" })] },
+  { sources: [source1c] },
 );
 assert((await cfg1c.key.get().text()) === "hello", "required: true still resolves normally when a source has the value");
-await cfg1c.close();
+await source1c.close();
 
-const cfg1b = await configs.create(
+const cfg1b = await create(
   { key: file({ default: "foo=tar&biz=lol", format: "text" }) },
-  { sources: [] },
+  {},
 );
 const formData = await cfg1b.key.get().formData();
 assert(formData instanceof FormData, "FileBlob.formData() returns a FormData");
 assert(formData.get("foo") === "tar", "FileBlob.formData() parses application/x-www-form-urlencoded pairs");
 assert(formData.get("biz") === "lol", "FileBlob.formData() parses every pair");
-await cfg1b.close();
 
 const dir = await mkdtemp(join(tmpdir(), "configs-node-file-case-"));
 try {
   const path = join(dir, "cert.pem");
   await writeFile(path, "-----BEGIN CERTIFICATE-----");
 
-  const cfg2 = await configs.create(
+  const cfg2 = await create(
     { key: file({ default: toFileURL(path) }) },
-    { sources: [] },
+    {},
   );
   const blob2 = cfg2.key.get();
   assert(blob2 instanceof FileBlob, "a URL default loads a FileBlob from disk");
   assert((await blob2!.text()) === "-----BEGIN CERTIFICATE-----", "the loaded FileBlob has the file's content");
   assert(blob2!.type === "application/x-pem-file", "FileBlob.type infers a mimetype from the location's extension");
-  await cfg2.close();
 
-  const cfg3 = await configs.create(
+  const cfg3 = await create(
     { key: file({ default: toFileURL(join(dir, "missing.pem")) }) },
-    { sources: [] },
+    {},
   );
   assert(cfg3.key.get() === null, "a missing URL default resolves the field to null");
-  await cfg3.close();
 } finally {
   await rm(dir, { recursive: true, force: true });
 }
@@ -3233,19 +3194,16 @@ Compile: `$ bun build test/cases/17-node-file-field.ts --target browser --format
 ```
 [WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
 ConfigError2: Value at "key" could not be decoded as a file: mkdtempSync is not a function
-    at ConfigDescriptor.parser (http://localhost:45319/:1312:44)
-    at resolveDescriptorInitial (http://localhost:45319/:730:21)
-    at ConfigNodeState.fieldFor (http://localhost:45319/:829:43)
-    at Object.get (http://localhost:45319/:920:105)
-    at http://localhost:45319/:1340:18
-ConfigError2: Value at "key" could not be decoded as a file: mkdtempSync is not a function
-    at ConfigDescriptor.parser (http://localhost:45319/:1312:44)
-    at compute (http://localhost:45319/:1157:122)
-    at ConfigDescriptor.parse (http://localhost:45319/:1158:32)
-    at ConfigNodeState.wireDescriptorField (http://localhost:45319/:846:16)
-    at ConfigNodeState.fieldFor (http://localhost:45319/:832:14)
-    at Object.get (http://localhost:45319/:920:105)
-    at http://localhost:45319/:1340:18
+    at ConfigDescriptor.parser (http://localhost:33229/:965:43)
+    at compute (http://localhost:33229/:809:106)
+    at http://localhost:33229/:813:20
+    at Store.runSubscriber (http://localhost:33229/:414:21)
+    at Store.set (http://localhost:33229/:401:12)
+    at http://localhost:33229/:565:16
+    at Store.runSubscriber (http://localhost:33229/:414:21)
+    at Store.set (http://localhost:33229/:401:12)
+    at http://localhost:33229/:600:51
+    at Store.runSubscriber (http://localhost:33229/:414:21)
 RESULT: FAIL: FAIL: a source's text value resolves to a FileBlob
 ```
 
@@ -3303,6 +3261,11 @@ try {
   await writeFile(keyPath, "-----BEGIN PRIVATE KEY-----");
   await writeFile(dotEnvPath, "LOG_LEVEL=debug\n");
 
+  const rootEnvSource = envSource({ env: { HOST: "example.com", PORT: "8080", LOG_LEVEL: "warn" } });
+  const rootFileSource = fileSource(dotEnvPath);
+  const featuresFetchSource = fetchSource({ url: featuresUrl });
+  const databasePullSource = pullSource({ pull: getDatabaseSecret, interval: 10 });
+
   const cfg = await create(
     {
       logLevel: choice({
@@ -3312,8 +3275,8 @@ try {
         key: "LOG_LEVEL",
       }),
       server: {
-        host: string({ summary: "bind host", default: "localhost", key: "HOST", freeze: true }),
-        port: numeric({ summary: "HTTP port", default: 3000, key: "PORT", freeze: true }),
+        host: string({ summary: "bind host", default: "localhost", key: "HOST" }),
+        port: numeric({ summary: "HTTP port", default: 3000, key: "PORT" }),
         tls: {
           cert: file({ summary: "TLS certificate", default: toFileURL(certPath) }),
           key: file({ summary: "TLS private key", default: toFileURL(keyPath) }),
@@ -3335,7 +3298,7 @@ try {
             sidebarCollapsed: boolean({ summary: "collapse the sidebar by default", default: false }),
           },
         },
-        { sources: [fetchSource({ url: featuresUrl })] },
+        { sources: [featuresFetchSource] },
       ),
       database: create(
         {
@@ -3344,10 +3307,10 @@ try {
           user: string({ summary: "db user" }),
           password: string({ summary: "db password" }),
         },
-        { sources: [pullSource({ pull: getDatabaseSecret, interval: 10 })] },
+        { sources: [databasePullSource] },
       ),
     },
-    { sources: [envSource({ env: { HOST: "example.com", PORT: "8080", LOG_LEVEL: "warn" } }), fileSource(dotEnvPath)] },
+    { sources: [rootEnvSource, rootFileSource] },
   );
 
   assert(
@@ -3376,15 +3339,17 @@ try {
     "a later pullSource round rotates the password, and .get() reflects it",
   );
 
-  await cfg.close();
+  await Promise.all([rootEnvSource.close(), rootFileSource.close(), featuresFetchSource.close(), databasePullSource.close()]);
 
   // Without a real LOG_LEVEL env var, the ./.env fileSource() fallback kicks in.
+  const fallbackEnvSource = envSource({ env: {} });
+  const fallbackFileSource = fileSource(dotEnvPath);
   const cfgNoEnvVar = await create(
     { logLevel: choice({ options: ["debug", "info", "warn", "error"], default: "info", key: "LOG_LEVEL" }) },
-    { sources: [envSource({ env: {} }), fileSource(dotEnvPath)] },
+    { sources: [fallbackEnvSource, fallbackFileSource] },
   );
   assert(cfgNoEnvVar.logLevel.get() === "debug", "with no real LOG_LEVEL set, the ./.env fileSource() fallback resolves logLevel");
-  await cfgNoEnvVar.close();
+  await Promise.all([fallbackEnvSource.close(), fallbackFileSource.close()]);
 } finally {
   await rm(dir, { recursive: true, force: true });
 }
@@ -3467,6 +3432,11 @@ try {
   await writeFile(keyPath, "-----BEGIN PRIVATE KEY-----");
   await writeFile(dotEnvPath, "LOG_LEVEL=debug\n");
 
+  const rootEnvSource = envSource({ env: { HOST: "example.com", PORT: "8080", LOG_LEVEL: "warn" } });
+  const rootFileSource = fileSource(dotEnvPath);
+  const featuresFetchSource = fetchSource({ url: featuresUrl });
+  const databasePullSource = pullSource({ pull: getDatabaseSecret, interval: 10 });
+
   const cfg = await create(
     {
       logLevel: choice({
@@ -3476,8 +3446,8 @@ try {
         key: "LOG_LEVEL",
       }),
       server: {
-        host: string({ summary: "bind host", default: "localhost", key: "HOST", freeze: true }),
-        port: numeric({ summary: "HTTP port", default: 3000, key: "PORT", freeze: true }),
+        host: string({ summary: "bind host", default: "localhost", key: "HOST" }),
+        port: numeric({ summary: "HTTP port", default: 3000, key: "PORT" }),
         tls: {
           cert: file({ summary: "TLS certificate", default: toFileURL(certPath) }),
           key: file({ summary: "TLS private key", default: toFileURL(keyPath) }),
@@ -3499,7 +3469,7 @@ try {
             sidebarCollapsed: boolean({ summary: "collapse the sidebar by default", default: false }),
           },
         },
-        { sources: [fetchSource({ url: featuresUrl })] },
+        { sources: [featuresFetchSource] },
       ),
       database: create(
         {
@@ -3508,10 +3478,10 @@ try {
           user: string({ summary: "db user" }),
           password: string({ summary: "db password" }),
         },
-        { sources: [pullSource({ pull: getDatabaseSecret, interval: 10 })] },
+        { sources: [databasePullSource] },
       ),
     },
-    { sources: [envSource({ env: { HOST: "example.com", PORT: "8080", LOG_LEVEL: "warn" } }), fileSource(dotEnvPath)] },
+    { sources: [rootEnvSource, rootFileSource] },
   );
 
   assert(
@@ -3540,15 +3510,17 @@ try {
     "a later pullSource round rotates the password, and .get() reflects it",
   );
 
-  await cfg.close();
+  await Promise.all([rootEnvSource.close(), rootFileSource.close(), featuresFetchSource.close(), databasePullSource.close()]);
 
   // Without a real LOG_LEVEL env var, the ./.env fileSource() fallback kicks in.
+  const fallbackEnvSource = envSource({ env: {} });
+  const fallbackFileSource = fileSource(dotEnvPath);
   const cfgNoEnvVar = await create(
     { logLevel: choice({ options: ["debug", "info", "warn", "error"], default: "info", key: "LOG_LEVEL" }) },
-    { sources: [envSource({ env: {} }), fileSource(dotEnvPath)] },
+    { sources: [fallbackEnvSource, fallbackFileSource] },
   );
   assert(cfgNoEnvVar.logLevel.get() === "debug", "with no real LOG_LEVEL set, the ./.env fileSource() fallback resolves logLevel");
-  await cfgNoEnvVar.close();
+  await Promise.all([fallbackEnvSource.close(), fallbackFileSource.close()]);
 } finally {
   await rm(dir, { recursive: true, force: true });
 }
@@ -3631,6 +3603,11 @@ try {
   await writeFile(keyPath, "-----BEGIN PRIVATE KEY-----");
   await writeFile(dotEnvPath, "LOG_LEVEL=debug\n");
 
+  const rootEnvSource = envSource({ env: { HOST: "example.com", PORT: "8080", LOG_LEVEL: "warn" } });
+  const rootFileSource = fileSource(dotEnvPath);
+  const featuresFetchSource = fetchSource({ url: featuresUrl });
+  const databasePullSource = pullSource({ pull: getDatabaseSecret, interval: 10 });
+
   const cfg = await create(
     {
       logLevel: choice({
@@ -3640,8 +3617,8 @@ try {
         key: "LOG_LEVEL",
       }),
       server: {
-        host: string({ summary: "bind host", default: "localhost", key: "HOST", freeze: true }),
-        port: numeric({ summary: "HTTP port", default: 3000, key: "PORT", freeze: true }),
+        host: string({ summary: "bind host", default: "localhost", key: "HOST" }),
+        port: numeric({ summary: "HTTP port", default: 3000, key: "PORT" }),
         tls: {
           cert: file({ summary: "TLS certificate", default: toFileURL(certPath) }),
           key: file({ summary: "TLS private key", default: toFileURL(keyPath) }),
@@ -3663,7 +3640,7 @@ try {
             sidebarCollapsed: boolean({ summary: "collapse the sidebar by default", default: false }),
           },
         },
-        { sources: [fetchSource({ url: featuresUrl })] },
+        { sources: [featuresFetchSource] },
       ),
       database: create(
         {
@@ -3672,10 +3649,10 @@ try {
           user: string({ summary: "db user" }),
           password: string({ summary: "db password" }),
         },
-        { sources: [pullSource({ pull: getDatabaseSecret, interval: 10 })] },
+        { sources: [databasePullSource] },
       ),
     },
-    { sources: [envSource({ env: { HOST: "example.com", PORT: "8080", LOG_LEVEL: "warn" } }), fileSource(dotEnvPath)] },
+    { sources: [rootEnvSource, rootFileSource] },
   );
 
   assert(
@@ -3704,15 +3681,17 @@ try {
     "a later pullSource round rotates the password, and .get() reflects it",
   );
 
-  await cfg.close();
+  await Promise.all([rootEnvSource.close(), rootFileSource.close(), featuresFetchSource.close(), databasePullSource.close()]);
 
   // Without a real LOG_LEVEL env var, the ./.env fileSource() fallback kicks in.
+  const fallbackEnvSource = envSource({ env: {} });
+  const fallbackFileSource = fileSource(dotEnvPath);
   const cfgNoEnvVar = await create(
     { logLevel: choice({ options: ["debug", "info", "warn", "error"], default: "info", key: "LOG_LEVEL" }) },
-    { sources: [envSource({ env: {} }), fileSource(dotEnvPath)] },
+    { sources: [fallbackEnvSource, fallbackFileSource] },
   );
   assert(cfgNoEnvVar.logLevel.get() === "debug", "with no real LOG_LEVEL set, the ./.env fileSource() fallback resolves logLevel");
-  await cfgNoEnvVar.close();
+  await Promise.all([fallbackEnvSource.close(), fallbackFileSource.close()]);
 } finally {
   await rm(dir, { recursive: true, force: true });
 }
@@ -3781,6 +3760,11 @@ try {
   await writeFile(keyPath, "-----BEGIN PRIVATE KEY-----");
   await writeFile(dotEnvPath, "LOG_LEVEL=debug\n");
 
+  const rootEnvSource = envSource({ env: { HOST: "example.com", PORT: "8080", LOG_LEVEL: "warn" } });
+  const rootFileSource = fileSource(dotEnvPath);
+  const featuresFetchSource = fetchSource({ url: featuresUrl });
+  const databasePullSource = pullSource({ pull: getDatabaseSecret, interval: 10 });
+
   const cfg = await create(
     {
       logLevel: choice({
@@ -3790,8 +3774,8 @@ try {
         key: "LOG_LEVEL",
       }),
       server: {
-        host: string({ summary: "bind host", default: "localhost", key: "HOST", freeze: true }),
-        port: numeric({ summary: "HTTP port", default: 3000, key: "PORT", freeze: true }),
+        host: string({ summary: "bind host", default: "localhost", key: "HOST" }),
+        port: numeric({ summary: "HTTP port", default: 3000, key: "PORT" }),
         tls: {
           cert: file({ summary: "TLS certificate", default: toFileURL(certPath) }),
           key: file({ summary: "TLS private key", default: toFileURL(keyPath) }),
@@ -3813,7 +3797,7 @@ try {
             sidebarCollapsed: boolean({ summary: "collapse the sidebar by default", default: false }),
           },
         },
-        { sources: [fetchSource({ url: featuresUrl })] },
+        { sources: [featuresFetchSource] },
       ),
       database: create(
         {
@@ -3822,10 +3806,10 @@ try {
           user: string({ summary: "db user" }),
           password: string({ summary: "db password" }),
         },
-        { sources: [pullSource({ pull: getDatabaseSecret, interval: 10 })] },
+        { sources: [databasePullSource] },
       ),
     },
-    { sources: [envSource({ env: { HOST: "example.com", PORT: "8080", LOG_LEVEL: "warn" } }), fileSource(dotEnvPath)] },
+    { sources: [rootEnvSource, rootFileSource] },
   );
 
   assert(
@@ -3854,15 +3838,17 @@ try {
     "a later pullSource round rotates the password, and .get() reflects it",
   );
 
-  await cfg.close();
+  await Promise.all([rootEnvSource.close(), rootFileSource.close(), featuresFetchSource.close(), databasePullSource.close()]);
 
   // Without a real LOG_LEVEL env var, the ./.env fileSource() fallback kicks in.
+  const fallbackEnvSource = envSource({ env: {} });
+  const fallbackFileSource = fileSource(dotEnvPath);
   const cfgNoEnvVar = await create(
     { logLevel: choice({ options: ["debug", "info", "warn", "error"], default: "info", key: "LOG_LEVEL" }) },
-    { sources: [envSource({ env: {} }), fileSource(dotEnvPath)] },
+    { sources: [fallbackEnvSource, fallbackFileSource] },
   );
   assert(cfgNoEnvVar.logLevel.get() === "debug", "with no real LOG_LEVEL set, the ./.env fileSource() fallback resolves logLevel");
-  await cfgNoEnvVar.close();
+  await Promise.all([fallbackEnvSource.close(), fallbackFileSource.close()]);
 } finally {
   await rm(dir, { recursive: true, force: true });
 }

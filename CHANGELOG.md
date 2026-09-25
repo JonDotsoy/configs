@@ -7,16 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Changed — BREAKING: new `create()`/`load()` engine, legacy engine removed
 
-- **`create()` in `src/config-node.ts`**: a new, from-scratch, minimal config-node implementation,
-  unrelated to `configs.create()`'s engine. Given a shape of `ConfigDescriptor`s (e.g. `{ port:
-  numeric() }`), it returns a plain object exposing each leaf key as a live `Store` — no `Proxy`,
-  and no `.get()` on the root. A plain nested object in the shape (`{ server: { port: numeric() }
-  }`) becomes a nested group of `Store`s of its own (`{ server: { port: Store<number | null> } }`),
-  resolved from each source's own matching nested path. The returned object is also `then`able:
-  `await`ing it resolves once every source in `options.sources` has published its first snapshot,
-  into the same plain shape (no longer `then`able).
+`src/config-node.ts`'s `create()` is now what `create`/`load` (from the package root) build on —
+replacing the old `src/config.types.ts` engine entirely, which has been deleted along with
+everything that only made sense for it. This is a breaking change: read through if you use
+`configs.create()`, object-literal fields (`{ type: "string", ... }`), a bare schema/`{ schema }`
+shape shorthand, `freeze`, or the root's `.get()`/`.subscribe()`/`.close()`.
+
+- **`create(shape, options?)` / `load(shape, options?)`** are exported from the package root as
+  before, now backed by the new engine. Given a shape of `ConfigDescriptor`s (e.g. `{ port:
+  numeric() }`), the returned object exposes each leaf key as a live `Store` directly — no `Proxy`.
+  A plain nested object in the shape (`{ server: { port: numeric() } }`) becomes a nested group of
+  `Store`s of its own, resolved from each source's own matching nested path; a shape entry can
+  also be **another, separate `create()` call** (`{ server: { tls: create({ cert: string() }, {
+  sources: [...] }) } }`), adopted as-is — it resolves independently from its own `sources`, never
+  looked up against the parent's, and the parent's own `then()` also waits for it (`isConfigsNode`,
+  also exported, tells the two apart). `key` (`numeric({ key: "PORT" })`) still works the same as
+  before: an explicit, absolute path override. The returned object is `then`able: `await`ing it
+  resolves once every source (including every embedded `create()`'s own) has published its first
+  snapshot, into the same plain shape (no longer `then`able).
 
   Internally, each leaf field is its own independent reactive chain — `Source → KeyStore →
   FieldStore` — instead of one global recompute sweep over the whole shape on every change: each
@@ -24,33 +34,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the moment `create()` is called; once that source's own `open()` resolves, its value (and every
   later update) forwards into the placeholder and ripples through only the fields whose path it
   can affect.
+- **`ConfigDescriptor.reduce(rawStore, path?)`**: what every field's live `Store` is now built
+  from. Takes a live `Store<unknown>` and returns a live `Store<T>` that recomputes on every
+  `rawStore` change — falling back to `options.default` when raw is missing, else running it
+  through the field's own `parser` — synchronously, with no `Promise` to await. Available on every
+  descriptor built by `string()`/`numeric()`/`boolean()`/`url()`/`shape()`/`choice()` (and
+  `file()`, from `./node.js`), since it lives on the shared `ConfigDescriptor` base class.
 
-  A shape entry can also be **another `create()` result** (`{ server: { tls: create({ cert:
-  string() }, { sources: [...] }) } }`) — it's adopted as-is: it resolves independently from its
-  own `sources`, never looked up against the parent's, and the parent's own `then()` also waits
-  for it. `isConfigsNode(value)` (also exported) tells such an embedded node apart from a plain
-  nested shape.
+### Removed
 
-  A field's `key` option (`numeric({ key: "PORT" })`) is honored too: it reads from that explicit,
-  absolute path in every source's snapshot instead of the field's own position in the shape tree —
-  the same override the legacy engine already supported.
-- **`ConfigDescriptor.reduce(rawStore, path?)`**: the reactive counterpart to `.parse()`, and what
-  it's now built on. Takes a live `Store<unknown>` (not a bare raw value) and returns a live
-  `Store<T>` that recomputes on every `rawStore` change — falling back to `options.default` when
-  raw is missing, else running it through the field's own `parser` — synchronously, with no
-  `Promise` to await (`rawStore` is expected to already exist). Available on every descriptor
-  built by `string()`/`numeric()`/`boolean()`/`url()`/`shape()`/`choice()` (and `file()`, from
-  `./node.js`), since it lives on the shared `ConfigDescriptor` base class. The new `create()`
-  (`src/config-node.ts`) builds each field's `rawStore` from its own `KeyStore` and hands it
-  straight to `.reduce()`.
-
-### Deprecated
-
-- **`configs` (the default-export-backing namespace object in `src/configs.ts`) is deprecated** in
-  favor of `create()` from `./config-node.js`.
-- **`ConfigDescriptor.parse()` is deprecated** in favor of `.reduce()` — same behavior, now just a
-  thin `Promise`-wrapping shim over it, kept only for the legacy `configs.create()` engine. Still
-  fully supported.
+- **The legacy `configs.create()` engine (`src/config.types.ts`) is gone**, along with the
+  `configs` namespace object that exposed it. Use `create()`/`load()` from the package root
+  instead — same names, new engine (see above).
+- **Object-literal fields (`{ type: "string", ... }` and friends) are no longer accepted** — only
+  `string()`/`numeric()`/`boolean()`/`url()`/`choice()`/`shape()` (or a hand-built
+  `ConfigDescriptor`). Likewise, a bare schema used directly as a shape entry (`port: z.number()`)
+  and the untagged `{ schema: z.number() }` shorthand are no longer accepted — wrap them in
+  `shape({ schema: ... })`.
+- **The root node's `.get()`, `.subscribe()`, `.listen()`, `.close()`, and `[Symbol.asyncDispose]`
+  are gone** — the new engine's node only ever exposes the shape's own fields, nothing else. To
+  read a snapshot of the whole tree, walk it yourself; to close a `Source`, call `.close()` on the
+  `Source` instance itself (`create()` never retains it for that).
+- **`ConfigDescriptor.parse()` is gone** — it was a `Promise`-wrapping shim kept only for the now-
+  deleted legacy engine. Call `.reduce()` directly instead (see above) — same behavior,
+  synchronous, no `Promise` to await.
+- `freeze` is still a recognized field option (kept for now, to limit the size of this change) but
+  has no effect: no remaining engine acts on it.
 
 ## [1.2.6] - 2026-09-25
 

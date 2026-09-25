@@ -37,10 +37,8 @@ const cfg = await create(
       key: "LOG_LEVEL",
     }),
     server: {
-      // freeze: true — host/port are read once at boot; changing them at runtime
-      // wouldn't rebind the already-listening server anyway.
-      host: string({ summary: "bind host", default: "localhost", key: "HOST", freeze: true }),
-      port: numeric({ summary: "HTTP port", default: 3000, key: "PORT", freeze: true }),
+      host: string({ summary: "bind host", default: "localhost", key: "HOST" }),
+      port: numeric({ summary: "HTTP port", default: 3000, key: "PORT" }),
       tls: {
         cert: file({ summary: "TLS certificate", default: new URL("file:///etc/ssl/certs/server.pem") }),
         key: file({ summary: "TLS private key", default: new URL("file:///etc/ssl/private/server-key.pem") }),
@@ -124,7 +122,7 @@ console.log(await cfg.server.tls.cert.get()?.text());
   - [`literalSource` — a static value](#literalsource--a-static-value)
   - [Reacting to changes — restarting a periodic task](#reacting-to-changes--restarting-a-periodic-task)
   - [`useConfig` — reading a field in React](#useconfig--reading-a-field-in-react)
-  - [Closing a config tree](#closing-a-config-tree)
+  - [Closing a live source](#closing-a-live-source)
 - [Documentation](#documentation)
 
 ## Install
@@ -137,44 +135,14 @@ npm install @jondotsoy/configs
 
 ### Field types
 
-A field's `type` is `"string"`, `"number"`, `"boolean"`, `"url"`, `"choice"`, or `"shape"`. The first
-three coerce and validate primitives (numeric/boolean-ish strings, an optional `pattern` for
-strings). `"url"` parses a string into a `URL` instance, throwing a `ConfigError` if it isn't a
-valid one. `"choice"` accepts only one of a fixed list of strings, rejecting anything else.
-`"shape"` hands the raw value to a `schema` you provide — anything with a `parse(value: unknown): T`
-method, which is exactly the shape `zod`, `valibot`, and most other validation libraries already
-export — so there's no dependency on any specific one.
-
-> [!WARNING]
-> **Writing a field as an object literal — `{ type: "string", ... }` and friends — is
-> deprecated.** It still works exactly as documented below (nothing breaks, nothing is removed),
-> but it now logs a one-time `console.warn` and its `Field*Schema` types carry `@deprecated` tags.
-> Use `string()`, `numeric()`, `boolean()`, `url()`, `choice()`, or `shape()` instead — same
-> options, same inference, just without repeating `type` yourself. See the next section.
-
-```ts
-import { create, shape } from "@jondotsoy/configs";
-import { z } from "zod";
-
-const cfg = await create(
-  {
-    jwt: shape({ schema: z.object({ issuer: z.string(), ttl: z.number() }) }),
-  },
-  { sources: [/* ... */] },
-);
-
-// cfg.jwt.get() is typed as { issuer: string; ttl: number } | null — inferred from `schema.parse`'s
-// return type, no manual annotation needed.
-```
-
-`string()`, `numeric()`, `boolean()`, `url()`, `choice()`, and `shape()` are the **recommended** way
-to write the field schemas above, superseding the object-literal form — `numeric({ default: 3000
-})` is exactly `{ type: "number", default: 3000 }`, just without repeating `type` yourself. Each
-returns a `ConfigDescriptor` instance (also exported, for anyone writing a `numeric(...):
-ConfigDescriptor<number>` helper of their own) instead of a plain object, but it resolves and
-infers identically either way. They accept the same options as their object-literal form
-(`summary`, `required`, `freeze`, `default`, `key`, `pattern` for `string()`, `options` for
-`choice()`, and `schema` for `shape()`):
+A shape entry is a `ConfigDescriptor` built by one of six field builders: `string()`, `numeric()`,
+`boolean()`, `url()`, `choice()`, or `shape()`. The first three coerce and validate primitives
+(numeric/boolean-ish strings, an optional `pattern` for strings). `url()` parses a string into a
+`URL` instance, throwing a `ConfigError` if it isn't a valid one. `choice()` accepts only one of a
+fixed list of strings, rejecting anything else. `shape()` hands the raw value to a `schema` you
+provide — anything with a `parse(value: unknown): T` method, which is exactly the shape `zod`,
+`valibot`, and most other validation libraries already export — so there's no dependency on any
+specific one:
 
 ```ts
 import { create, boolean, choice, numeric, shape, string, url } from "@jondotsoy/configs";
@@ -200,6 +168,11 @@ const cfg = await create(
 // return type.
 ```
 
+Each builder returns a `ConfigDescriptor` instance (also exported, for anyone writing a
+`numeric(...): ConfigDescriptor<number>` helper of their own), and accepts the same common
+options: `summary`, `required`, `key` (see below), and `default` — plus `pattern` for `string()`,
+`options` for `choice()`, and `schema` for `shape()`.
+
 A value that fails to parse doesn't take down the whole config tree by default — data comes from
 sources outside this package's control, so a `schema.parse` failure (or, with no `schema`, any
 non-object value) is logged via `console.error` and the field resolves to `null`, same as a source
@@ -218,34 +191,8 @@ as-is, rejecting (per the same log-or-throw rule above) anything that isn't an o
 
 ```ts
 const cfg = await create({ metadata: shape() }, { sources: [/* ... */] });
-// cfg.metadata.get() is typed as unknown | null
+// cfg.metadata.get() is typed as unknown
 ```
-
-A schema can also be used directly as a shape entry, skipping `shape({ schema })`:
-
-```ts
-const cfg = await create({ port: z.number() }, { sources: [/* ... */] });
-// cfg.port.get() is typed as number | null — same as { port: shape({ schema: z.number() }) }
-```
-
-This shorthand has no room for `summary`/`required`/`freeze`/`default` — so a bad value here
-always logs and resolves to `null`. Reach for `shape({ schema, ... })` when you need `required: true`
-(or any of the others).
-
-`type` can also just be omitted — `{ schema: z.number() }` behaves exactly like
-`shape({ schema: z.number() })`, `required` included:
-
-```ts
-const cfg = await create(
-  { port: { schema: z.number(), required: true } },
-  { sources: [/* ... */] },
-);
-// same as { port: shape({ schema: z.number(), required: true }) }
-```
-
-Neither of these two type-less shorthands (a bare schema, or `{ schema }` with no `type`) is
-affected by the deprecation above — only the *tagged* object-literal form (`{ type: "...", ... }`)
-is deprecated, since that's the one `string()`/`numeric()`/`boolean()`/`url()`/`shape()` replace.
 
 ### Writing a custom `ConfigDescriptor`
 
@@ -256,12 +203,12 @@ these builders or you built it yourself.
 
 **The role `create()` plays**, for every `ConfigDescriptor`-backed field, regardless of who built
 it: it works out the field's path (its own nesting in the shape tree, or `.key` when set — see
-[`key`](#key--reading-a-field-from-an-explicit-path) above), builds one `Store` holding whatever
-raw value the sources currently publish there (merged across sources, re-resolved live as they
-change), and hands that `Store` to the descriptor's `parse(rawStore, path)`. `create()` never
-inspects the raw value itself past that merge — coercing it into whatever the field's `.get()`
-should return is entirely the descriptor's job. What `parse()` returns (`Promise<{ store }>`)
-becomes the field: `.get()`/`.subscribe()`/`.listen()` all read from that `store`.
+[`key`](#key--reading-a-field-from-an-explicit-path) above), builds one live `Store` that always
+holds whatever raw value the sources currently publish there (merged across sources, re-resolved
+live as they change), and hands that `Store` to the descriptor's `reduce(rawStore, path)`.
+`create()` never inspects the raw value itself past that merge — coercing it into whatever the
+field's `.get()` should return is entirely the descriptor's job. What `reduce()` returns (a live
+`Store<T>`) becomes the field: `.get()`/`.subscribe()`/`.listen()` all read from it directly.
 
 The simplest way to build one is `new ConfigDescriptor(type, parser, options)` directly — `type`
 is just a label (any string; only the built-ins' own labels are special), `parser` is a
@@ -301,8 +248,8 @@ every built-in field type.
 The tag itself (`CONFIG_DESCRIPTOR_TAG`, also exported) is only there for the rarer case of
 writing the whole thing by hand instead of constructing the class — say, to avoid importing it
 across an unusual bundling setup. The contract is the same three things: the tag symbol set to
-`true`, a `key` if you need one, and a `parse(rawStore, path?)` method returning `Promise<{ store
-}>` yourself:
+`true`, a `key` if you need one, and a `reduce(rawStore, path?)` method returning a live `Store<T>`
+yourself:
 
 ```ts
 import { CONFIG_DESCRIPTOR_TAG, Store, create } from "@jondotsoy/configs";
@@ -314,27 +261,23 @@ function csv(options: { key?: string | string[] } = {}) {
   return {
     [CONFIG_DESCRIPTOR_TAG]: true as const,
     key: options.key,
-    async parse(rawStore: Store<unknown>) {
+    reduce(rawStore: Store<unknown>) {
       const store = new Store<string[]>(parse(rawStore.get()));
       rawStore.listen((raw) => store.set(parse(raw)));
-      return { store };
+      return store;
     },
   };
 }
 ```
 
-The one thing this hand-written form gives up: a plain object like this has no synchronous
-`parser` `create()` can call directly, so — unlike `new ConfigDescriptor(...)` above — the field
-reads `null` until this `parse()`'s own promise settles (usually within a microtask, so it's
-already resolved by the time you'd normally read it, but a bare `.get()` called immediately after
-`create()` can still see the placeholder). Prefer `.subscribe()` over a one-off `.get()` right
-after `create()` if you go this route — it fires again the moment the real value lands.
+Unlike `new ConfigDescriptor(...)` above, `create()` calls this `reduce()` directly rather than
+routing through a `parser`, so there's no functional difference between the two forms — both
+produce a field that's correct the moment it's first read, live-updating from then on.
 
 ### Nested groups
 
-A shape property can be a plain object instead of wrapping it in `create({...})` — it's treated as
-an implicit nested group, sharing the parent's sources exactly like `server: create({...})` with no
-`options` does:
+A shape property can be a plain object — it's an implicit nested group, sharing the enclosing
+`create()` call's own `sources`:
 
 ```ts
 import { create, numeric, string } from "@jondotsoy/configs";
@@ -355,10 +298,34 @@ cfg.server.port.get();
 // 3000
 ```
 
-This is just a shorthand for `server: create({ port: numeric(...), host: string(...) })` — it never
-carries `sources` of its own (there's no `options` argument to give it any), so, like any
-non-owning nested group, it always resolves against whatever sources the enclosing `create()` call
-was given.
+A shape property can also be **another, separate `create()` call** — with its own `sources`,
+resolving completely independently of the tree it's embedded in:
+
+```ts
+import { create, numeric, string } from "@jondotsoy/configs";
+import { envSource } from "@jondotsoy/configs/sources/env";
+import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+
+const database = create(
+  { host: string(), port: numeric({ default: 5432 }) },
+  { sources: [envSource({ prefix: "DATABASE_" })] },
+);
+
+const cfg = await create(
+  {
+    database,
+    features: { promoService: numeric({ default: 0 }) },
+  },
+  { sources: [fetchSource({ url: "https://example.com/features" })] },
+);
+
+// database's own DATABASE_HOST/DATABASE_PORT env vars — never features.js's response body
+cfg.database.host.get();
+```
+
+`await create(...)` on the outer call also waits for every embedded `create()`'s own sources to
+publish their first snapshot, same as its own. `isConfigsNode(value)` tells an embedded `create()`
+result apart from a plain nested object, if you ever need to check which one a shape entry is.
 
 ### `key` — reading a field from an explicit path
 
@@ -444,9 +411,10 @@ const cfg = await load(
 
 ### TypeScript inference
 
-Every field's type is derived from its schema literal — `type: "number"` gives you a `number`,
-`{ schema: z.object(...) }` gives you whatever `schema.parse` returns — with no manual annotation.
-The only thing that changes whether `null` is in the type is **whether the field has a `default`**:
+Every field's type is derived from its descriptor literal — `numeric()` gives you a `number`,
+`shape({ schema: z.object(...) })` gives you whatever `schema.parse` returns — with no manual
+annotation. The only thing that changes whether `null` is in the type is **whether the field has a
+`default`**:
 
 ```ts
 const cfg = await create({ port: numeric() }, { sources: [/* ... */] });
@@ -482,11 +450,9 @@ const port = cfg.port.get();
 ```
 
 `await`ing `create(...)` isn't what changes the type either — `create(...)`'s return value
-(`PendingConfigNode`) already exposes every field with its fully inferred type, synchronously,
+(`ConfigsNodePending<S>`) already exposes every field with its fully inferred type, synchronously,
 before any source has resolved; `await` only waits for the first snapshot to land, then resolves
-to a plain `ConfigNode` with the same field types (see [Field types](#field-types) for how a field
-without `type` — a bare `schema` — is inferred, and [Closing a config tree](#closing-a-config-tree)
-for what `await`ing actually buys you):
+to a plain `ConfigsNode<S>` with the same field types:
 
 ```ts
 const pending = create({ port: numeric({ default: 3000 }) }, { sources: [/* ... */] });
@@ -498,13 +464,13 @@ cfg.port.get();
 //  ^? number  (same type, now backed by the first resolved snapshot)
 ```
 
-A nested group (`server: create({ port: numeric() })` embedded in a parent shape) infers
-the same way, recursively — `cfg.server.port.get()` is `number | null` unless `server`'s `port`
-has a `default`.
+A nested group (whether a plain object, or a separate `create()` call embedded in the parent
+shape) infers the same way, recursively — `cfg.server.port.get()` is `number | null` unless
+`server`'s `port` has a `default`.
 
 #### Shape fields
 
-A `"shape"` field's type isn't declared anywhere — it's extracted from whatever `schema` you pass,
+A `shape()` field's type isn't declared anywhere — it's extracted from whatever `schema` you pass,
 by inferring `schema.parse`'s return type. The same `default`-drives-`null` rule from above still
 applies: no `default` means the type is `T | null` (a bad or missing value resolves to `null` at
 runtime — see [Field types](#field-types)), a `default` means the type is `T`:
@@ -554,20 +520,6 @@ TypeScript, so there's no `| null` to see in the type here, unlike every other f
 const cfg = await create({ metadata: shape() }, { sources: [/* ... */] });
 const metadata = cfg.metadata.get();
 //    ^? const metadata: unknown
-```
-
-Both type-less shorthands for a shape field — a bare schema used directly (`port: z.number()`) and
-`{ schema: z.number() }` with no `type` — infer identically to `shape({ schema: z.number() })`.
-The bare-schema shorthand just has no room for `default`, so it's always `T | null`:
-
-```ts
-const cfg = await create({ port: z.number() }, { sources: [/* ... */] });
-const port = cfg.port.get();
-//    ^? const port: number | null   (no `default` slot on this shorthand)
-
-const cfg2 = await create({ port: { schema: z.number(), default: 3000 } }, { sources: [/* ... */] });
-const port2 = cfg2.port.get();
-//    ^? const port2: number   (untagged form still has `default`/`required`, so this narrows)
 ```
 
 ### `Source` — building a custom source
@@ -1022,11 +974,11 @@ single environment, or a stand-in source in a test.
 **Options:** none — `literalSource(value)` takes only the value to publish, as its single argument.
 
 ```ts
-import { configs, numeric, string } from "@jondotsoy/configs";
+import { create, numeric, string } from "@jondotsoy/configs";
 import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
 import { literalSource } from "@jondotsoy/configs/sources/literal";
 
-const cfg = await configs.create(
+const cfg = await create(
   {
     port: numeric({ required: true }),
     host: string({ required: true }),
@@ -1048,18 +1000,18 @@ changes. This only really happens at runtime with a live source like `sseSource`
 `envSource` resolves once and never changes:
 
 ```ts
-import { configs, numeric } from "@jondotsoy/configs";
+import { create, numeric } from "@jondotsoy/configs";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
 
 async function cleanupTempFiles() {
   // ...
 }
 
-const cfg = await configs.create(
+const cfg = await create(
   {
-    service: configs.create({
+    service: {
       cleanupIntervalMs: numeric({ summary: "cleanup interval", default: 60_000 }),
-    }),
+    },
   },
   { sources: [sseSource({ url: "https://config-service.internal/app/events" })] },
 );
@@ -1087,10 +1039,10 @@ only needs it if you actually import this subpath, so it's never pulled into app
 React:
 
 ```tsx
-import { configs, boolean } from "@jondotsoy/configs";
+import { create, boolean } from "@jondotsoy/configs";
 import { useConfig } from "@jondotsoy/configs/react";
 
-const cfg = configs.create({ bannerIsActive: boolean({ default: false }) });
+const cfg = create({ bannerIsActive: boolean({ default: false }) });
 
 function App() {
   const bannerIsActive = useConfig(cfg.bannerIsActive);
@@ -1099,38 +1051,31 @@ function App() {
 }
 ```
 
-### Closing a config tree
+### Closing a live source
 
-`configs.create(...)` results (and their nested groups) expose `close()`, which closes every
-source backing them — for `sseSource`, this aborts the live connection instead of leaving
-it open in the background:
+`create(...)`'s return value has no `close()` of its own — it doesn't retain the `Source`
+instances you pass in beyond opening them and feeding their values into the tree. Keep a
+reference to a `Source` you'll need to close later (e.g. `sseSource`, to abort its live
+connection instead of leaving it open in the background) and call its own `.close()` directly:
 
 ```ts
-import { configs, numeric } from "@jondotsoy/configs";
+import { create, numeric } from "@jondotsoy/configs";
 import { sseSource } from "@jondotsoy/configs/sources/sse";
 
 const source = sseSource({ url: "https://config-service.internal/app/events" });
-const serverConfigs = await configs.create({ port: numeric() }, { sources: [source] });
+const serverConfigs = await create({ port: numeric() }, { sources: [source] });
 
-await serverConfigs.close();
+// ... later, e.g. on shutdown
+await source.close();
 ```
 
-It also implements `Symbol.asyncDispose`, so `await using` closes it automatically at the end of
-the scope — including when the scope throws:
+With several sources, close each one you opened — `Promise.all` if they can close concurrently:
 
 ```ts
-import { configs, numeric } from "@jondotsoy/configs";
-import { sseSource } from "@jondotsoy/configs/sources/sse";
+const sources = [envSource(), sseSource({ url: "https://config-service.internal/app/events" })];
+const cfg = await create({ port: numeric() }, { sources });
 
-async function run() {
-  await using serverConfigs = await configs.create(
-    { port: numeric() },
-    { sources: [sseSource({ url: "https://config-service.internal/app/events" })] },
-  );
-
-  console.log(serverConfigs.port.get());
-  // closed automatically here, no explicit serverConfigs.close() needed
-}
+await Promise.all(sources.map((source) => source.close()));
 ```
 
 ## Documentation
@@ -1146,7 +1091,3 @@ Further guides live under [`docs/`](./docs):
 - [`docs/develop/check-package.md`](./docs/develop/check-package.md) —
   validating the published package against real Node, Bun, and Deno
   processes.
-- [`docs/develop/config-node-vs-legacy.md`](./docs/develop/config-node-vs-legacy.md) —
-  the legacy `configs.create()` engine vs. the new, unrelated `create()`
-  in `src/config-node.ts`: what each one's internal approach is, and why
-  they differ (in Spanish).
