@@ -553,12 +553,12 @@ describe("configs.create", () => {
       errorSpy.mockRestore();
     });
 
-    test("a readonly shape field freezes at its first resolved value, even across a later invalid update", async () => {
+    test("a frozen shape field stays frozen at its first resolved value, even across a later invalid update", async () => {
       const errorSpy = spyOn(console, "error").mockImplementation(() => {});
       const upstream = store.create<Record<string, unknown>>({ port: 3000 });
 
       const cfg = await configs.create(
-        { port: { schema: z.number(), readonly: true } },
+        { port: { schema: z.number(), freeze: true } },
         { sources: [sourceStream(upstream)] },
       );
 
@@ -1697,12 +1697,12 @@ describe("Source wrapping a Store", () => {
     unsub();
   });
 
-  test("a readonly field freezes at its first resolved value, ignoring later source updates", async () => {
+  test("a frozen field stays frozen at its first resolved value, ignoring later source updates", async () => {
     const store1 = store.create<Record<string, unknown>>({});
     store1.set({ port: 3000 });
 
     const cfg = await configs.create(
-      { port: { type: "number", readonly: true } },
+      { port: { type: "number", freeze: true } },
       { sources: [testSourceStream(store1)] },
     );
 
@@ -1713,12 +1713,12 @@ describe("Source wrapping a Store", () => {
     expect(cfg.port.get()).toBe(3000);
   });
 
-  test("cfg.get() reflects a readonly field frozen at its first resolved value", async () => {
+  test("cfg.get() reflects a frozen field at its first resolved value", async () => {
     const store1 = store.create<Record<string, unknown>>({});
     store1.set({ port: 3000 });
 
     const cfg = await configs.create(
-      { port: { type: "number", readonly: true } },
+      { port: { type: "number", freeze: true } },
       { sources: [testSourceStream(store1)] },
     );
 
@@ -1729,12 +1729,12 @@ describe("Source wrapping a Store", () => {
     expect(cfg.get()).toEqual({ port: 3000 });
   });
 
-  test("cfg.subscribe() fires only once for a readonly field, since its resolved snapshot never mutates", async () => {
+  test("cfg.subscribe() fires only once for a frozen field, since its resolved snapshot never mutates", async () => {
     const store1 = store.create<Record<string, unknown>>({});
     store1.set({ port: 3000 });
 
     const cfg = await configs.create(
-      { port: { type: "number", readonly: true } },
+      { port: { type: "number", freeze: true } },
       { sources: [testSourceStream(store1)] },
     );
 
@@ -1747,18 +1747,18 @@ describe("Source wrapping a Store", () => {
 
     store1.set({ port: 4000 });
 
-    // the field is readonly, so the resolved snapshot is still { port: 3000 }: no new emission.
+    // the field is frozen, so the resolved snapshot is still { port: 3000 }: no new emission.
     expect(seen).toEqual([{ port: 3000 }]);
 
     unsub();
   });
 
-  test("cfg.listen() does not fire immediately, and never fires again for a readonly field", async () => {
+  test("cfg.listen() does not fire immediately, and never fires again for a frozen field", async () => {
     const store1 = store.create<Record<string, unknown>>({});
     store1.set({ port: 3000 });
 
     const cfg = await configs.create(
-      { port: { type: "number", readonly: true } },
+      { port: { type: "number", freeze: true } },
       { sources: [testSourceStream(store1)] },
     );
 

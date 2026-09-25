@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Renamed the field option `readonly` to `freeze`** (e.g. `{ port: { type: "number", freeze: true } }`,
+  `numeric({ freeze: true })`, `file({ freeze: true })`). The option's behavior is unchanged — it
+  still freezes the field at its first resolved value, ignoring later source updates — only the
+  name changed, to stop reading like it's related to `ReadOnlyStore<T>` (the read-only accessor
+  every field has, frozen or not). This is a breaking rename: a shape still using `readonly: true`
+  will no longer freeze that field.
+
 ### Deprecated
 
 - **Defining a field as an object literal — `{ type: "string" | "number" | "boolean" | "url" |
@@ -20,8 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Writing a custom field type — `ConfigDescriptor`'s constructor, `.parse()`, and `.key` are now
-  public.** `new ConfigDescriptor(type, parser, options)` builds a field descriptor from your own
+- **Writing a custom field type — `ConfigDescriptor`'s constructor, `.parse()`, `.key`, and `.freeze`
+  are now public.** `new ConfigDescriptor(type, parser, options)` builds a field descriptor from your own
   `parser: Parser<T>` (`(raw: unknown, path: string[]) => T`, throw a `ConfigError` to reject a
   value) — `string()`/`numeric()`/`boolean()`/`url()`/`shape()`, and `@jondotsoy/configs/node`'s
   `file()`, each now build their own dedicated parser this way. `configs.create()`/`load()` treat

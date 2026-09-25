@@ -24,7 +24,7 @@ interface BaseFieldSchema {
   summary?: string;
   required?: boolean;
   /** Freezes the field at its first resolved value: later source updates no longer reach `.get()`. */
-  readonly?: boolean;
+  freeze?: boolean;
   /**
    * Overrides where this field reads from in each source's snapshot: an explicit path, checked
    * instead of the field's own position in the shape tree (its key, prefixed by every ancestor
@@ -156,6 +156,17 @@ export class ConfigDescriptor<T, O extends object = object> {
    */
   get key(): string | string[] | undefined {
     return (this.options as { key?: string | string[] }).key;
+  }
+
+  /**
+   * Whether this field freezes at its first resolved value (`options.freeze`) — exposed directly,
+   * same as `.key`, so a `ConfigNode` can decide whether to keep feeding this field's raw `Store`
+   * new values without reaching into `options` itself. The descriptor only ever declares the flag;
+   * building the actual immutable store once it's set is the `ConfigNode`'s job (see
+   * `wireDescriptorField` in `./config.types.js`).
+   */
+  get freeze(): boolean {
+    return (this.options as { freeze?: boolean }).freeze === true;
   }
 
   /**

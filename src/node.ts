@@ -141,7 +141,7 @@ export interface FileFieldOptions {
   summary?: string;
   required?: boolean;
   /** Freezes the field at its first resolved value: later source updates no longer reach `.get()`. */
-  readonly?: boolean;
+  freeze?: boolean;
   key?: string | string[];
   /**
    * Picks how to decode a source's raw string value (and a string `default`) instead of
@@ -275,7 +275,7 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): FileFi
   const runtimeOptions: Omit<FileFieldOptions, "default"> & { default?: FileBlob } = {
     summary: opts.summary,
     required: opts.required,
-    readonly: opts.readonly,
+    freeze: opts.freeze,
     key: opts.key,
     format: opts.format,
   };

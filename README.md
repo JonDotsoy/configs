@@ -115,7 +115,7 @@ the field schemas above, superseding the object-literal form — `numeric({ defa
 exactly `{ type: "number", default: 3000 }`, just without repeating `type` yourself. Each returns
 a `ConfigDescriptor` instance (also exported, for anyone writing a `numeric(...): ConfigDescriptor<number>`
 helper of their own) instead of a plain object, but it resolves and infers identically either way.
-They accept the same options as their object-literal form (`summary`, `required`, `readonly`,
+They accept the same options as their object-literal form (`summary`, `required`, `freeze`,
 `default`, `key`, `pattern` for `string()`, and `schema` for `shape()`):
 
 ```ts
@@ -167,7 +167,7 @@ const cfg = await create({ port: z.number() }, { sources: [/* ... */] });
 // cfg.port.get() is typed as number | null — same as { port: shape({ schema: z.number() }) }
 ```
 
-This shorthand has no room for `summary`/`required`/`readonly`/`default` — so a bad value here
+This shorthand has no room for `summary`/`required`/`freeze`/`default` — so a bad value here
 always logs and resolves to `null`. Reach for `shape({ schema, ... })` when you need `required: true`
 (or any of the others).
 
