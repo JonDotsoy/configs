@@ -6,7 +6,8 @@ import { literalSource } from "./sources/literal.js";
 import { Source } from "./sources/source.js";
 import { ConfigError } from "./errors.js";
 import { z } from "zod";
-import { __resetDeprecatedFieldSchemaWarningForTests } from "./config.types.js";
+import { __resetDeprecatedFieldSchemaWarningForTests } from "./config-descriptor.js";
+import type { FieldType } from "./config-descriptor.js";
 import type { ReadOnlyStore } from "./config.types.js";
 
 /** Builds a `Source` that immediately publishes `value` and closes. */
@@ -19,34 +20,42 @@ function testSource<T>(value: T): Source<T> {
   });
 }
 
+/** A `ConfigDescriptor` carries its own `parser` closure (e.g. `stringParser()`), never equal by reference across two calls — assert `.type`/`.options`/`.parser` shape instead of a full `toEqual` against a hand-built instance. */
+function expectDescriptor(descriptor: unknown, type: FieldType, options: object): void {
+  expect(descriptor).toBeInstanceOf(ConfigDescriptor);
+  expect((descriptor as ConfigDescriptor<unknown>).type).toBe(type);
+  expect((descriptor as ConfigDescriptor<unknown>).options).toEqual(options);
+  expect(typeof (descriptor as ConfigDescriptor<unknown>).parser).toBe("function");
+}
+
 describe("string/numeric/boolean field builders", () => {
   test("string() builds a ConfigDescriptor<string> carrying a { type: \"string\" } schema", () => {
-    expect(string()).toBeInstanceOf(ConfigDescriptor);
-    expect(string()).toEqual(new ConfigDescriptor("string", {}));
-    expect(string({ summary: "bind host", default: "localhost" })).toEqual(
-      new ConfigDescriptor("string", { summary: "bind host", default: "localhost" }),
-    );
+    expectDescriptor(string(), "string", {});
+    expectDescriptor(string({ summary: "bind host", default: "localhost" }), "string", {
+      summary: "bind host",
+      default: "localhost",
+    });
   });
 
   test("numeric() builds a ConfigDescriptor<number> carrying a { type: \"number\" } schema", () => {
-    expect(numeric()).toBeInstanceOf(ConfigDescriptor);
-    expect(numeric()).toEqual(new ConfigDescriptor("number", {}));
-    expect(numeric({ summary: "HTTP port", default: 3000 })).toEqual(
-      new ConfigDescriptor("number", { summary: "HTTP port", default: 3000 }),
-    );
+    expectDescriptor(numeric(), "number", {});
+    expectDescriptor(numeric({ summary: "HTTP port", default: 3000 }), "number", {
+      summary: "HTTP port",
+      default: 3000,
+    });
   });
 
   test("boolean() builds a ConfigDescriptor<boolean> carrying a { type: \"boolean\" } schema", () => {
-    expect(boolean()).toBeInstanceOf(ConfigDescriptor);
-    expect(boolean()).toEqual(new ConfigDescriptor("boolean", {}));
-    expect(boolean({ summary: "enable the promo service", default: false })).toEqual(
-      new ConfigDescriptor("boolean", { summary: "enable the promo service", default: false }),
-    );
+    expectDescriptor(boolean(), "boolean", {});
+    expectDescriptor(boolean({ summary: "enable the promo service", default: false }), "boolean", {
+      summary: "enable the promo service",
+      default: false,
+    });
   });
 
   test("string() carries a pattern through unchanged", () => {
     const pattern = /^[\w.-]+$/;
-    expect(string({ pattern })).toEqual(new ConfigDescriptor("string", { pattern }));
+    expectDescriptor(string({ pattern }), "string", { pattern });
   });
 
   test("resolve the same as their equivalent object-literal field schemas", async () => {
@@ -267,9 +276,8 @@ describe("url() field builder", () => {
   });
 
   test("url() builds a ConfigDescriptor<URL> carrying a { type: \"url\" } schema", () => {
-    expect(url()).toBeInstanceOf(ConfigDescriptor);
-    expect(url()).toEqual(new ConfigDescriptor("url", {}));
-    expect(url({ key: "DATABASE_URL" })).toEqual(new ConfigDescriptor("url", { key: "DATABASE_URL" }));
+    expectDescriptor(url(), "url", {});
+    expectDescriptor(url({ key: "DATABASE_URL" }), "url", { key: "DATABASE_URL" });
   });
 
   test("parses DATABASE_URL into a URL instance via key", async () => {
@@ -338,8 +346,7 @@ describe("url() field builder", () => {
 describe("shape() field builder", () => {
   test("shape() builds a ConfigDescriptor carrying a { type: \"shape\" } schema", () => {
     const schema = z.object({ issuer: z.string() });
-    expect(shape({ schema, required: true })).toBeInstanceOf(ConfigDescriptor);
-    expect(shape({ schema, required: true })).toEqual(new ConfigDescriptor("shape", { schema, required: true }));
+    expectDescriptor(shape({ schema, required: true }), "shape", { schema, required: true });
   });
 
   test("required: true escalates an invalid value into a thrown ConfigError instead of logging", async () => {

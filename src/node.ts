@@ -1,8 +1,9 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigDescriptor, type Parseable, type ShapeFieldOptions } from "./config.types.js";
+import { ConfigDescriptor, shapeFailure, type Parser } from "./config-descriptor.js";
 import { ConfigError } from "./errors.js";
+import { tSync } from "./utils/t.js";
 
 /**
  * Builds a `file:` `URL` from an absolute POSIX-style path, e.g. `/tmp/-Fasg42/file` — standing in
@@ -232,6 +233,33 @@ type FileFieldReturn<O extends FileFieldOptions> = O extends { required: true }
   : ConfigDescriptor<FileBlob, O>;
 
 /**
+ * `file()`'s own `Parser<FileBlob>` — decodes a raw string value (as base64 or text, per `format`
+ * or inferred — see `FileFieldOptions.format`) into a `FileBlob`; an already-`FileBlob` value (its
+ * own resolved `default`) passes through as-is. A decoding failure — a non-string/non-`FileBlob`
+ * raw value, or `atob()` rejecting invalid base64 — is logged and resolves to `null` unless
+ * `required` escalates it into a thrown `ConfigError`, same "log unless required" rule every
+ * schema-based field (`shape()`, `file()`) follows (see `shapeFailure`).
+ */
+function fileParser(options: Pick<FileFieldOptions, "required" | "format">): Parser<FileBlob> {
+  return (raw, path) => {
+    if (raw instanceof FileBlob) return raw;
+    if (typeof raw !== "string") {
+      return shapeFailure(
+        options.required,
+        new ConfigError(`Value at "${path.join(".")}" is not a file: expected a string, got ${JSON.stringify(raw)}`),
+      ) as FileBlob;
+    }
+    const [ok, err, result] = tSync(() => blobFromText(raw, options.format));
+    if (ok) return result;
+    const message = err instanceof Error ? err.message : String(err);
+    return shapeFailure(
+      options.required,
+      new ConfigError(`Value at "${path.join(".")}" could not be decoded as a file: ${message}`),
+    ) as FileBlob;
+  };
+}
+
+/**
  * Builds a field descriptor that loads its value as a file: a source's raw string value is
  * decoded (as base64 or text, per `format` or inferred — see `FileFieldOptions.format`) into a
  * `FileBlob`. `default` accepts the same string form, or a `file:` `URL` read from local disk
@@ -243,26 +271,17 @@ type FileFieldReturn<O extends FileFieldOptions> = O extends { required: true }
  */
 export function file<const O extends FileFieldOptions = {}>(options?: O): FileFieldReturn<O> {
   const opts = options ?? ({} as O);
-  const schema: Parseable<FileBlob> = {
-    parse(raw: unknown): FileBlob {
-      if (raw instanceof FileBlob) return raw;
-      if (typeof raw !== "string") {
-        throw new ConfigError(`file(): expected a string value, got ${JSON.stringify(raw)}`);
-      }
-      return blobFromText(raw, opts.format);
-    },
-  };
 
-  const runtimeOptions: ShapeFieldOptions & { schema: Parseable<FileBlob>; default?: FileBlob } = {
-    schema,
+  const runtimeOptions: Omit<FileFieldOptions, "default"> & { default?: FileBlob } = {
     summary: opts.summary,
     required: opts.required,
     readonly: opts.readonly,
     key: opts.key,
+    format: opts.format,
   };
 
   const resolvedDefault = resolveDefault(opts.default, opts.format);
   if (resolvedDefault !== undefined) runtimeOptions.default = resolvedDefault;
 
-  return new ConfigDescriptor("shape", runtimeOptions) as unknown as FileFieldReturn<O>;
+  return new ConfigDescriptor("file", fileParser(runtimeOptions), runtimeOptions) as unknown as FileFieldReturn<O>;
 }

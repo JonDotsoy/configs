@@ -52,6 +52,7 @@ console.log(cfg.server.port.get());
 - [Install](#install)
 - [Guide](#guide)
   - [Field types](#field-types)
+  - [Writing a custom `ConfigDescriptor`](#writing-a-custom-configdescriptor)
   - [Nested groups](#nested-groups)
   - [`key` — reading a field from an explicit path](#key--reading-a-field-from-an-explicit-path)
   - [`load` — `create()` that defaults to `envSource()`](#load--create-that-defaults-to-envsource)
@@ -184,6 +185,89 @@ const cfg = await create(
 Neither of these two type-less shorthands (a bare schema, or `{ schema }` with no `type`) is
 affected by the deprecation above — only the *tagged* object-literal form (`{ type: "...", ... }`)
 is deprecated, since that's the one `string()`/`numeric()`/`boolean()`/`url()`/`shape()` replace.
+
+### Writing a custom `ConfigDescriptor`
+
+`string()`, `numeric()`, `boolean()`, `url()`, and `shape()` all build the same kind of object —
+a `ConfigDescriptor` — and that's the whole extension point: any shape entry that's a
+`ConfigDescriptor` gets the same treatment from `create()`/`load()`, whether it came from one of
+these builders or you built it yourself.
+
+**The role `create()` plays**, for every `ConfigDescriptor`-backed field, regardless of who built
+it: it works out the field's path (its own nesting in the shape tree, or `.key` when set — see
+[`key`](#key--reading-a-field-from-an-explicit-path) above), builds one `Store` holding whatever
+raw value the sources currently publish there (merged across sources, re-resolved live as they
+change), and hands that `Store` to the descriptor's `parse(rawStore, path)`. `create()` never
+inspects the raw value itself past that merge — coercing it into whatever the field's `.get()`
+should return is entirely the descriptor's job. What `parse()` returns (`Promise<{ store }>`)
+becomes the field: `.get()`/`.subscribe()`/`.listen()` all read from that `store`.
+
+The simplest way to build one is `new ConfigDescriptor(type, parser, options)` directly — `type`
+is just a label (any string; only the built-ins' own labels are special), `parser` is a
+`(raw: unknown, path: string[]) => T` function doing the actual coercion/validation (throw a
+`ConfigError` to reject a value), and `options` is a plain object that can carry a `key` (same
+`string | string[]` explicit-path override every built-in field type accepts) plus a `default`
+used whenever no source has the field. This already gets you everything `numeric()`/`string()`/etc.
+get for free — including a field that's correct the moment it's first read, no different from a
+built-in one:
+
+```ts
+import { ConfigDescriptor, create, type Parser } from "@jondotsoy/configs";
+import { envSource } from "@jondotsoy/configs/sources/env";
+
+function csv(options: { key?: string | string[]; default?: string[] } = {}) {
+  const parseCsv: Parser<string[]> = (raw, path) => {
+    if (typeof raw !== "string") throw new Error(`Expected a comma-separated string at "${path.join(".")}"`);
+    return raw.split(",").map((s) => s.trim());
+  };
+  return new ConfigDescriptor("csv", parseCsv, options);
+}
+
+// ALLOWED_ORIGINS=a.com, b.com, c.com
+const cfg = await create(
+  { allowedOrigins: csv({ key: "ALLOWED_ORIGINS", default: [] }) },
+  { sources: [envSource()] },
+);
+
+cfg.allowedOrigins.get();
+// ["a.com", "b.com", "c.com"]
+```
+
+You don't need to extend the class or reach for `CONFIG_DESCRIPTOR_TAG` for this — `new
+ConfigDescriptor(...)` already carries the internal tag `create()` uses to recognize it, same as
+every built-in field type.
+
+The tag itself (`CONFIG_DESCRIPTOR_TAG`, also exported) is only there for the rarer case of
+writing the whole thing by hand instead of constructing the class — say, to avoid importing it
+across an unusual bundling setup. The contract is the same three things: the tag symbol set to
+`true`, a `key` if you need one, and a `parse(rawStore, path?)` method returning `Promise<{ store
+}>` yourself:
+
+```ts
+import { CONFIG_DESCRIPTOR_TAG, Store, create } from "@jondotsoy/configs";
+import { envSource } from "@jondotsoy/configs/sources/env";
+
+function csv(options: { key?: string | string[] } = {}) {
+  const parse = (raw: unknown) => (typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
+
+  return {
+    [CONFIG_DESCRIPTOR_TAG]: true as const,
+    key: options.key,
+    async parse(rawStore: Store<unknown>) {
+      const store = new Store<string[]>(parse(rawStore.get()));
+      rawStore.listen((raw) => store.set(parse(raw)));
+      return { store };
+    },
+  };
+}
+```
+
+The one thing this hand-written form gives up: a plain object like this has no synchronous
+`parser` `create()` can call directly, so — unlike `new ConfigDescriptor(...)` above — the field
+reads `null` until this `parse()`'s own promise settles (usually within a microtask, so it's
+already resolved by the time you'd normally read it, but a bare `.get()` called immediately after
+`create()` can still see the placeholder). Prefer `.subscribe()` over a one-off `.get()` right
+after `create()` if you go this route — it fires again the moment the real value lands.
 
 ### Nested groups
 

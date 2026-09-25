@@ -1,30 +1,33 @@
-import { boolean, createConfigNode, numeric, string } from "./config.types.js";
+import { createConfigNode } from "./config.types.js";
 import type { configs as ConfigsApi, CreateOptions, PendingConfigNode, SchemaShape } from "./config.types.js";
 import { envSource } from "./sources/env.js";
 
 export type {
-  BooleanFieldOptions,
-  BooleanFieldSchema,
   ConfigNode,
   CreateOptions,
-  FieldSchema,
-  FieldType,
   InferReadOnlyAccessors,
   InferShape,
-  NumberFieldOptions,
-  NumberFieldSchema,
-  Parseable,
   PendingConfigNode,
   ReadOnlyStore,
   SchemaGroup,
   SchemaNode,
   SchemaShape,
+} from "./config.types.js";
+export type {
+  BooleanFieldOptions,
+  BooleanFieldSchema,
+  FieldSchema,
+  FieldType,
+  NumberFieldOptions,
+  NumberFieldSchema,
+  Parseable,
+  Parser,
   ShapeFieldOptions,
   StringFieldOptions,
   StringFieldSchema,
   UrlFieldOptions,
   UrlFieldSchema,
-} from "./config.types.js";
+} from "./config-descriptor.js";
 export type { SourceControl, UnderlyingSource } from "./types/index.js";
 export type { DataType, DataTypeName } from "./utils/data-types.js";
 export type { EnvSourceOptions, EnvKeyMapper } from "./sources/env.js";
@@ -42,7 +45,7 @@ export { fileSource } from "./sources/file.js";
 export { literalSource } from "./sources/literal.js";
 export { pullSource } from "./sources/pull.js";
 export { shellSource } from "./sources/shell.js";
-export { boolean, ConfigDescriptor, numeric, shape, string, url } from "./config.types.js";
+export { boolean, CONFIG_DESCRIPTOR_TAG, ConfigDescriptor, numeric, shape, string, url } from "./config-descriptor.js";
 export { Store } from "./utils/store.js";
 export { DataTypes } from "./utils/data-types.js";
 export { DotEnv } from "./utils/dotenv.js";
