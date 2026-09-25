@@ -504,10 +504,13 @@ class ConfigNodeState<S extends SchemaShape> {
   /**
    * This `ConfigNode`'s side of the split with `ConfigDescriptor.parse()`: builds the one raw
    * `Store` for `path` — merged from `this.rootStores`, no coercion/defaulting, kept live by
-   * `refreshFields()` via `this.rawStores` (skipped for a `freeze`d field, so it's built once
-   * and never updated again) — and hands it to `descriptor.parse()`. The descriptor knows
-   * nothing beyond that one `Store` and `path`; every subsequent value its own returned `store`
-   * publishes (immediately, then on every live update) is mirrored onto `field` here.
+   * `refreshFields()` via `this.rawStores` (skipped for a `descriptor.freeze`d field, so it's
+   * built once and never updated again) — and hands it to `descriptor.parse()`. The descriptor
+   * only *declares* `freeze` (see its own `.freeze` getter, same as `.key`); this node is what
+   * actually acts on it: a frozen field's resolved `store` is mirrored onto `field` exactly once,
+   * as an immutable snapshot, instead of kept subscribed for updates it will never receive (its
+   * `rawStore` never changes again). A non-frozen field stays subscribed as usual, mirroring
+   * every live update.
    */
   private wireDescriptorField(
     descriptor: ConfigDescriptor<unknown, object>,
@@ -516,9 +519,13 @@ class ConfigNodeState<S extends SchemaShape> {
     field: ConfigField<any>,
   ): void {
     const rawStore = new Store<unknown>(resolveRawValue(this.rootStores, path));
-    const freeze = (descriptor as { options?: { freeze?: boolean } }).options?.freeze === true;
-    if (!freeze) this.rawStores.set(key, rawStore);
+    if (!descriptor.freeze) this.rawStores.set(key, rawStore);
     descriptor.parse(rawStore, path).then(({ store }) => {
+      if (descriptor.freeze) {
+        if (store.get() !== field.get()) field._update(store.get());
+        this.refreshSnapshot();
+        return;
+      }
       store.subscribe((value) => {
         if (value !== field.get()) field._update(value);
         this.refreshSnapshot();

@@ -159,6 +159,17 @@ export class ConfigDescriptor<T, O extends object = object> {
   }
 
   /**
+   * Whether this field freezes at its first resolved value (`options.freeze`) — exposed directly,
+   * same as `.key`, so a `ConfigNode` can decide whether to keep feeding this field's raw `Store`
+   * new values without reaching into `options` itself. The descriptor only ever declares the flag;
+   * building the actual immutable store once it's set is the `ConfigNode`'s job (see
+   * `wireDescriptorField` in `./config.types.js`).
+   */
+  get freeze(): boolean {
+    return (this.options as { freeze?: boolean }).freeze === true;
+  }
+
+  /**
    * Runs this field's own `parser` against `rawStore` — a `Store` already holding this field's
    * merged raw value (or `undefined`/`null` when no source has it), built and kept live by
    * whichever `ConfigNode` owns the shape tree this descriptor sits in. The descriptor knows

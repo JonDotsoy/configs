@@ -29,8 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Writing a custom field type — `ConfigDescriptor`'s constructor, `.parse()`, and `.key` are now
-  public.** `new ConfigDescriptor(type, parser, options)` builds a field descriptor from your own
+- **Writing a custom field type — `ConfigDescriptor`'s constructor, `.parse()`, `.key`, and `.freeze`
+  are now public.** `new ConfigDescriptor(type, parser, options)` builds a field descriptor from your own
   `parser: Parser<T>` (`(raw: unknown, path: string[]) => T`, throw a `ConfigError` to reject a
   value) — `string()`/`numeric()`/`boolean()`/`url()`/`shape()`, and `@jondotsoy/configs/node`'s
   `file()`, each now build their own dedicated parser this way. `configs.create()`/`load()` treat
