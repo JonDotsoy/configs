@@ -1,6 +1,7 @@
-// Case: the README's first example — envSource() with explicit `key`s for a
-// flat server group, a nested server.tls group with file() fields reading a
-// cert and key from disk, a nested features group (promotionalDialog plus a
+// Case: the README's first example — a top-level logLevel choice() field,
+// envSource() with explicit `key`s for a flat server group, a nested
+// server.tls group with file() fields reading a cert and key from disk, a
+// nested features group (promotionalDialog plus a
 // ui.menuOrientation/sidebarCollapsed pair) with its own fetchSource
 // (against a `data:` URL), and a nested database group with its own
 // pullSource standing in for a secrets manager SDK call. file() is
@@ -10,7 +11,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, numeric, string, boolean, envSource, fetchSource, pullSource } from "@jondotsoy/configs";
+import { create, choice, numeric, string, boolean, envSource, fetchSource, pullSource } from "@jondotsoy/configs";
 import { file, FileBlob } from "@jondotsoy/configs/node";
 
 function assert(cond: unknown, message: string): void {
@@ -45,6 +46,12 @@ try {
 
   const cfg = await create(
     {
+      logLevel: choice({
+        summary: "app log verbosity",
+        options: ["debug", "info", "warn", "error"],
+        default: "info",
+        key: "LOG_LEVEL",
+      }),
       server: {
         host: string({ summary: "bind host", default: "localhost", key: "HOST", freeze: true }),
         port: numeric({ summary: "HTTP port", default: 3000, key: "PORT", freeze: true }),
@@ -81,9 +88,10 @@ try {
         { sources: [pullSource({ pull: getDatabaseSecret, interval: 10 })] },
       ),
     },
-    { sources: [envSource({ env: { HOST: "example.com", PORT: "8080" } })] },
+    { sources: [envSource({ env: { HOST: "example.com", PORT: "8080", LOG_LEVEL: "warn" } })] },
   );
 
+  assert(cfg.logLevel.get() === "warn", "LOG_LEVEL resolves to logLevel via an explicit key");
   assert(cfg.server.host.get() === "example.com", "HOST resolves to server.host via an explicit key");
   assert(cfg.server.port.get() === 8080, "PORT resolves to server.port via an explicit key");
   assert(

@@ -12,7 +12,7 @@ the moment a source pushes a new value.
 - **Typed with TS check** — schemas are statically checked, so `cfg.port.get()` is inferred as `number | null` (or `number` when a `default` is set), not `any`.
 
 ```ts
-import { create, numeric, string, boolean } from "@jondotsoy/configs";
+import { create, choice, numeric, string, boolean } from "@jondotsoy/configs";
 import { envSource } from "@jondotsoy/configs/sources/env";
 import { fetchSource } from "@jondotsoy/configs/sources/fetch";
 import { pullSource } from "@jondotsoy/configs/sources/pull";
@@ -20,12 +20,19 @@ import { file } from "@jondotsoy/configs/node";
 
 // HOST=localhost PORT=3000 → { server: { host: "localhost", port: "3000" } }
 // server.tls.cert/.key are read eagerly from disk, decoded into FileBlobs
+// LOG_LEVEL=warn → app log verbosity, restricted to one of a fixed set of levels
 // GET https://example.com/features → { experimental: { home: { promotionalDialog: true } },
 //   ui: { menuOrientation: "vertical", sidebarCollapsed: true } } (polled every 30s)
 // secretsManager.getSecretValue("prod/db") → { host, port, user, password } — your AWS/GCP/Vault
 // SDK client of choice, re-pulled every 5m so a rotated secret reaches the config tree
 const cfg = await create(
   {
+    logLevel: choice({
+      summary: "app log verbosity",
+      options: ["debug", "info", "warn", "error"],
+      default: "info",
+      key: "LOG_LEVEL",
+    }),
     server: {
       // freeze: true — host/port are read once at boot; changing them at runtime
       // wouldn't rebind the already-listening server anyway.
@@ -69,6 +76,9 @@ const cfg = await create(
 
 console.log(`listening on ${cfg.server.host.get()}:${cfg.server.port.get()}`);
 // listening on localhost:3000
+
+console.log(`log level: ${cfg.logLevel.get()}`);
+// log level: info
 
 // React to changes
 cfg.features.experimental.home.promotionalDialog.subscribe((enabled) => {
