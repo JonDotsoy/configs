@@ -15,11 +15,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and no `.get()` on the root. The returned object is also `then`able: `await`ing it resolves once
   every source in `options.sources` has published its first snapshot, into the same plain shape
   (no longer `then`able).
+- **`ConfigDescriptor.reduce(raw, path?)`**: a synchronous counterpart to `.parse()` — computes a
+  field's value directly from an already-merged `raw` value (falling back to `options.default`,
+  then running it through the field's own `parser`) and returns an already-resolved
+  `ReadOnlyStore<T>`, with no `Store<unknown>` to subscribe to and no `Promise` to await. Available
+  on every descriptor built by `string()`/`numeric()`/`boolean()`/`url()`/`shape()`/`choice()`
+  (and `file()`, from `./node.js`), since it lives on the shared `ConfigDescriptor` base class. The
+  new `create()` (`src/config-node.ts`) always resolves a field's value through `.reduce()`.
 
 ### Deprecated
 
 - **`configs` (the default-export-backing namespace object in `src/configs.ts`) is deprecated** in
   favor of `create()` from `./config-node.js`.
+- **`ConfigDescriptor.parse()` is deprecated** in favor of `.reduce()` — same default-then-parser
+  logic, just synchronous and driven by the caller re-invoking it with a fresh raw value, instead
+  of subscribing to a live `Store<unknown>` itself. Still fully supported.
 
 ## [1.2.6] - 2026-09-25
 

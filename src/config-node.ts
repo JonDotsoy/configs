@@ -47,7 +47,7 @@ export function create<T extends ConfigsShape>(configShape: T, options: Options 
     for (const key of Object.keys(configShape)) {
       const descriptor = configShape[key]!;
       const raw = resolveRaw(rawSources, key);
-      const value = raw === undefined ? ((descriptor.options as { default?: unknown }).default ?? null) : descriptor.parser(raw, [key]);
+      const value = descriptor.reduce(raw, [key]).get();
       const store = stores[key];
       if (store) {
         if (store.get() !== value) store.set(value);

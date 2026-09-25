@@ -3,6 +3,15 @@ export type Subscriber<T> = (value: T) => unknown;
 export type Unsubscribe = () => void;
 export type EventListener = () => void;
 
+/** A read-only view of a `Store<T>`: exposes `get`/`subscribe`/`listen` but never `set`. */
+export interface ReadOnlyStore<T> {
+  get(): T;
+  /** Calls `subscriber` immediately with the current value, then on every subsequent update. */
+  subscribe(subscriber: Subscriber<T>): Unsubscribe;
+  /** Calls `subscriber` only on subsequent updates, not with the current value. */
+  listen(subscriber: Subscriber<T>): Unsubscribe;
+}
+
 export class Store<T> {
   private value: T;
   private readonly subscribers = new Set<Subscriber<T>>();

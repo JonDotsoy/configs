@@ -5,6 +5,7 @@ import { fetchSource } from "./sources/fetch.js";
 import { literalSource } from "./sources/literal.js";
 import { Source } from "./sources/source.js";
 import { ConfigError } from "./errors.js";
+import { Store } from "./utils/store.js";
 import { z } from "zod";
 import { __resetDeprecatedFieldSchemaWarningForTests } from "./config-descriptor.js";
 import type { FieldType } from "./config-descriptor.js";
@@ -859,5 +860,31 @@ describe("a nested create() with its own sources scopes key lookups to those sou
     );
 
     expect(cfg.foo.tar.get()).toBe(111);
+  });
+});
+
+describe("ConfigDescriptor.reduce()", () => {
+  test("falls back to options.default when raw is undefined/null, without running the parser", () => {
+    expect(numeric({ default: 3000 }).reduce(undefined).get()).toBe(3000);
+    expect(numeric({ default: 3000 }).reduce(null).get()).toBe(3000);
+  });
+
+  test("resolves to null when raw is missing and there is no default", () => {
+    expect(numeric().reduce(undefined).get()).toBeNull();
+  });
+
+  test("runs raw through the field's own parser when present", () => {
+    expect(numeric().reduce("8080").get()).toBe(8080);
+    expect(string({ pattern: /^\w+$/ }).reduce("abc").get()).toBe("abc");
+    expect(() => string({ pattern: /^\w+$/ }).reduce("not valid")).toThrow(ConfigError);
+  });
+
+  test("returns an already-resolved, non-live store — same as .parse()'s synchronous compute step", async () => {
+    const descriptor = numeric({ default: 3000 });
+    const reduced = descriptor.reduce("8080");
+    expect(reduced.get()).toBe(8080);
+
+    const { store } = await descriptor.parse(new Store<unknown>("8080"));
+    expect(store.get()).toBe(reduced.get());
   });
 });

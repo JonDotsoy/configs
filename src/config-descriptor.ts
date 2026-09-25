@@ -1,5 +1,5 @@
 import { CONFIG_DESCRIPTOR_TAG } from "./utils/config-descriptor-tag.js";
-import { Store } from "./utils/store.js";
+import { Store, type ReadOnlyStore } from "./utils/store.js";
 import { tSync } from "./utils/t.js";
 import { ConfigError } from "./errors.js";
 
@@ -187,17 +187,31 @@ export class ConfigDescriptor<T, O extends object = object> {
    * `parser`/`options.default` and, for error messages, the `path` label the caller passes in.
    * The returned `store` stays live: it re-derives from `rawStore` on every change, so a caller
    * only needs to read/subscribe to it, never call `parse()` again for the same field.
+   *
+   * @deprecated Use `.reduce()` instead — synchronous, and takes the already-merged raw value
+   * directly instead of a live `Store<unknown>` to subscribe to.
    */
   async parse(rawStore: Store<unknown>, path: string[] = []): Promise<{ store: Store<T> }> {
-    const defaultValue = (this.options as { default?: T }).default;
-    const compute = (raw: unknown): T =>
-      raw === undefined || raw === null ? (defaultValue !== undefined ? defaultValue : (null as T)) : this.parser(raw, path);
-    const store = new Store<T>(compute(rawStore.get()));
+    const store = new Store<T>(this.reduce(rawStore.get(), path).get());
     rawStore.listen((raw) => {
-      const next = compute(raw);
+      const next = this.reduce(raw, path).get();
       if (next !== store.get()) store.set(next);
     });
     return { store };
+  }
+
+  /**
+   * Synchronous counterpart to `.parse()`: computes this field's value straight from `raw` — the
+   * merged raw value from wherever a caller resolves it from `sources` (or `undefined`/`null` when
+   * none has it) — falling back to `options.default` when `raw` is missing, else running it
+   * through this field's own `parser`. Returns an already-resolved `ReadOnlyStore<T>` wrapping that
+   * one value; it isn't kept live itself — a caller re-invokes `reduce()` with a fresh `raw`
+   * whenever the input changes (see `create()` in `./config-node.js`).
+   */
+  reduce(raw: unknown, path: string[] = []): ReadOnlyStore<T> {
+    const defaultValue = (this.options as { default?: T }).default;
+    const value = raw === undefined || raw === null ? (defaultValue !== undefined ? defaultValue : (null as T)) : this.parser(raw, path);
+    return new Store<T>(value);
   }
 }
 

@@ -1,5 +1,5 @@
 import { Source } from "./sources/source.js";
-import { Store, type Subscriber, type Unsubscribe } from "./utils/store.js";
+import { Store, type ReadOnlyStore, type Subscriber, type Unsubscribe } from "./utils/store.js";
 import { ConfigError } from "./errors.js";
 import {
   booleanParser,
@@ -41,6 +41,7 @@ export {
   type UrlFieldOptions,
   type UrlFieldSchema,
 } from "./config-descriptor.js";
+export type { ReadOnlyStore } from "./utils/store.js";
 
 /**
  * Non-generic stand-in for `ConfigDescriptor<T, O>` inside the `SchemaNode` union — same reason
@@ -144,15 +145,6 @@ type InferField<F extends SchemaNode> = F extends ConfigNode<infer S>
 export type InferShape<S extends SchemaShape> = {
   [K in keyof S]: InferField<S[K]>;
 };
-
-/** A read-only view of a `Store<T>`: exposes `get`/`subscribe`/`listen` but never `set`. */
-export interface ReadOnlyStore<T> {
-  get(): T;
-  /** Calls `subscriber` immediately with the current value, then on every subsequent update. */
-  subscribe(subscriber: Subscriber<T>): Unsubscribe;
-  /** Calls `subscriber` only on subsequent updates, not with the current value. */
-  listen(subscriber: Subscriber<T>): Unsubscribe;
-}
 
 type InferReadOnlyAccessor<F extends SchemaNode> = F extends ConfigNode<infer S>
   ? SchemaGroup<S>
