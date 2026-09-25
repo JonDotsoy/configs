@@ -14,6 +14,7 @@ import {
   type FieldSchema,
   type FieldType,
   type Parseable,
+  type Parser,
   type StringFieldSchema,
 } from "./config-descriptor.js";
 
@@ -334,16 +335,31 @@ function resolveRawValue(sources: Store<any>[], path: string[]): unknown {
 }
 
 /**
+ * Whether `node` carries its own synchronous `.parser` — checked structurally (`typeof
+ * node.parser === "function"`), never via `instanceof ConfigDescriptor`: `bun build` bundles each
+ * public entry point (`.`, `./node`, ...) independently, so a `ConfigDescriptor` built by one
+ * entry point's own copy of the class (e.g. `file()` from `./node`) fails an `instanceof` check
+ * done against another entry point's separately-bundled copy of it (this module's own) — the same
+ * cross-bundle problem `CONFIG_DESCRIPTOR_TAG`'s `Symbol.for()` registry symbol exists to dodge
+ * for `isConfigDescriptor()`. A hand-written custom descriptor (tag + `.parse()` only, per the
+ * README's "Writing a custom ConfigDescriptor" section) has no `.parser` and fails this the same
+ * way it would fail `instanceof`.
+ */
+function hasParser(node: ConfigDescriptor<unknown, object>): node is ConfigDescriptor<unknown, object> & { parser: Parser<unknown> } {
+  return typeof (node as { parser?: unknown }).parser === "function";
+}
+
+/**
  * A genuine `ConfigDescriptor` instance's *synchronous* counterpart to what its own `.parse()`
  * eventually publishes — same default-then-parser logic, just run immediately (via `.parser`
- * directly, never through the legacy `parseLegacyField()`/`toFieldSchema()` dispatch) so a field backed by
- * one is already correct the moment it's first read, not just once its `.parse()` promise settles
- * a microtask later. Only ever called for a real `ConfigDescriptor` (checked via `instanceof` in
- * `fieldFor`) — a hand-written custom descriptor (tag + `.parse()` only, no `.parser`) has no such
- * synchronous path and starts at `null` until its own `.parse()` resolves instead (see the
- * README's "Writing a custom ConfigDescriptor" section).
+ * directly, never through the legacy `parseLegacyField()`/`toFieldSchema()` dispatch) so a field
+ * backed by one is already correct the moment it's first read, not just once its `.parse()`
+ * promise settles a microtask later. Only ever called when `hasParser(node)` is true — a
+ * hand-written custom descriptor (tag + `.parse()` only, no `.parser`) has no such synchronous
+ * path and starts at `null` until its own `.parse()` resolves instead (see the README's "Writing
+ * a custom ConfigDescriptor" section).
  */
-function resolveDescriptorInitial(descriptor: ConfigDescriptor<any, object>, sources: Store<any>[], path: string[]): unknown {
+function resolveDescriptorInitial(descriptor: ConfigDescriptor<unknown, object> & { parser: Parser<unknown> }, sources: Store<any>[], path: string[]): unknown {
   const raw = resolveRawValue(sources, path);
   if (raw === undefined) {
     const defaultValue = (descriptor.options as { default?: unknown }).default;
@@ -474,7 +490,7 @@ class ConfigNodeState<S extends SchemaShape> {
         // understands the built-in field types) — a hand-written custom descriptor (tag + `.parse()`
         // only) has no such synchronous path and starts at `null` until its `.parse()` resolves.
         const path = pathFor(node.key, this.basePath, key);
-        const initial = node instanceof ConfigDescriptor ? resolveDescriptorInitial(node, this.rootStores, path) : null;
+        const initial = hasParser(node) ? resolveDescriptorInitial(node, this.rootStores, path) : null;
         field = new ConfigField(initial);
         this.fields.set(key, field);
         this.wireDescriptorField(node, key, path, field);

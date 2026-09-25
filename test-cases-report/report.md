@@ -2,9 +2,13 @@
 
 Each case in `test/cases/` is a self-contained script exercising one specific
 piece of behavior, run under every engine it declares support for in
-`test/cases/manifest.ts`. node/bun/deno run the script directly; the browser
-engine bundles it (aliasing `@jondotsoy/configs` to its `src/` source) into a
-small page driven by Playwright's Chromium. A case listed in its manifest
+`test/cases/manifest.ts`, against a `bun pm pack` tarball installed with
+`npm install` into a scratch directory — not this repo's own dist/ via
+self-reference, so a packaging mistake (a missing export, a stray or
+omitted file) actually surfaces here. node/bun/deno run the copied script
+directly; the browser engine bundles it with `Bun.build`, resolving
+`@jondotsoy/configs` from that same installed tarball, into a small page
+driven by Playwright's Chromium. A case listed in its manifest
 entry's `tolerateFailureEngines` still runs on that engine, but a failure
 there is reported as a WARNING instead of a FAILED, and doesn't fail the run
 — use it to document expected breakage (e.g. a node:fs-backed source in a
@@ -57,7 +61,7 @@ assert(typeof mapKey.lookup === "function", "mapKey.lookup is exported from root
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ node --experimental-strip-types --no-warnings test/cases/01-import-root.ts`
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/01-import-root.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -125,7 +129,7 @@ assert(typeof mapKey.lookup === "function", "mapKey.lookup is exported from root
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun test/cases/01-import-root.ts`
+Compile: `$ bun test/cases/01-import-root.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -193,26 +197,11 @@ assert(typeof mapKey.lookup === "function", "mapKey.lookup is exported from root
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/01-import-root.ts`
+Compile: `$ deno test/cases/01-import-root.ts`
 
 ```
-[PASSED]
-ok - configs.create is a function
-ok - create is exported from root
-ok - envSource is exported from root
-ok - fetchSource is exported from root
-ok - fileSource is exported from root
-ok - literalSource is exported from root
-ok - pullSource is exported from root
-ok - sseSource is exported from root
-ok - Source is exported from root
-ok - Store is exported from root
-ok - ConfigError is exported from root
-ok - mapKey.snakeCase is exported from root
-ok - mapKey.camelCase is exported from root
-ok - mapKey.identity is exported from root
-ok - mapKey.lookup is exported from root
-ALL_CHECKS_PASSED
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
 ```
 
 ## case test/cases/01-import-root.ts — browser
@@ -261,7 +250,7 @@ assert(typeof mapKey.lookup === "function", "mapKey.lookup is exported from root
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun build test/cases/01-import-root.ts --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`
+Compile: `$ bun build test/cases/01-import-root.ts --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
 
 ```
 [PASSED]
@@ -313,7 +302,7 @@ assert(typeof pullSource === "function", "pullSource exported from sources/pull"
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ node --experimental-strip-types --no-warnings test/cases/02-import-sources-subpaths.ts`
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/02-import-sources-subpaths.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -354,7 +343,7 @@ assert(typeof pullSource === "function", "pullSource exported from sources/pull"
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun test/cases/02-import-sources-subpaths.ts`
+Compile: `$ bun test/cases/02-import-sources-subpaths.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -395,16 +384,11 @@ assert(typeof pullSource === "function", "pullSource exported from sources/pull"
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/02-import-sources-subpaths.ts`
+Compile: `$ deno test/cases/02-import-sources-subpaths.ts`
 
 ```
-[PASSED]
-ok - envSource exported from sources/env
-ok - fetchSource exported from sources/fetch
-ok - sseSource exported from sources/sse
-ok - literalSource exported from sources/literal
-ok - pullSource exported from sources/pull
-ALL_CHECKS_PASSED
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
 ```
 
 ## case test/cases/02-import-sources-subpaths.ts — browser
@@ -436,7 +420,7 @@ assert(typeof pullSource === "function", "pullSource exported from sources/pull"
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun build test/cases/02-import-sources-subpaths.ts --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`
+Compile: `$ bun build test/cases/02-import-sources-subpaths.ts --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
 
 ```
 [PASSED]
@@ -470,7 +454,7 @@ assert(typeof fileSource === "function", "fileSource exported from sources/file"
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ node --experimental-strip-types --no-warnings test/cases/03-import-sources-file.ts`
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/03-import-sources-file.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -499,7 +483,7 @@ assert(typeof fileSource === "function", "fileSource exported from sources/file"
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun test/cases/03-import-sources-file.ts`
+Compile: `$ bun test/cases/03-import-sources-file.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -528,12 +512,11 @@ assert(typeof fileSource === "function", "fileSource exported from sources/file"
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/03-import-sources-file.ts`
+Compile: `$ deno test/cases/03-import-sources-file.ts`
 
 ```
-[PASSED]
-ok - fileSource exported from sources/file
-ALL_CHECKS_PASSED
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
 ```
 
 ## case test/cases/03-import-sources-file.ts — browser
@@ -557,7 +540,7 @@ assert(typeof fileSource === "function", "fileSource exported from sources/file"
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun build test/cases/03-import-sources-file.ts --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`
+Compile: `$ bun build test/cases/03-import-sources-file.ts --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
 
 ```
 [PASSED]
@@ -585,7 +568,7 @@ assert(typeof useConfig === "function", "useConfig exported from /react");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ node --experimental-strip-types --no-warnings test/cases/04-import-react.ts`
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/04-import-react.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -612,7 +595,7 @@ assert(typeof useConfig === "function", "useConfig exported from /react");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun test/cases/04-import-react.ts`
+Compile: `$ bun test/cases/04-import-react.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -639,12 +622,11 @@ assert(typeof useConfig === "function", "useConfig exported from /react");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/04-import-react.ts`
+Compile: `$ deno test/cases/04-import-react.ts`
 
 ```
-[PASSED]
-ok - useConfig exported from /react
-ALL_CHECKS_PASSED
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
 ```
 
 ## case test/cases/04-import-react.ts — browser
@@ -666,7 +648,7 @@ assert(typeof useConfig === "function", "useConfig exported from /react");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun build test/cases/04-import-react.ts --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`
+Compile: `$ bun build test/cases/04-import-react.ts --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
 
 ```
 [PASSED]
@@ -707,7 +689,7 @@ assert(true, "cfg.close() resolves without throwing");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ node --experimental-strip-types --no-warnings test/cases/05-create-with-literal-source.ts`
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/05-create-with-literal-source.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -715,6 +697,8 @@ ok - cfg.port.get() reads the literal value
 ok - cfg.host.get() reads the literal value
 ok - cfg.close() resolves without throwing
 ALL_CHECKS_PASSED
+
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/05-create-with-literal-source.ts — bun
@@ -749,7 +733,7 @@ assert(true, "cfg.close() resolves without throwing");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun test/cases/05-create-with-literal-source.ts`
+Compile: `$ bun test/cases/05-create-with-literal-source.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -757,6 +741,8 @@ ok - cfg.port.get() reads the literal value
 ok - cfg.host.get() reads the literal value
 ok - cfg.close() resolves without throwing
 ALL_CHECKS_PASSED
+
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/05-create-with-literal-source.ts — deno
@@ -791,14 +777,11 @@ assert(true, "cfg.close() resolves without throwing");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/05-create-with-literal-source.ts`
+Compile: `$ deno test/cases/05-create-with-literal-source.ts`
 
 ```
-[PASSED]
-ok - cfg.port.get() reads the literal value
-ok - cfg.host.get() reads the literal value
-ok - cfg.close() resolves without throwing
-ALL_CHECKS_PASSED
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
 ```
 
 ## case test/cases/05-create-with-literal-source.ts — browser
@@ -833,10 +816,11 @@ assert(true, "cfg.close() resolves without throwing");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun build test/cases/05-create-with-literal-source.ts --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`
+Compile: `$ bun build test/cases/05-create-with-literal-source.ts --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
 
 ```
 [PASSED]
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ok - cfg.port.get() reads the literal value
 ok - cfg.host.get() reads the literal value
 ok - cfg.close() resolves without throwing
@@ -876,13 +860,15 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ node --experimental-strip-types --no-warnings test/cases/06-create-with-env-source.ts`
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/06-create-with-env-source.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
 ok - SERVER_PORT maps to server.port via snakeCase
 ok - SERVER_HOST maps to server.host via snakeCase
 ALL_CHECKS_PASSED
+
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/06-create-with-env-source.ts — bun
@@ -917,13 +903,15 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun test/cases/06-create-with-env-source.ts`
+Compile: `$ bun test/cases/06-create-with-env-source.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
 ok - SERVER_PORT maps to server.port via snakeCase
 ok - SERVER_HOST maps to server.host via snakeCase
 ALL_CHECKS_PASSED
+
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/06-create-with-env-source.ts — deno
@@ -958,13 +946,11 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/06-create-with-env-source.ts`
+Compile: `$ deno test/cases/06-create-with-env-source.ts`
 
 ```
-[PASSED]
-ok - SERVER_PORT maps to server.port via snakeCase
-ok - SERVER_HOST maps to server.host via snakeCase
-ALL_CHECKS_PASSED
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
 ```
 
 ## case test/cases/06-create-with-env-source.ts — browser
@@ -999,10 +985,11 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun build test/cases/06-create-with-env-source.ts --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`
+Compile: `$ bun build test/cases/06-create-with-env-source.ts --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
 
 ```
 [PASSED]
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ok - SERVER_PORT maps to server.port via snakeCase
 ok - SERVER_HOST maps to server.host via snakeCase
 ALL_CHECKS_PASSED
@@ -1036,12 +1023,14 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ node --experimental-strip-types --no-warnings test/cases/07-fetch-source-data-url.ts`
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/07-fetch-source-data-url.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
 ok - fetchSource fetches a data: URL and applies treePath
 ALL_CHECKS_PASSED
+
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/07-fetch-source-data-url.ts — bun
@@ -1071,12 +1060,14 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun test/cases/07-fetch-source-data-url.ts`
+Compile: `$ bun test/cases/07-fetch-source-data-url.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
 ok - fetchSource fetches a data: URL and applies treePath
 ALL_CHECKS_PASSED
+
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/07-fetch-source-data-url.ts — deno
@@ -1106,12 +1097,11 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/07-fetch-source-data-url.ts`
+Compile: `$ deno test/cases/07-fetch-source-data-url.ts`
 
 ```
-[PASSED]
-ok - fetchSource fetches a data: URL and applies treePath
-ALL_CHECKS_PASSED
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
 ```
 
 ## case test/cases/07-fetch-source-data-url.ts — browser
@@ -1141,10 +1131,11 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun build test/cases/07-fetch-source-data-url.ts --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`
+Compile: `$ bun build test/cases/07-fetch-source-data-url.ts --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
 
 ```
 [PASSED]
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ok - fetchSource fetches a data: URL and applies treePath
 ALL_CHECKS_PASSED
 RESULT: PASS
@@ -1175,7 +1166,7 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ node --experimental-strip-types --no-warnings test/cases/08-sse-source-connection-failure.ts`
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/08-sse-source-connection-failure.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -1183,15 +1174,15 @@ ok - a failed sseSource connection leaves the field null instead of throwing
 ALL_CHECKS_PASSED
 
 sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): fetch failed
-    at downloadWithRetry (file:///home/user/configs/dist/configs.js:578:9)
-    at async t (file:///home/user/configs/dist/configs.js:612:20)
-    at async Object.start (file:///home/user/configs/dist/configs.js:873:51) {
+    at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-eYds4r/node_modules/@jondotsoy/configs/dist/configs.js:578:9)
+    at async t (file:///tmp/jondotsoy-configs-test-cases-eYds4r/node_modules/@jondotsoy/configs/dist/configs.js:612:20)
+    at async Object.start (file:///tmp/jondotsoy-configs-test-cases-eYds4r/node_modules/@jondotsoy/configs/dist/configs.js:873:51) {
   [cause]: TypeError: fetch failed
       at node:internal/deps/undici/undici:14976:13
-      at async download (file:///home/user/configs/dist/configs.js:553:20)
-      at async downloadWithRetry (file:///home/user/configs/dist/configs.js:568:14)
-      at async t (file:///home/user/configs/dist/configs.js:612:20)
-      at async Object.start (file:///home/user/configs/dist/configs.js:873:51) {
+      at async download (file:///tmp/jondotsoy-configs-test-cases-eYds4r/node_modules/@jondotsoy/configs/dist/configs.js:553:20)
+      at async downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-eYds4r/node_modules/@jondotsoy/configs/dist/configs.js:568:14)
+      at async t (file:///tmp/jondotsoy-configs-test-cases-eYds4r/node_modules/@jondotsoy/configs/dist/configs.js:612:20)
+      at async Object.start (file:///tmp/jondotsoy-configs-test-cases-eYds4r/node_modules/@jondotsoy/configs/dist/configs.js:873:51) {
     [cause]: Error: bad port
         at makeNetworkError (node:internal/deps/undici/undici:9495:35)
         at mainFetch (node:internal/deps/undici/undici:10721:20)
@@ -1199,12 +1190,13 @@ sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" Attempt
         at fetch (node:internal/deps/undici/undici:10576:20)
         at fetch (node:internal/deps/undici/undici:14974:10)
         at fetch (node:internal/bootstrap/web/exposed-window-or-worker:75:12)
-        at download (file:///home/user/configs/dist/configs.js:553:26)
-        at downloadWithRetry (file:///home/user/configs/dist/configs.js:568:20)
-        at file:///home/user/configs/dist/configs.js:873:65
-        at t (file:///home/user/configs/dist/configs.js:612:59)
+        at download (file:///tmp/jondotsoy-configs-test-cases-eYds4r/node_modules/@jondotsoy/configs/dist/configs.js:553:26)
+        at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-eYds4r/node_modules/@jondotsoy/configs/dist/configs.js:568:20)
+        at file:///tmp/jondotsoy-configs-test-cases-eYds4r/node_modules/@jondotsoy/configs/dist/configs.js:873:65
+        at t (file:///tmp/jondotsoy-configs-test-cases-eYds4r/node_modules/@jondotsoy/configs/dist/configs.js:612:59)
   }
 }
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/08-sse-source-connection-failure.ts — bun
@@ -1232,7 +1224,7 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun test/cases/08-sse-source-connection-failure.ts`
+Compile: `$ bun test/cases/08-sse-source-connection-failure.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -1247,14 +1239,17 @@ sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" 573 |  
 578 |   throw new AttemptsExhaustedError(maxAttempts, lastError);
               ^
 AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): Unable to connect. Is the computer able to access the url?
-      at downloadWithRetry (/home/user/configs/dist/configs.js:578:9)
-      at async t (/home/user/configs/dist/configs.js:612:71)
-      at async start (/home/user/configs/dist/configs.js:873:57)
+      at downloadWithRetry (/tmp/jondotsoy-configs-test-cases-eYds4r/node_modules/@jondotsoy/configs/dist/configs.js:578:9)
+      at async t (/tmp/jondotsoy-configs-test-cases-eYds4r/node_modules/@jondotsoy/configs/dist/configs.js:612:71)
+      at async start (/tmp/jondotsoy-configs-test-cases-eYds4r/node_modules/@jondotsoy/configs/dist/configs.js:873:57)
 
 error: Unable to connect. Is the computer able to access the url?
   path: "http://127.0.0.1:9/nobody-listens-here",
  errno: 0,
   code: "ConnectionRefused"
+
+
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/08-sse-source-connection-failure.ts — deno
@@ -1282,25 +1277,11 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/08-sse-source-connection-failure.ts`
+Compile: `$ deno test/cases/08-sse-source-connection-failure.ts`
 
 ```
-[PASSED]
-ok - a failed sseSource connection leaves the field null instead of throwing
-ALL_CHECKS_PASSED
-
-sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): Fetch failed: Requests to port 9 are blocked
-    at downloadWithRetry (file:///home/user/configs/dist/configs.js:578:9)
-    at async t (file:///home/user/configs/dist/configs.js:612:20)
-    at async Object.start (file:///home/user/configs/dist/configs.js:873:51) {
-  [cause]: TypeError: Fetch failed: Requests to port 9 are blocked
-      at ext:deno_fetch/26_fetch.js:2:7096
-      at async fetch (ext:deno_fetch/26_fetch.js:2:7360)
-      at async download (file:///home/user/configs/dist/configs.js:553:20)
-      at async downloadWithRetry (file:///home/user/configs/dist/configs.js:568:14)
-      at async t (file:///home/user/configs/dist/configs.js:612:20)
-      at async Object.start (file:///home/user/configs/dist/configs.js:873:51)
-}
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
 ```
 
 ## case test/cases/08-sse-source-connection-failure.ts — browser
@@ -1328,15 +1309,16 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun build test/cases/08-sse-source-connection-failure.ts --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`
+Compile: `$ bun build test/cases/08-sse-source-connection-failure.ts --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
 
 ```
 [PASSED]
 Failed to load resource: net::ERR_UNSAFE_PORT
 sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): Failed to fetch
-    at downloadWithRetry (http://localhost:41649/:660:9)
-    at async t (http://localhost:41649/:106:20)
-    at async Object.start (http://localhost:41649/:746:51)
+    at downloadWithRetry (http://localhost:40629/:344:9)
+    at async t (http://localhost:40629/:348:20)
+    at async Object.start (http://localhost:40629/:443:51)
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ok - a failed sseSource connection leaves the field null instead of throwing
 ALL_CHECKS_PASSED
 RESULT: PASS
@@ -1380,7 +1362,7 @@ assert(cfg.rounds.get() === afterClose, "close() stops further polling");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ node --experimental-strip-types --no-warnings test/cases/09-pull-source-polls-and-closes.ts`
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/09-pull-source-polls-and-closes.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -1388,6 +1370,8 @@ ok - the first pull() round runs before configs.create() resolves
 ok - later rounds keep polling on the given interval
 ok - close() stops further polling
 ALL_CHECKS_PASSED
+
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/09-pull-source-polls-and-closes.ts — bun
@@ -1428,7 +1412,7 @@ assert(cfg.rounds.get() === afterClose, "close() stops further polling");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun test/cases/09-pull-source-polls-and-closes.ts`
+Compile: `$ bun test/cases/09-pull-source-polls-and-closes.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -1436,6 +1420,8 @@ ok - the first pull() round runs before configs.create() resolves
 ok - later rounds keep polling on the given interval
 ok - close() stops further polling
 ALL_CHECKS_PASSED
+
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/09-pull-source-polls-and-closes.ts — deno
@@ -1476,14 +1462,11 @@ assert(cfg.rounds.get() === afterClose, "close() stops further polling");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/09-pull-source-polls-and-closes.ts`
+Compile: `$ deno test/cases/09-pull-source-polls-and-closes.ts`
 
 ```
-[PASSED]
-ok - the first pull() round runs before configs.create() resolves
-ok - later rounds keep polling on the given interval
-ok - close() stops further polling
-ALL_CHECKS_PASSED
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
 ```
 
 ## case test/cases/09-pull-source-polls-and-closes.ts — browser
@@ -1524,10 +1507,11 @@ assert(cfg.rounds.get() === afterClose, "close() stops further polling");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun build test/cases/09-pull-source-polls-and-closes.ts --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`
+Compile: `$ bun build test/cases/09-pull-source-polls-and-closes.ts --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
 
 ```
 [PASSED]
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ok - the first pull() round runs before configs.create() resolves
 ok - later rounds keep polling on the given interval
 ok - close() stops further polling
@@ -1578,7 +1562,7 @@ assert(closed, "close() is safe to call more than once");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ node --experimental-strip-types --no-warnings test/cases/10-custom-source-lifecycle.ts`
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/10-custom-source-lifecycle.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -1632,7 +1616,7 @@ assert(closed, "close() is safe to call more than once");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun test/cases/10-custom-source-lifecycle.ts`
+Compile: `$ bun test/cases/10-custom-source-lifecycle.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -1686,15 +1670,11 @@ assert(closed, "close() is safe to call more than once");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/10-custom-source-lifecycle.ts`
+Compile: `$ deno test/cases/10-custom-source-lifecycle.ts`
 
 ```
-[PASSED]
-ok - the store holds the first snapshot once open() resolves
-ok - a later control.set() call updates the same store live
-ok - close() runs the underlying close() hook
-ok - close() is safe to call more than once
-ALL_CHECKS_PASSED
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
 ```
 
 ## case test/cases/10-custom-source-lifecycle.ts — browser
@@ -1740,7 +1720,7 @@ assert(closed, "close() is safe to call more than once");
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun build test/cases/10-custom-source-lifecycle.ts --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`
+Compile: `$ bun build test/cases/10-custom-source-lifecycle.ts --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
 
 ```
 [PASSED]
@@ -1785,7 +1765,7 @@ await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ node --experimental-strip-types --no-warnings test/cases/11-source-reduce-patches.ts`
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/11-source-reduce-patches.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -1827,7 +1807,7 @@ await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun test/cases/11-source-reduce-patches.ts`
+Compile: `$ bun test/cases/11-source-reduce-patches.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -1869,13 +1849,11 @@ await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/11-source-reduce-patches.ts`
+Compile: `$ deno test/cases/11-source-reduce-patches.ts`
 
 ```
-[PASSED]
-ok - the first patch is applied through reduce (previous is null)
-ok - the second patch merges onto the previously published value
-ALL_CHECKS_PASSED
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
 ```
 
 ## case test/cases/11-source-reduce-patches.ts — browser
@@ -1911,7 +1889,7 @@ await source.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun build test/cases/11-source-reduce-patches.ts --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`
+Compile: `$ bun build test/cases/11-source-reduce-patches.ts --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
 
 ```
 [PASSED]
@@ -1955,13 +1933,15 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ node --experimental-strip-types --no-warnings test/cases/12-nested-config-groups.ts`
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/12-nested-config-groups.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
 ok - a first-level nested field resolves
 ok - a second-level nested field resolves
 ALL_CHECKS_PASSED
+
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/12-nested-config-groups.ts — bun
@@ -1998,13 +1978,15 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun test/cases/12-nested-config-groups.ts`
+Compile: `$ bun test/cases/12-nested-config-groups.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
 ok - a first-level nested field resolves
 ok - a second-level nested field resolves
 ALL_CHECKS_PASSED
+
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/12-nested-config-groups.ts — deno
@@ -2041,13 +2023,11 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/12-nested-config-groups.ts`
+Compile: `$ deno test/cases/12-nested-config-groups.ts`
 
 ```
-[PASSED]
-ok - a first-level nested field resolves
-ok - a second-level nested field resolves
-ALL_CHECKS_PASSED
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
 ```
 
 ## case test/cases/12-nested-config-groups.ts — browser
@@ -2084,10 +2064,11 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun build test/cases/12-nested-config-groups.ts --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`
+Compile: `$ bun build test/cases/12-nested-config-groups.ts --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
 
 ```
 [PASSED]
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ok - a first-level nested field resolves
 ok - a second-level nested field resolves
 ALL_CHECKS_PASSED
@@ -2137,7 +2118,7 @@ assert(
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ node --experimental-strip-types --no-warnings test/cases/13-mapkey-strategies.ts`
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/13-mapkey-strategies.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -2193,7 +2174,7 @@ assert(
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun test/cases/13-mapkey-strategies.ts`
+Compile: `$ bun test/cases/13-mapkey-strategies.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -2249,17 +2230,11 @@ assert(
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/13-mapkey-strategies.ts`
+Compile: `$ deno test/cases/13-mapkey-strategies.ts`
 
 ```
-[PASSED]
-ok - mapKey.snakeCase splits on underscore
-ok - mapKey.snakeCase honors a custom separator
-ok - mapKey.identity keeps the key as a single segment
-ok - mapKey.camelCase maps to a single camelCase segment
-ok - mapKey.lookup maps a listed key to its explicit path
-ok - mapKey.lookup falls back to identity for an unlisted key
-ALL_CHECKS_PASSED
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
 ```
 
 ## case test/cases/13-mapkey-strategies.ts — browser
@@ -2305,7 +2280,7 @@ assert(
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun build test/cases/13-mapkey-strategies.ts --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`
+Compile: `$ bun build test/cases/13-mapkey-strategies.ts --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
 
 ```
 [PASSED]
@@ -2370,7 +2345,7 @@ await cfg1.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ node --experimental-strip-types --no-warnings test/cases/14-shape-schema-required.ts`
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/14-shape-schema-required.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -2430,7 +2405,7 @@ await cfg1.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun test/cases/14-shape-schema-required.ts`
+Compile: `$ bun test/cases/14-shape-schema-required.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
@@ -2490,13 +2465,11 @@ await cfg1.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/14-shape-schema-required.ts`
+Compile: `$ deno test/cases/14-shape-schema-required.ts`
 
 ```
-[PASSED]
-ok - reading a required shape field throws once its schema fails to parse the source value
-ok - the same failure on a non-required shape field is swallowed into null instead
-ALL_CHECKS_PASSED
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
 ```
 
 ## case test/cases/14-shape-schema-required.ts — browser
@@ -2550,7 +2523,7 @@ await cfg1.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun build test/cases/14-shape-schema-required.ts --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`
+Compile: `$ bun build test/cases/14-shape-schema-required.ts --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
 
 ```
 [PASSED]
@@ -2599,12 +2572,14 @@ try {
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ node --experimental-strip-types --no-warnings test/cases/15-file-source-reads-json.ts`
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/15-file-source-reads-json.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
 ok - fileSource reads and parses a JSON file from disk
 ALL_CHECKS_PASSED
+
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/15-file-source-reads-json.ts — bun
@@ -2646,12 +2621,14 @@ try {
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun test/cases/15-file-source-reads-json.ts`
+Compile: `$ bun test/cases/15-file-source-reads-json.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
 ok - fileSource reads and parses a JSON file from disk
 ALL_CHECKS_PASSED
+
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/15-file-source-reads-json.ts — deno
@@ -2693,12 +2670,11 @@ try {
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/15-file-source-reads-json.ts`
+Compile: `$ deno test/cases/15-file-source-reads-json.ts`
 
 ```
-[PASSED]
-ok - fileSource reads and parses a JSON file from disk
-ALL_CHECKS_PASSED
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
 ```
 
 ## case test/cases/15-file-source-reads-json.ts — browser
@@ -2740,7 +2716,7 @@ try {
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun build test/cases/15-file-source-reads-json.ts --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`
+Compile: `$ bun build test/cases/15-file-source-reads-json.ts --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
 
 ```
 [WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
@@ -2773,12 +2749,14 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ node --experimental-strip-types --no-warnings test/cases/16-shell-source-runs-command.ts`
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/16-shell-source-runs-command.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
 ok - shellSource runs a command and parses its stdout as JSON
 ALL_CHECKS_PASSED
+
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/16-shell-source-runs-command.ts — bun
@@ -2807,12 +2785,14 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun test/cases/16-shell-source-runs-command.ts`
+Compile: `$ bun test/cases/16-shell-source-runs-command.ts (running the copy installed against the packed tarball, not the repo's dist/)`
 
 ```
 [PASSED]
 ok - shellSource runs a command and parses its stdout as JSON
 ALL_CHECKS_PASSED
+
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated — use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 ```
 
 ## case test/cases/16-shell-source-runs-command.ts — deno
@@ -2841,12 +2821,11 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ deno run --allow-net --allow-read --allow-write --allow-env --allow-run test/cases/16-shell-source-runs-command.ts`
+Compile: `$ deno test/cases/16-shell-source-runs-command.ts`
 
 ```
-[PASSED]
-ok - shellSource runs a command and parses its stdout as JSON
-ALL_CHECKS_PASSED
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
 ```
 
 ## case test/cases/16-shell-source-runs-command.ts — browser
@@ -2875,14 +2854,397 @@ await cfg.close();
 console.log("ALL_CHECKS_PASSED");
 ```
 
-Compile: `$ bun build test/cases/16-shell-source-runs-command.ts --target browser --format esm (aliasing @jondotsoy/configs -> src/, inlined into an index.html, driven by Playwright's Chromium)`
+Compile: `$ bun build test/cases/16-shell-source-runs-command.ts --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
 
 ```
 [WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
 shellSource: failed to run "echo {"port":7070}" AttemptsExhaustedError: shellSource: failed after 1 attempt(s): spawn is not a function
-    at runWithRetry (http://localhost:39005/:683:9)
-    at async t (http://localhost:39005/:106:20)
-    at async shellRound (http://localhost:39005/:687:37)
-    at async Object.start (http://localhost:39005/:737:21)
+    at runWithRetry (http://localhost:40461/:379:9)
+    at async t (http://localhost:40461/:291:20)
+    at async shellRound (http://localhost:40461/:383:37)
+    at async Object.start (http://localhost:40461/:433:21)
+[@jondotsoy/configs] Defining a field as { type: "...", ... } is deprecated â€” use string()/numeric()/boolean()/url()/shape() instead. Still fully supported; this warning is shown once per process.
 RESULT: FAIL: FAIL: shellSource runs a command and parses its stdout as JSON
+```
+
+## case test/cases/17-node-file-field.ts — node
+
+@jondotsoy/configs/node's file() field decodes a source value into a FileBlob, and a URL default is read eagerly from disk — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
+
+```ts
+// Case: `@jondotsoy/configs/node`'s file() field decodes a source's raw
+// value into a FileBlob, and a URL default is read from disk eagerly.
+// node:fs-backed, so a browser bundle stubs it out (see manifest.ts's
+// tolerateFailureEngines for this case) — run there anyway to document the
+// breakage instead of skipping it.
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { configs, literalSource } from "@jondotsoy/configs";
+import { FileBlob, file } from "@jondotsoy/configs/node";
+
+function assert(cond: unknown, message: string): void {
+  if (!cond) throw new Error("FAIL: " + message);
+  console.log("ok - " + message);
+}
+
+/** `node:url`'s `pathToFileURL` isn't available under a browser bundle — a plain `file://` + absolute POSIX path stands in for it here. */
+function toFileURL(path: string): URL {
+  return new URL(`file://${path}`);
+}
+
+const cfg1 = await configs.create({ key: file() }, { sources: [literalSource({ key: "hello" })] });
+const blob1 = cfg1.key.get();
+assert(blob1 instanceof FileBlob, "a source's text value resolves to a FileBlob");
+assert((await blob1!.text()) === "hello", "FileBlob.text() decodes the text value");
+assert(blob1!.location instanceof URL, "a source-derived FileBlob still has a .location");
+assert((await readFile(blob1!.location!, "utf-8")) === "hello", ".location points at a temp file holding the decoded content");
+await cfg1.close();
+
+const cfg1c = await configs.create(
+  { key: file({ required: true }) },
+  { sources: [literalSource({ key: "hello" })] },
+);
+assert((await cfg1c.key.get().text()) === "hello", "required: true still resolves normally when a source has the value");
+await cfg1c.close();
+
+const cfg1b = await configs.create(
+  { key: file({ default: "foo=tar&biz=lol", format: "text" }) },
+  { sources: [] },
+);
+const formData = await cfg1b.key.get().formData();
+assert(formData instanceof FormData, "FileBlob.formData() returns a FormData");
+assert(formData.get("foo") === "tar", "FileBlob.formData() parses application/x-www-form-urlencoded pairs");
+assert(formData.get("biz") === "lol", "FileBlob.formData() parses every pair");
+await cfg1b.close();
+
+const dir = await mkdtemp(join(tmpdir(), "configs-node-file-case-"));
+try {
+  const path = join(dir, "cert.pem");
+  await writeFile(path, "-----BEGIN CERTIFICATE-----");
+
+  const cfg2 = await configs.create(
+    { key: file({ default: toFileURL(path) }) },
+    { sources: [] },
+  );
+  const blob2 = cfg2.key.get();
+  assert(blob2 instanceof FileBlob, "a URL default loads a FileBlob from disk");
+  assert((await blob2!.text()) === "-----BEGIN CERTIFICATE-----", "the loaded FileBlob has the file's content");
+  assert(blob2!.type === "application/x-pem-file", "FileBlob.type infers a mimetype from the location's extension");
+  await cfg2.close();
+
+  const cfg3 = await configs.create(
+    { key: file({ default: toFileURL(join(dir, "missing.pem")) }) },
+    { sources: [] },
+  );
+  assert(cfg3.key.get() === null, "a missing URL default resolves the field to null");
+  await cfg3.close();
+} finally {
+  await rm(dir, { recursive: true, force: true });
+}
+
+console.log("ALL_CHECKS_PASSED");
+```
+
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/17-node-file-field.ts (running the copy installed against the packed tarball, not the repo's dist/)`
+
+```
+[PASSED]
+ok - a source's text value resolves to a FileBlob
+ok - FileBlob.text() decodes the text value
+ok - a source-derived FileBlob still has a .location
+ok - .location points at a temp file holding the decoded content
+ok - required: true still resolves normally when a source has the value
+ok - FileBlob.formData() returns a FormData
+ok - FileBlob.formData() parses application/x-www-form-urlencoded pairs
+ok - FileBlob.formData() parses every pair
+ok - a URL default loads a FileBlob from disk
+ok - the loaded FileBlob has the file's content
+ok - FileBlob.type infers a mimetype from the location's extension
+ok - a missing URL default resolves the field to null
+ALL_CHECKS_PASSED
+```
+
+## case test/cases/17-node-file-field.ts — bun
+
+@jondotsoy/configs/node's file() field decodes a source value into a FileBlob, and a URL default is read eagerly from disk — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
+
+```ts
+// Case: `@jondotsoy/configs/node`'s file() field decodes a source's raw
+// value into a FileBlob, and a URL default is read from disk eagerly.
+// node:fs-backed, so a browser bundle stubs it out (see manifest.ts's
+// tolerateFailureEngines for this case) — run there anyway to document the
+// breakage instead of skipping it.
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { configs, literalSource } from "@jondotsoy/configs";
+import { FileBlob, file } from "@jondotsoy/configs/node";
+
+function assert(cond: unknown, message: string): void {
+  if (!cond) throw new Error("FAIL: " + message);
+  console.log("ok - " + message);
+}
+
+/** `node:url`'s `pathToFileURL` isn't available under a browser bundle — a plain `file://` + absolute POSIX path stands in for it here. */
+function toFileURL(path: string): URL {
+  return new URL(`file://${path}`);
+}
+
+const cfg1 = await configs.create({ key: file() }, { sources: [literalSource({ key: "hello" })] });
+const blob1 = cfg1.key.get();
+assert(blob1 instanceof FileBlob, "a source's text value resolves to a FileBlob");
+assert((await blob1!.text()) === "hello", "FileBlob.text() decodes the text value");
+assert(blob1!.location instanceof URL, "a source-derived FileBlob still has a .location");
+assert((await readFile(blob1!.location!, "utf-8")) === "hello", ".location points at a temp file holding the decoded content");
+await cfg1.close();
+
+const cfg1c = await configs.create(
+  { key: file({ required: true }) },
+  { sources: [literalSource({ key: "hello" })] },
+);
+assert((await cfg1c.key.get().text()) === "hello", "required: true still resolves normally when a source has the value");
+await cfg1c.close();
+
+const cfg1b = await configs.create(
+  { key: file({ default: "foo=tar&biz=lol", format: "text" }) },
+  { sources: [] },
+);
+const formData = await cfg1b.key.get().formData();
+assert(formData instanceof FormData, "FileBlob.formData() returns a FormData");
+assert(formData.get("foo") === "tar", "FileBlob.formData() parses application/x-www-form-urlencoded pairs");
+assert(formData.get("biz") === "lol", "FileBlob.formData() parses every pair");
+await cfg1b.close();
+
+const dir = await mkdtemp(join(tmpdir(), "configs-node-file-case-"));
+try {
+  const path = join(dir, "cert.pem");
+  await writeFile(path, "-----BEGIN CERTIFICATE-----");
+
+  const cfg2 = await configs.create(
+    { key: file({ default: toFileURL(path) }) },
+    { sources: [] },
+  );
+  const blob2 = cfg2.key.get();
+  assert(blob2 instanceof FileBlob, "a URL default loads a FileBlob from disk");
+  assert((await blob2!.text()) === "-----BEGIN CERTIFICATE-----", "the loaded FileBlob has the file's content");
+  assert(blob2!.type === "application/x-pem-file", "FileBlob.type infers a mimetype from the location's extension");
+  await cfg2.close();
+
+  const cfg3 = await configs.create(
+    { key: file({ default: toFileURL(join(dir, "missing.pem")) }) },
+    { sources: [] },
+  );
+  assert(cfg3.key.get() === null, "a missing URL default resolves the field to null");
+  await cfg3.close();
+} finally {
+  await rm(dir, { recursive: true, force: true });
+}
+
+console.log("ALL_CHECKS_PASSED");
+```
+
+Compile: `$ bun test/cases/17-node-file-field.ts (running the copy installed against the packed tarball, not the repo's dist/)`
+
+```
+[PASSED]
+ok - a source's text value resolves to a FileBlob
+ok - FileBlob.text() decodes the text value
+ok - a source-derived FileBlob still has a .location
+ok - .location points at a temp file holding the decoded content
+ok - required: true still resolves normally when a source has the value
+ok - FileBlob.formData() returns a FormData
+ok - FileBlob.formData() parses application/x-www-form-urlencoded pairs
+ok - FileBlob.formData() parses every pair
+ok - a URL default loads a FileBlob from disk
+ok - the loaded FileBlob has the file's content
+ok - FileBlob.type infers a mimetype from the location's extension
+ok - a missing URL default resolves the field to null
+ALL_CHECKS_PASSED
+```
+
+## case test/cases/17-node-file-field.ts — deno
+
+@jondotsoy/configs/node's file() field decodes a source value into a FileBlob, and a URL default is read eagerly from disk — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
+
+```ts
+// Case: `@jondotsoy/configs/node`'s file() field decodes a source's raw
+// value into a FileBlob, and a URL default is read from disk eagerly.
+// node:fs-backed, so a browser bundle stubs it out (see manifest.ts's
+// tolerateFailureEngines for this case) — run there anyway to document the
+// breakage instead of skipping it.
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { configs, literalSource } from "@jondotsoy/configs";
+import { FileBlob, file } from "@jondotsoy/configs/node";
+
+function assert(cond: unknown, message: string): void {
+  if (!cond) throw new Error("FAIL: " + message);
+  console.log("ok - " + message);
+}
+
+/** `node:url`'s `pathToFileURL` isn't available under a browser bundle — a plain `file://` + absolute POSIX path stands in for it here. */
+function toFileURL(path: string): URL {
+  return new URL(`file://${path}`);
+}
+
+const cfg1 = await configs.create({ key: file() }, { sources: [literalSource({ key: "hello" })] });
+const blob1 = cfg1.key.get();
+assert(blob1 instanceof FileBlob, "a source's text value resolves to a FileBlob");
+assert((await blob1!.text()) === "hello", "FileBlob.text() decodes the text value");
+assert(blob1!.location instanceof URL, "a source-derived FileBlob still has a .location");
+assert((await readFile(blob1!.location!, "utf-8")) === "hello", ".location points at a temp file holding the decoded content");
+await cfg1.close();
+
+const cfg1c = await configs.create(
+  { key: file({ required: true }) },
+  { sources: [literalSource({ key: "hello" })] },
+);
+assert((await cfg1c.key.get().text()) === "hello", "required: true still resolves normally when a source has the value");
+await cfg1c.close();
+
+const cfg1b = await configs.create(
+  { key: file({ default: "foo=tar&biz=lol", format: "text" }) },
+  { sources: [] },
+);
+const formData = await cfg1b.key.get().formData();
+assert(formData instanceof FormData, "FileBlob.formData() returns a FormData");
+assert(formData.get("foo") === "tar", "FileBlob.formData() parses application/x-www-form-urlencoded pairs");
+assert(formData.get("biz") === "lol", "FileBlob.formData() parses every pair");
+await cfg1b.close();
+
+const dir = await mkdtemp(join(tmpdir(), "configs-node-file-case-"));
+try {
+  const path = join(dir, "cert.pem");
+  await writeFile(path, "-----BEGIN CERTIFICATE-----");
+
+  const cfg2 = await configs.create(
+    { key: file({ default: toFileURL(path) }) },
+    { sources: [] },
+  );
+  const blob2 = cfg2.key.get();
+  assert(blob2 instanceof FileBlob, "a URL default loads a FileBlob from disk");
+  assert((await blob2!.text()) === "-----BEGIN CERTIFICATE-----", "the loaded FileBlob has the file's content");
+  assert(blob2!.type === "application/x-pem-file", "FileBlob.type infers a mimetype from the location's extension");
+  await cfg2.close();
+
+  const cfg3 = await configs.create(
+    { key: file({ default: toFileURL(join(dir, "missing.pem")) }) },
+    { sources: [] },
+  );
+  assert(cfg3.key.get() === null, "a missing URL default resolves the field to null");
+  await cfg3.close();
+} finally {
+  await rm(dir, { recursive: true, force: true });
+}
+
+console.log("ALL_CHECKS_PASSED");
+```
+
+Compile: `$ deno test/cases/17-node-file-field.ts`
+
+```
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
+```
+
+## case test/cases/17-node-file-field.ts — browser
+
+@jondotsoy/configs/node's file() field decodes a source value into a FileBlob, and a URL default is read eagerly from disk — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
+
+```ts
+// Case: `@jondotsoy/configs/node`'s file() field decodes a source's raw
+// value into a FileBlob, and a URL default is read from disk eagerly.
+// node:fs-backed, so a browser bundle stubs it out (see manifest.ts's
+// tolerateFailureEngines for this case) — run there anyway to document the
+// breakage instead of skipping it.
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { configs, literalSource } from "@jondotsoy/configs";
+import { FileBlob, file } from "@jondotsoy/configs/node";
+
+function assert(cond: unknown, message: string): void {
+  if (!cond) throw new Error("FAIL: " + message);
+  console.log("ok - " + message);
+}
+
+/** `node:url`'s `pathToFileURL` isn't available under a browser bundle — a plain `file://` + absolute POSIX path stands in for it here. */
+function toFileURL(path: string): URL {
+  return new URL(`file://${path}`);
+}
+
+const cfg1 = await configs.create({ key: file() }, { sources: [literalSource({ key: "hello" })] });
+const blob1 = cfg1.key.get();
+assert(blob1 instanceof FileBlob, "a source's text value resolves to a FileBlob");
+assert((await blob1!.text()) === "hello", "FileBlob.text() decodes the text value");
+assert(blob1!.location instanceof URL, "a source-derived FileBlob still has a .location");
+assert((await readFile(blob1!.location!, "utf-8")) === "hello", ".location points at a temp file holding the decoded content");
+await cfg1.close();
+
+const cfg1c = await configs.create(
+  { key: file({ required: true }) },
+  { sources: [literalSource({ key: "hello" })] },
+);
+assert((await cfg1c.key.get().text()) === "hello", "required: true still resolves normally when a source has the value");
+await cfg1c.close();
+
+const cfg1b = await configs.create(
+  { key: file({ default: "foo=tar&biz=lol", format: "text" }) },
+  { sources: [] },
+);
+const formData = await cfg1b.key.get().formData();
+assert(formData instanceof FormData, "FileBlob.formData() returns a FormData");
+assert(formData.get("foo") === "tar", "FileBlob.formData() parses application/x-www-form-urlencoded pairs");
+assert(formData.get("biz") === "lol", "FileBlob.formData() parses every pair");
+await cfg1b.close();
+
+const dir = await mkdtemp(join(tmpdir(), "configs-node-file-case-"));
+try {
+  const path = join(dir, "cert.pem");
+  await writeFile(path, "-----BEGIN CERTIFICATE-----");
+
+  const cfg2 = await configs.create(
+    { key: file({ default: toFileURL(path) }) },
+    { sources: [] },
+  );
+  const blob2 = cfg2.key.get();
+  assert(blob2 instanceof FileBlob, "a URL default loads a FileBlob from disk");
+  assert((await blob2!.text()) === "-----BEGIN CERTIFICATE-----", "the loaded FileBlob has the file's content");
+  assert(blob2!.type === "application/x-pem-file", "FileBlob.type infers a mimetype from the location's extension");
+  await cfg2.close();
+
+  const cfg3 = await configs.create(
+    { key: file({ default: toFileURL(join(dir, "missing.pem")) }) },
+    { sources: [] },
+  );
+  assert(cfg3.key.get() === null, "a missing URL default resolves the field to null");
+  await cfg3.close();
+} finally {
+  await rm(dir, { recursive: true, force: true });
+}
+
+console.log("ALL_CHECKS_PASSED");
+```
+
+Compile: `$ bun build test/cases/17-node-file-field.ts --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
+
+```
+[WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
+ConfigError2: Value at "key" could not be decoded as a file: mkdtempSync is not a function
+    at ConfigDescriptor.parser (http://localhost:41941/:1309:44)
+    at resolveDescriptorInitial (http://localhost:41941/:733:21)
+    at ConfigNodeState.fieldFor (http://localhost:41941/:834:43)
+    at Object.get (http://localhost:41941/:920:105)
+    at http://localhost:41941/:1337:18
+ConfigError2: Value at "key" could not be decoded as a file: mkdtempSync is not a function
+    at ConfigDescriptor.parser (http://localhost:41941/:1309:44)
+    at compute (http://localhost:41941/:1154:122)
+    at ConfigDescriptor.parse (http://localhost:41941/:1155:32)
+    at ConfigNodeState.wireDescriptorField (http://localhost:41941/:852:16)
+    at ConfigNodeState.fieldFor (http://localhost:41941/:837:14)
+    at Object.get (http://localhost:41941/:920:105)
+    at http://localhost:41941/:1337:18
+RESULT: FAIL: FAIL: a source's text value resolves to a FileBlob
 ```
