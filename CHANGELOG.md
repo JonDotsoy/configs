@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.15] - 2026-09-26
+
+### Added
+
+- `scripts/build.ts` now copies `README.md`, `LICENSE`, and `docs/` into
+  `dist/` on every build, so the published package (`npm publish ./dist`)
+  carries them the same way it did back when the repo root itself was
+  published with `"files": ["dist", "docs"]`.
+
+## [1.2.14] - 2026-09-26
+
+### Changed
+
+- The root `package.json` is now `"private": true` and no longer carries an
+  `exports` map or `publishConfig`/`files` (it's never published itself,
+  only `dist/package.json` is — see the `npm publish ./dist` change below).
+  Its former `exports` map (each condition's `_entryPoint` plus `types`/
+  `import` pointing into `dist/`) is replaced by a plain `_buildEntripoint`
+  map of subpath -> `src/*.ts` source; `scripts/build.ts` derives
+  `dist/package.json`'s own `exports` from it. `tsconfig.json` gained a
+  matching `paths` map (kept in sync with `_buildEntripoint`) so
+  `test/cases/*.ts`'s `@jondotsoy/configs` imports still type-check against
+  `dist/`'s `.d.ts` output, now that there's no `exports` map left for
+  TypeScript's package self-reference to resolve them against.
+- The `Publish Package` workflow (`.github/workflows/publish.yaml`) now
+  checks out, commits the version bump to, and targets the GitHub release at
+  the branch the workflow run was actually triggered on or dispatched
+  against (`github.ref_name`), instead of always hardcoding the repository's
+  default branch — running it manually against a non-default branch no
+  longer silently commits and releases on the default branch instead.
+- The `Publish Package` workflow (`.github/workflows/publish.yaml`) now runs
+  `npm publish ./dist` instead of `npm publish` at the repo root, publishing
+  `dist/`'s own self-contained `dist/package.json` directly as the package
+  manifest.
+- `bun run test:cases` (`scripts/run-test-cases.ts`) now packs the tarball it
+  installs and tests against with `npm pack` run *inside* `dist/` (its own
+  `dist/package.json` as the manifest), instead of `bun pm pack` at the repo
+  root — the same publish-from-`dist/` artifact `npm publish` would produce,
+  so the integration cases exercise exactly what gets published.
+- Replaced `scripts/build.sh` with `scripts/build.ts`: the build now runs as a
+  typed Bun script instead of Bash, minifies the bundled output
+  (`bun build --minify`), and writes a trimmed, self-contained
+  `dist/package.json` (dev-only fields dropped, `exports` paths relative to
+  `dist/` itself) alongside the compiled `.js`/`.d.ts` files.
+
 ## [1.2.12] - 2026-09-26
 
 ### Changed — every built-in `Descriptor`'s own `start` is now a single `control.rawStore.subscribe(...)` call
@@ -389,6 +434,8 @@ shape shorthand, `freeze`, or the root's `.get()`/`.subscribe()`/`.close()`.
 - `ConfigError` for schema/config-level errors, and `DataTypes`/`DataTypeName` for the field type
   and coercion helpers backing schema fields.
 
+[1.2.15]: https://github.com/JonDotsoy/configs/releases/tag/v1.2.15
+[1.2.14]: https://github.com/JonDotsoy/configs/releases/tag/v1.2.14
 [1.2.12]: https://github.com/JonDotsoy/configs/releases/tag/v1.2.12
 [1.2.6]: https://github.com/JonDotsoy/configs/releases/tag/v1.2.6
 [1.2.1]: https://github.com/JonDotsoy/configs/releases/tag/v1.2.1

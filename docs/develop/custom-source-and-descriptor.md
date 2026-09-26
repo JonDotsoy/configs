@@ -510,7 +510,7 @@ export function isConfigDescriptor(node: unknown): node is Descriptor<unknown, u
 
 La razón está en cómo se empaqueta esta librería: `bun build` compila cada
 punto de entrada público (`.`, `./sources/env`, `./node`, ...) de forma
-**independiente** — ver `scripts/build.sh` y el mapa `exports` de
+**independiente** — ver `scripts/build.ts` y el mapa `_buildEntripoint` de
 `package.json`. Eso significa que `file()`, exportado desde el entry point
 `./node`, termina con su propia copia bundleada de la clase `Descriptor`,
 separada de la copia que usa `configs.ts` (el entry point `.`) para su

@@ -35,16 +35,18 @@ src/
     data-types.ts             # field type/coercion helpers
 
 scripts/
-  build.sh                  # bun build (entry points read from package.json "exports")
+  build.ts                  # bun build + minify + dist/package.json (entry points read from package.json "_buildEntripoint")
 
-dist/                      # build output, gitignored, published via "files"/"exports"
+dist/                      # build output, gitignored — its own self-contained, publishable package.json
 ```
 
-Public entry points live in `package.json`'s `exports` map (`.` and
-`./sources/{env,fetch,sse}`); each condition carries an `_entryPoint`
-pointing at its `src/*.ts` source, which `scripts/build.sh` reads to drive
-`bun build`. Add a new public module by adding both its `src/` file and its
-`exports` entry (with `_entryPoint`), not just one.
+The root `package.json` is `"private": true` and has no `exports` of its
+own; public entry points instead live in its `_buildEntripoint` map (`.` and
+`./sources/{env,fetch,sse}`), each subpath pointing straight at its
+`src/*.ts` source. `scripts/build.ts` reads that map to drive `bun build`
+and derives `dist/package.json`'s own `exports` map from it (the only
+`exports` map that actually gets published). Add a new public module by
+adding both its `src/` file and its `_buildEntripoint` entry, not just one.
 
 ### Internal imports use explicit `.js` extensions
 
@@ -86,8 +88,8 @@ When adding a new source, follow the existing shape:
   runs through it (with `previous` `null` before the first call) and its
   return value is what actually gets published.
 - Export both the factory and its options type from `src/configs.ts`, and add
-  a matching `./sources/<name>` entry (with `_entryPoint`) to `package.json`'s
-  `exports` map so it's a public subpath.
+  a matching `./sources/<name>` entry to `package.json`'s `_buildEntripoint`
+  map so it's a public subpath.
 
 ### Keep the changelog up to date
 
@@ -130,8 +132,8 @@ detail. `test/cases/manifest.ts` registers every case and which engines
 script and its manifest entry together.
 
 `bun run test:cases` (`scripts/run-test-cases.ts`) builds `dist/`, packs it
-with `bun pm pack` — the same packing a real `npm pack`/`npm publish` does —
-and installs the tarball with `npm install` into a scratch directory
+with `npm pack` run *inside* `dist/` — the same tarball `npm publish ./dist`
+would produce — and installs it with `npm install` into a scratch directory
 unrelated to this repo's own `package.json`. Each case is copied into that
 directory before running, so its `@jondotsoy/configs` imports can only
 resolve through the installed `node_modules`, never through Node/Bun's own
