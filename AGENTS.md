@@ -130,8 +130,8 @@ detail. `test/cases/manifest.ts` registers every case and which engines
 script and its manifest entry together.
 
 `bun run test:cases` (`scripts/run-test-cases.ts`) builds `dist/`, packs it
-with `bun pm pack` — the same packing a real `npm pack`/`npm publish` does —
-and installs the tarball with `npm install` into a scratch directory
+with `npm pack` run *inside* `dist/` — the same tarball `npm publish ./dist`
+would produce — and installs it with `npm install` into a scratch directory
 unrelated to this repo's own `package.json`. Each case is copied into that
 directory before running, so its `@jondotsoy/configs` imports can only
 resolve through the installed `node_modules`, never through Node/Bun's own

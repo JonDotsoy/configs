@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `Publish Package` workflow (`.github/workflows/publish.yaml`) now runs
+  `npm publish ./dist` instead of `npm publish` at the repo root, publishing
+  `dist/`'s own self-contained `dist/package.json` directly as the package
+  manifest.
 - `bun run test:cases` (`scripts/run-test-cases.ts`) now packs the tarball it
   installs and tests against with `npm pack` run *inside* `dist/` (its own
   `dist/package.json` as the manifest), instead of `bun pm pack` at the repo

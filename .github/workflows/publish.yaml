@@ -119,7 +119,7 @@ jobs:
       - name: Publish to npm
         id: npm-publish
         if: steps.check-release.outputs.exists == 'false'
-        run: npm publish --access public --tag ${{ steps.dist-tag.outputs.tag }}
+        run: npm publish ./dist --access public --tag ${{ steps.dist-tag.outputs.tag }}
 
       - name: Extract changelog notes for this version
         id: changelog
