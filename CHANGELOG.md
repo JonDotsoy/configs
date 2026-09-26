@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.14] - 2026-09-26
+## [Unreleased]
 
 ### Added
 
@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `dist/` on every build, so the published package (`npm publish ./dist`)
   carries them the same way it did back when the repo root itself was
   published with `"files": ["dist", "docs"]`.
+
+## [1.2.14] - 2026-09-26
 
 ### Changed
 
