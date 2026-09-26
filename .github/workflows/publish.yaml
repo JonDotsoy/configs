@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ github.ref_name }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -69,7 +69,7 @@ jobs:
           git commit -m "chore: bump version to $version"
           sha="$(git rev-parse HEAD)"
 
-          git push origin HEAD:${{ github.event.repository.default_branch }}
+          git push origin HEAD:${{ github.ref_name }}
 
           echo "Bumped version to \`$version\` in [$sha](https://github.com/${{ github.repository }}/commit/$sha)" >> "$GITHUB_STEP_SUMMARY"
 
@@ -151,7 +151,7 @@ jobs:
           release_url="$(gh release create "v$version" \
             --repo "${{ github.repository }}" \
             --title "v$version" \
-            --target "${{ github.event.repository.default_branch }}" \
+            --target "${{ github.ref_name }}" \
             --notes-file "$notes_file")"
 
           echo "Created release [v$version]($release_url)" >> "$GITHUB_STEP_SUMMARY"

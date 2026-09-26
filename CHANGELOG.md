@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `Publish Package` workflow (`.github/workflows/publish.yaml`) now
+  checks out, commits the version bump to, and targets the GitHub release at
+  the branch the workflow run was actually triggered on or dispatched
+  against (`github.ref_name`), instead of always hardcoding the repository's
+  default branch — running it manually against a non-default branch no
+  longer silently commits and releases on the default branch instead.
 - The `Publish Package` workflow (`.github/workflows/publish.yaml`) now runs
   `npm publish ./dist` instead of `npm publish` at the repo root, publishing
   `dist/`'s own self-contained `dist/package.json` directly as the package
