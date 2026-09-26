@@ -495,6 +495,25 @@ describe("create — a custom Descriptor's own reduce() timing vs. its source's"
     await new Promise((resolve) => setTimeout(resolve, descriptorDelayMs - sourceDelayMs + 10));
     expect(cfg.value.get()).toBe(4000);
   });
+
+  test("a Descriptor built with only start() (no reduce in the constructor) still updates when its source changes", async () => {
+    // No `reduce` passed to the constructor at all — `Descriptor.reduce()` synthesizes a default
+    // one from `start` itself (see `liveStoreFromStart`), so the field stays live regardless.
+    const port = new Descriptor<number>({
+      type: "number",
+      options: { default: 3000 },
+      start: (raw) => Number(raw),
+    });
+
+    const { source, push } = liveTestSource({ port: "8080" });
+    const cfg = await create({ port }, { sources: [source] });
+
+    expect(cfg.port.get()).toBe(8080);
+
+    push({ port: "9090" });
+
+    expect(cfg.port.get()).toBe(9090);
+  });
 });
 
 describe("create — close()", () => {
