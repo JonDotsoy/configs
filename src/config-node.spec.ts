@@ -541,6 +541,39 @@ describe("create — a custom Descriptor's own reduce() timing vs. its source's"
     expect(cfg.bare.get()).toBeNull();
     expect(cfg.withDefault.get()).toBe("fallback");
   });
+
+  test("a Descriptor built with only reduce() (no start) is options.default first, then fully driven by reduce's own logic", async () => {
+    // No `start` given at all — `.start()` falls back to the identity function, but that only
+    // matters for the synchronous seed at build time, and raw is `null` there (no source has
+    // opened yet), so `options.default` wins regardless. Once `reduce`'s own Store takes over, its
+    // logic is all that matters — it doesn't have to (and here doesn't) match what the identity
+    // `start` would have produced.
+    const doubled = new Descriptor<number>({
+      type: "doubled",
+      options: { default: 0 },
+      async reduce(rawStore) {
+        const parse = (raw: unknown): number => Number(raw ?? 0) * 2;
+        const store = new Store<number>(parse(rawStore.get()));
+        rawStore.listen((raw) => store.set(parse(raw)));
+        return store;
+      },
+    });
+
+    const { source, push } = liveTestSource({ value: "5" });
+    const cfg = create({ value: doubled }, { sources: [source] });
+
+    // Synchronous seed: raw is null at this point, so options.default (0) wins.
+    expect(cfg.value.get()).toBe(0);
+
+    await cfg;
+
+    // reduce()'s own Store has taken over — its own doubling logic, not `start`'s identity.
+    expect(cfg.value.get()).toBe(10);
+
+    push({ value: "7" });
+
+    expect(cfg.value.get()).toBe(14);
+  });
 });
 
 describe("create — close()", () => {
