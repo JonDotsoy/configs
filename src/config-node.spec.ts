@@ -455,6 +455,48 @@ describe("create — live updates", () => {
   });
 });
 
+describe("create — a custom Descriptor's own reduce() timing vs. its source's", () => {
+  test("field starts at the descriptor's default, then the source's delayed value, then the descriptor's own later override", async () => {
+    const sourceDelayMs = 20;
+    const descriptorDelayMs = sourceDelayMs + 20; // n ms more than the source's own delay
+
+    // Stays live off `rawStore` (so it still picks up the source's own update), but also
+    // schedules its own unrelated override further out — independent of anything the source does.
+    function delayed(defaultValue: number, overrideAfterMs: number, overrideValue: number): Descriptor<number> {
+      const parse = (raw: unknown): number => (raw === null || raw === undefined ? defaultValue : Number(raw));
+
+      return new Descriptor<number>({
+        type: "delayed",
+        options: { default: defaultValue },
+        start: parse,
+        async reduce(rawStore) {
+          const store = new Store<number>(parse(rawStore.get()));
+          rawStore.listen((raw) => store.set(parse(raw)));
+          setTimeout(() => store.set(overrideValue), overrideAfterMs);
+          return store;
+        },
+      });
+    }
+
+    const source = new Source<{ value?: string }>({
+      start(control) {
+        setTimeout(() => control.set({ value: "2000" }), sourceDelayMs);
+      },
+    });
+
+    const cfg = create({ value: delayed(3000, descriptorDelayMs, 4000) }, { sources: [source] });
+
+    // No source has opened yet at this synchronous point — the descriptor's own default wins.
+    expect(cfg.value.get()).toBe(3000);
+
+    await new Promise((resolve) => setTimeout(resolve, sourceDelayMs + 10));
+    expect(cfg.value.get()).toBe(2000);
+
+    await new Promise((resolve) => setTimeout(resolve, descriptorDelayMs - sourceDelayMs + 10));
+    expect(cfg.value.get()).toBe(4000);
+  });
+});
+
 describe("create — close()", () => {
   test("closes every own source", async () => {
     let closed = false;
