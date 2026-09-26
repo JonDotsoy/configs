@@ -105,24 +105,26 @@ console.log(await cfg.server.tls.cert.get()?.text());
 
 - [Install](#install)
 - [Guide](#guide)
-  - [Field types](#field-types)
-  - [Writing a custom `Descriptor`](#writing-a-custom-descriptor)
   - [Nested groups](#nested-groups)
-  - [`key` — reading a field from an explicit path](#key--reading-a-field-from-an-explicit-path)
-  - [`load` — `create()` that defaults to `envSource()`](#load--create-that-defaults-to-envsource)
-  - [TypeScript inference](#typescript-inference)
-    - [Shape fields](#shape-fields)
-  - [`Source` — building a custom source](#source--building-a-custom-source)
-  - [`envSource` — environment variables](#envsource--environment-variables)
-  - [`fetchSource` — a JSON endpoint over HTTP](#fetchsource--a-json-endpoint-over-http)
-  - [`sseSource` — live updates over Server-Sent Events](#ssesource--live-updates-over-server-sent-events)
-  - [`fileSource` — a local `.json` or `.env` file](#filesource--a-local-json-or-env-file)
-  - [`pullSource` — calling a function on an interval](#pullsource--calling-a-function-on-an-interval)
-  - [`shellSource` — running a command](#shellsource--running-a-command)
-  - [`literalSource` — a static value](#literalsource--a-static-value)
+  - [Descriptors](#descriptors)
+    - [Field types](#field-types)
+    - [Writing a custom `Descriptor`](#writing-a-custom-descriptor)
+    - [`key` — reading a field from an explicit path](#key--reading-a-field-from-an-explicit-path)
+    - [TypeScript inference](#typescript-inference)
+      - [Shape fields](#shape-fields)
+  - [Sources](#sources)
+    - [`Source` — building a custom source](#source--building-a-custom-source)
+    - [`envSource` — environment variables](#envsource--environment-variables)
+    - [`fetchSource` — a JSON endpoint over HTTP](#fetchsource--a-json-endpoint-over-http)
+    - [`sseSource` — live updates over Server-Sent Events](#ssesource--live-updates-over-server-sent-events)
+    - [`fileSource` — a local `.json` or `.env` file](#filesource--a-local-json-or-env-file)
+    - [`pullSource` — calling a function on an interval](#pullsource--calling-a-function-on-an-interval)
+    - [`shellSource` — running a command](#shellsource--running-a-command)
+    - [`literalSource` — a static value](#literalsource--a-static-value)
+    - [`load` — `create()` that defaults to `envSource()`](#load--create-that-defaults-to-envsource)
+    - [Closing a live source](#closing-a-live-source)
   - [Reacting to changes — restarting a periodic task](#reacting-to-changes--restarting-a-periodic-task)
   - [`useConfig` — reading a field in React](#useconfig--reading-a-field-in-react)
-  - [Closing a live source](#closing-a-live-source)
 - [Documentation](#documentation)
 
 ## Install
@@ -133,7 +135,66 @@ npm install @jondotsoy/configs
 
 ## Guide
 
-### Field types
+### Nested groups
+
+A shape property can be a plain object — it's an implicit nested group, sharing the enclosing
+`create()` call's own `sources`:
+
+```ts
+import { create, numeric, string } from "@jondotsoy/configs";
+import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
+
+// SERVER_PORT=3000 SERVER_HOST=localhost
+const cfg = await create(
+  {
+    server: {
+      port: numeric({ summary: "HTTP port", default: 3000 }),
+      host: string({ summary: "bind host", default: "localhost" }),
+    },
+  },
+  { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
+);
+
+cfg.server.port.get();
+// 3000
+```
+
+A shape property can also be **another, separate `create()` call** — with its own `sources`,
+resolving completely independently of the tree it's embedded in:
+
+```ts
+import { create, numeric, string } from "@jondotsoy/configs";
+import { envSource } from "@jondotsoy/configs/sources/env";
+import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+
+const database = create(
+  { host: string(), port: numeric({ default: 5432 }) },
+  { sources: [envSource({ prefix: "DATABASE_" })] },
+);
+
+const cfg = await create(
+  {
+    database,
+    features: { promoService: numeric({ default: 0 }) },
+  },
+  { sources: [fetchSource({ url: "https://example.com/features" })] },
+);
+
+// database's own DATABASE_HOST/DATABASE_PORT env vars — never features.js's response body
+cfg.database.host.get();
+```
+
+`await create(...)` on the outer call also waits for every embedded `create()`'s own sources to
+publish their first snapshot, same as its own. `isConfigsNode(value)` tells an embedded `create()`
+result apart from a plain nested object, if you ever need to check which one a shape entry is.
+
+### Descriptors
+
+A shape entry is a `Descriptor` — the unit that decides how one field's value is computed from
+the raw config tree. This section covers the six built-in field builders and how to write your
+own `Descriptor` from scratch.
+
+#### Field types
 
 A shape entry is a `Descriptor` built by one of six field builders: `string()`, `numeric()`,
 `boolean()`, `url()`, `choice()`, or `shape()`. The first three coerce and validate primitives
@@ -194,7 +255,7 @@ const cfg = await create({ metadata: shape() }, { sources: [/* ... */] });
 // cfg.metadata.get() is typed as unknown
 ```
 
-### Writing a custom `Descriptor`
+#### Writing a custom `Descriptor`
 
 `string()`, `numeric()`, `boolean()`, `url()`, `choice()`, and `shape()` all build the same kind of
 object — a `Descriptor` — and that's the whole extension point: any shape entry that's a
@@ -206,7 +267,7 @@ source](#source--building-a-custom-source) below):
 one `start(control)` hook, called exactly once, that gets 100% control of the field's value through
 `control`. `create()`'s role, for every `Descriptor`-backed field, regardless of who built it: work
 out the field's path (its own nesting in the shape tree, or `.key` when set — see
-[`key`](#key--reading-a-field-from-an-explicit-path) above), build the field's own live `Store`,
+[`key`](#key--reading-a-field-from-an-explicit-path) below), build the field's own live `Store`,
 and call `start(control)` on it exactly once — nothing else in `create()` ever writes to that
 `Store` again. `control` gives `start` everything it needs:
 
@@ -342,60 +403,7 @@ await cfg;
 await cfg.close();
 ```
 
-### Nested groups
-
-A shape property can be a plain object — it's an implicit nested group, sharing the enclosing
-`create()` call's own `sources`:
-
-```ts
-import { create, numeric, string } from "@jondotsoy/configs";
-import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
-
-// SERVER_PORT=3000 SERVER_HOST=localhost
-const cfg = await create(
-  {
-    server: {
-      port: numeric({ summary: "HTTP port", default: 3000 }),
-      host: string({ summary: "bind host", default: "localhost" }),
-    },
-  },
-  { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
-);
-
-cfg.server.port.get();
-// 3000
-```
-
-A shape property can also be **another, separate `create()` call** — with its own `sources`,
-resolving completely independently of the tree it's embedded in:
-
-```ts
-import { create, numeric, string } from "@jondotsoy/configs";
-import { envSource } from "@jondotsoy/configs/sources/env";
-import { fetchSource } from "@jondotsoy/configs/sources/fetch";
-
-const database = create(
-  { host: string(), port: numeric({ default: 5432 }) },
-  { sources: [envSource({ prefix: "DATABASE_" })] },
-);
-
-const cfg = await create(
-  {
-    database,
-    features: { promoService: numeric({ default: 0 }) },
-  },
-  { sources: [fetchSource({ url: "https://example.com/features" })] },
-);
-
-// database's own DATABASE_HOST/DATABASE_PORT env vars — never features.js's response body
-cfg.database.host.get();
-```
-
-`await create(...)` on the outer call also waits for every embedded `create()`'s own sources to
-publish their first snapshot, same as its own. `isConfigsNode(value)` tells an embedded `create()`
-result apart from a plain nested object, if you ever need to check which one a shape entry is.
-
-### `key` — reading a field from an explicit path
+#### `key` — reading a field from an explicit path
 
 By default a field reads from its own position in the shape tree — `server.port`'s path is
 `["server", "port"]`. Set `key` (a string, or a `string[]` for a multi-segment path) to read from an
@@ -443,41 +451,7 @@ cfg.datasource.uri.get()?.hostname;
 // "localhost"
 ```
 
-### `load` — `create()` that defaults to `envSource()`
-
-`load(shape, options?)` is identical to `create(shape, options?)`, except its `options.sources`
-defaults to `[envSource()]` instead of `[]`. Reaching for env vars is common enough that
-`load(shape)` alone — no `options` at all — reads straight from `process.env`:
-
-```ts
-import { load, numeric } from "@jondotsoy/configs";
-
-// PORT=8080
-const cfg = await load({
-  server: {
-    port: numeric({ key: "PORT" }),
-  },
-});
-
-cfg.server.port.get();
-// 8080
-```
-
-Passing an explicit `sources` array overrides the `envSource()` default entirely — it isn't merged
-with it — so `load()` then behaves exactly like `create()`:
-
-```ts
-import { load, numeric } from "@jondotsoy/configs";
-import { fetchSource } from "@jondotsoy/configs/sources/fetch";
-
-const cfg = await load(
-  { promoService: numeric({ default: 0 }) },
-  { sources: [fetchSource({ url: "https://example.com/features" })] },
-);
-// same as create({ promoService: numeric({ default: 0 }) }, { sources: [fetchSource(...)] })
-```
-
-### TypeScript inference
+#### TypeScript inference
 
 Every field's type is derived from its descriptor literal — `numeric()` gives you a `number`,
 `shape({ schema: z.object(...) })` gives you whatever `schema.parse` returns — with no manual
@@ -536,7 +510,7 @@ A nested group (whether a plain object, or a separate `create()` call embedded i
 shape) infers the same way, recursively — `cfg.server.port.get()` is `number | null` unless
 `server`'s `port` has a `default`.
 
-#### Shape fields
+##### Shape fields
 
 A `shape()` field's type isn't declared anywhere — it's extracted from whatever `schema` you pass,
 by inferring `schema.parse`'s return type. The same `default`-drives-`null` rule from above still
@@ -590,7 +564,12 @@ const metadata = cfg.metadata.get();
 //    ^? const metadata: unknown
 ```
 
-### `Source` — building a custom source
+### Sources
+
+A `Source` is where the raw config tree itself comes from — `create()`/`load()`'s `options.sources`
+array. This section covers every built-in `Source` and how to write your own from scratch.
+
+#### `Source` — building a custom source
 
 The building block behind `envSource`, `fetchSource`, `sseSource`, `fileSource`, `pullSource`,
 `shellSource`, and `literalSource`. It takes an
@@ -637,7 +616,7 @@ const source = new Source<{ port?: number; host?: string }>({
 // published: { port: 3000, host: "x" }
 ```
 
-### `envSource` — environment variables
+#### `envSource` — environment variables
 
 Reads `process.env` (or any object you pass as `env`) into the config tree. `mapKey` decides how
 each key maps to a path; the default is the identity mapping, `"FOO_TAR" => ["FOO_TAR"]`.
@@ -695,7 +674,7 @@ const source = envSource({
 });
 ```
 
-### `fetchSource` — a JSON endpoint over HTTP
+#### `fetchSource` — a JSON endpoint over HTTP
 
 Fetches a JSON snapshot from `url` (with `method` and `headers`, if needed). Only JSON is
 supported — a non-JSON `Content-Type` still gets a fallback parse attempt. `attempts` retries the
@@ -794,7 +773,7 @@ const source = fetchSource<{ port: number }>({
 });
 ```
 
-### `sseSource` — live updates over Server-Sent Events
+#### `sseSource` — live updates over Server-Sent Events
 
 Connects to an SSE endpoint (`url`, `method`, `headers`). Every message tries to parse as JSON and,
 if it's a plain object, is applied as a **patch** on top of what was already received — fields add
@@ -863,7 +842,7 @@ Opening the source waits for the first message (so the `Store` you get back alre
 not `null`), then keeps the connection alive in the background, applying further messages as
 patches until the resource closes the stream.
 
-### `fileSource` — a local `.json` or `.env` file
+#### `fileSource` — a local `.json` or `.env` file
 
 Reads a config tree from `path`, parsed by its extension: `.json` or `.env` (matched by extension,
 or by the bare `.env` filename itself — a `.env` file always parses to a flat string map, one
@@ -950,7 +929,7 @@ const source = fileSource<Record<string, unknown>>("./config.json", {
 });
 ```
 
-### `pullSource` — calling a function on an interval
+#### `pullSource` — calling a function on an interval
 
 Calls `pull` and publishes whatever it returns as the next snapshot — once immediately, then again
 every `interval` milliseconds until the `Source` is closed. `pull` can be sync or async, so it's a
@@ -977,7 +956,7 @@ const source = pullSource<{ port: number }>({
 });
 ```
 
-### `shellSource` — running a command
+#### `shellSource` — running a command
 
 Runs `args` as a child process (via `node:child_process`'s `spawn`) and publishes its parsed stdout as the next
 snapshot — handy for pulling config out of a CLI you already trust, like `gh auth token` or a
@@ -1032,7 +1011,7 @@ const source = shellSource<string>(["git", "rev-parse", "HEAD"], {
 });
 ```
 
-### `literalSource` — a static value
+#### `literalSource` — a static value
 
 Publishes a plain, already-in-hand value as a snapshot immediately, then closes. No I/O, no
 options — just wraps `value` in a `Source` so it can sit in a `sources` array alongside the rest.
@@ -1058,6 +1037,67 @@ const cfg = await create(
     ],
   },
 );
+```
+
+#### `load` — `create()` that defaults to `envSource()`
+
+`load(shape, options?)` is identical to `create(shape, options?)`, except its `options.sources`
+defaults to `[envSource()]` instead of `[]`. Reaching for env vars is common enough that
+`load(shape)` alone — no `options` at all — reads straight from `process.env`:
+
+```ts
+import { load, numeric } from "@jondotsoy/configs";
+
+// PORT=8080
+const cfg = await load({
+  server: {
+    port: numeric({ key: "PORT" }),
+  },
+});
+
+cfg.server.port.get();
+// 8080
+```
+
+Passing an explicit `sources` array overrides the `envSource()` default entirely — it isn't merged
+with it — so `load()` then behaves exactly like `create()`:
+
+```ts
+import { load, numeric } from "@jondotsoy/configs";
+import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+
+const cfg = await load(
+  { promoService: numeric({ default: 0 }) },
+  { sources: [fetchSource({ url: "https://example.com/features" })] },
+);
+// same as create({ promoService: numeric({ default: 0 }) }, { sources: [fetchSource(...)] })
+```
+
+#### Closing a live source
+
+`create(...)`'s return value has no `close()` of its own — it doesn't retain the `Source`
+instances you pass in beyond opening them and feeding their values into the tree. Keep a
+reference to a `Source` you'll need to close later (e.g. `sseSource`, to abort its live
+connection instead of leaving it open in the background) and call its own `.close()` directly:
+
+```ts
+import { create, numeric } from "@jondotsoy/configs";
+import { sseSource } from "@jondotsoy/configs/sources/sse";
+
+const source = sseSource({ url: "https://config-service.internal/app/events" });
+const serverConfigs = await create({ port: numeric() }, { sources: [source] });
+
+// ... later, e.g. on shutdown
+await source.close();
+```
+
+With several sources, close each one you opened — `Promise.all` if they can close concurrently:
+
+```ts
+const sources = [envSource(), sseSource({ url: "https://config-service.internal/app/events" })];
+const cfg = await create({ port: numeric() }, { sources });
+
+await Promise.all(sources.map((source) => source.close()));
 ```
 
 ### Reacting to changes — restarting a periodic task
@@ -1117,33 +1157,6 @@ function App() {
 
   return bannerIsActive ? <Banner /> : null;
 }
-```
-
-### Closing a live source
-
-`create(...)`'s return value has no `close()` of its own — it doesn't retain the `Source`
-instances you pass in beyond opening them and feeding their values into the tree. Keep a
-reference to a `Source` you'll need to close later (e.g. `sseSource`, to abort its live
-connection instead of leaving it open in the background) and call its own `.close()` directly:
-
-```ts
-import { create, numeric } from "@jondotsoy/configs";
-import { sseSource } from "@jondotsoy/configs/sources/sse";
-
-const source = sseSource({ url: "https://config-service.internal/app/events" });
-const serverConfigs = await create({ port: numeric() }, { sources: [source] });
-
-// ... later, e.g. on shutdown
-await source.close();
-```
-
-With several sources, close each one you opened — `Promise.all` if they can close concurrently:
-
-```ts
-const sources = [envSource(), sseSource({ url: "https://config-service.internal/app/events" })];
-const cfg = await create({ port: numeric() }, { sources });
-
-await Promise.all(sources.map((source) => source.close()));
 ```
 
 ## Documentation
