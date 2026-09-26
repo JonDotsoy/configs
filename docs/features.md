@@ -73,13 +73,15 @@ El punto de entrada público (`src/config-node.ts`, re-exportado desde
   lo que `start` necesite). `start` es **la única** fuente de actualización
   del campo — no hay ningún comportamiento por defecto que lo haga
   reactivo: si nunca vuelve a llamar `control.set()` (ni escucha
-  `control.rawStore`), el campo queda fijo para siempre. Todo builder
-  integrado (`string()`, `numeric()`, ...) usa `startFromParser(parse,
-  defaultValue)` (también exportada) para su propio `start` — llama
-  `control.set()` una vez de forma síncrona (con `parse(control.rawStore
-  .get())`, cayendo a `defaultValue` si no hay valor) y de nuevo en cada
+  `control.rawStore`), el campo queda fijo para siempre. No hay ningún
+  helper compartido para esto — cada builder integrado (`string()`,
+  `numeric()`, `boolean()`, `url()`, `choice()`, `shape()`, y `file()` en
+  `node.ts`) escribe su propio `start`: llama `control.set()` una vez de
+  forma síncrona (con su propio parser contra `control.rawStore.get()`,
+  cayendo a `options.default` si no hay valor) y de nuevo en cada
   `control.rawStore.listen()`; cualquier `Descriptor` hecho a mano puede
-  reusarla para tener el mismo comportamiento "vivo". También expone
+  escribir la misma forma para tener el mismo comportamiento "vivo".
+  También expone
   `.close()` (siempre presente, no-op si el constructor no dio `close`)
   que `create()` llama una vez por campo desde el `.close()` del nodo.
   Extensible a mano: `new Descriptor({ type, options, start, close? })`,

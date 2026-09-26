@@ -226,15 +226,15 @@ type accepts) plus whatever else `start` wants to read (a `default`, ...).
 **`start` is the only place a field's value ever comes from — there's no default reactivity to fall
 back on.** A `start` that calls `control.set()` once and never touches `control.rawStore` again
 leaves the field at that one value forever, even the source's very first update never reaches it
-(see [Fase 1 en `docs/develop/live-cicle.md`](./docs/develop/live-cicle.md) for exactly why). Every
-built-in field type gets its reactivity from `startFromParser(parse, defaultValue)` (also
-exported) — it builds a `start` that calls `control.set()` once synchronously (running `parse`
-against `control.rawStore.get()`, falling back to `defaultValue` when raw is missing) and then
-calls it again on every `control.rawStore.listen()` update. Pass your own parser straight through
-it and you get the same "live from the moment the source opens" behavior every built-in field has:
+(see [Fase 1 en `docs/develop/live-cicle.md`](./docs/develop/live-cicle.md) for exactly why). There's
+no shared helper for this — every built-in field type (`string()`/`numeric()`/...) writes its own
+`start` directly: call `control.set()` once synchronously (running its own parser against
+`control.rawStore.get()`, falling back to a default when raw is missing) and again on every
+`control.rawStore.listen()` update. Write the same shape yourself to get the same "live from the
+moment the source opens" behavior:
 
 ```ts
-import { Descriptor, startFromParser, create } from "@jondotsoy/configs";
+import { Descriptor, create } from "@jondotsoy/configs";
 import { envSource } from "@jondotsoy/configs/sources/env";
 
 function csv(options: { key?: string | string[]; default?: string[] } = {}) {
@@ -242,7 +242,16 @@ function csv(options: { key?: string | string[]; default?: string[] } = {}) {
     if (typeof raw !== "string") throw new Error(`Expected a comma-separated string at "${path.join(".")}"`);
     return raw.split(",").map((s) => s.trim());
   };
-  return new Descriptor({ type: "csv", options, start: startFromParser(parse, options.default) });
+  const compute = (raw: unknown, path: string[]): string[] => (raw == null ? (options.default ?? []) : parse(raw, path));
+
+  return new Descriptor({
+    type: "csv",
+    options,
+    start(control) {
+      control.set(compute(control.rawStore.get(), control.path));
+      control.rawStore.listen((raw) => control.set(compute(raw, control.path)));
+    },
+  });
 }
 
 // ALLOWED_ORIGINS=a.com, b.com, c.com
@@ -255,8 +264,8 @@ cfg.allowedOrigins.get();
 // ["a.com", "b.com", "c.com"]
 ```
 
-For anything `startFromParser` doesn't cover — an async lookup, a value derived from more than the
-raw snapshot, its own timer independent of the source — write `start(control)` by hand instead.
+For anything this shape doesn't cover — an async lookup, a value derived from more than the raw
+snapshot, its own timer independent of the source — write `start(control)` however it needs.
 Nothing in `create()` waits for it: `control.set()` can run synchronously (tick 0) and/or from an
 `async` continuation later, entirely on `start`'s own schedule:
 

@@ -80,8 +80,9 @@ export interface DescriptorControl<T> {
  * **only** place this field's value ever comes from: nothing updates it on its behalf. A `start`
  * that never calls `control.set()` again after its first call (or never sets up a
  * `control.rawStore.listen()`) leaves the field static forever; every built-in field type
- * (`string()`/`numeric()`/...) builds its own `start` with `startFromParser()` below, precisely so
- * it stays live. `close`, when given, releases whatever `start` set up (a connection, a timer,
+ * (`string()`/`numeric()`/...) writes its own `start`, seeding `control.set()` once and then again
+ * on every `control.rawStore.listen()` update, precisely so it stays live. `close`, when given,
+ * releases whatever `start` set up (a connection, a timer,
  * ...) — `create()`'s own `close()` (`./config-node.js`) calls every field's `close` once, same as
  * `Source.close()` does for its own `underlying.close`.
  */
@@ -143,49 +144,72 @@ export class Descriptor<T, O extends object = object> {
   }
 }
 
-/**
- * Builds a `start(control)` that keeps a field live purely by re-running `parse` on every
- * `rawStore` change — falling back to `defaultValue` when raw is missing or `null`. Every built-in
- * field builder (`string()`/`numeric()`/`boolean()`/`url()`/`choice()`/`shape()`, and `file()` from
- * `./node.js`) passes its own `parse` through this instead of writing the `control.set()`/
- * `control.rawStore.listen()` wiring by hand — a hand-written `Descriptor` can reuse it the exact
- * same way to get the same "live from the moment its source opens" behavior.
- */
-export function startFromParser<T>(
-  parse: (raw: unknown, path: string[]) => T,
-  defaultValue: T | undefined,
-): (control: DescriptorControl<T>) => void {
-  const compute = (raw: unknown, path: string[]): T =>
-    raw === undefined || raw === null ? (defaultValue !== undefined ? defaultValue : (null as T)) : parse(raw, path);
-
-  return (control) => {
-    control.set(compute(control.rawStore.get(), control.path));
-    control.rawStore.listen((raw) => control.set(compute(raw, control.path)));
-  };
-}
-
 /** Builds a `"string"` field descriptor, returned as a `Descriptor<string, O>`. */
 export function string<const O extends StringFieldOptions = {}>(options?: O): Descriptor<string, O> {
   const opts = (options ?? {}) as O;
-  return new Descriptor({ type: "string", options: opts, start: startFromParser(stringParser(opts), opts.default) });
+  const parse = stringParser(opts);
+  const compute = (raw: unknown, path: string[]): string =>
+    raw === undefined || raw === null ? (opts.default !== undefined ? opts.default : (null as unknown as string)) : parse(raw, path);
+
+  return new Descriptor({
+    type: "string",
+    options: opts,
+    start(control) {
+      control.set(compute(control.rawStore.get(), control.path));
+      control.rawStore.listen((raw) => control.set(compute(raw, control.path)));
+    },
+  });
 }
 
 /** Builds a `"number"` field descriptor, returned as a `Descriptor<number, O>`. */
 export function numeric<const O extends NumberFieldOptions = {}>(options?: O): Descriptor<number, O> {
   const opts = (options ?? {}) as O;
-  return new Descriptor({ type: "number", options: opts, start: startFromParser(numberParser(opts), opts.default) });
+  const parse = numberParser(opts);
+  const compute = (raw: unknown, path: string[]): number =>
+    raw === undefined || raw === null ? (opts.default !== undefined ? opts.default : (null as unknown as number)) : parse(raw, path);
+
+  return new Descriptor({
+    type: "number",
+    options: opts,
+    start(control) {
+      control.set(compute(control.rawStore.get(), control.path));
+      control.rawStore.listen((raw) => control.set(compute(raw, control.path)));
+    },
+  });
 }
 
 /** Builds a `"boolean"` field descriptor, returned as a `Descriptor<boolean, O>`. */
 export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): Descriptor<boolean, O> {
   const opts = (options ?? {}) as O;
-  return new Descriptor({ type: "boolean", options: opts, start: startFromParser(booleanParser(opts), opts.default) });
+  const parse = booleanParser(opts);
+  const compute = (raw: unknown, path: string[]): boolean =>
+    raw === undefined || raw === null ? (opts.default !== undefined ? opts.default : (null as unknown as boolean)) : parse(raw, path);
+
+  return new Descriptor({
+    type: "boolean",
+    options: opts,
+    start(control) {
+      control.set(compute(control.rawStore.get(), control.path));
+      control.rawStore.listen((raw) => control.set(compute(raw, control.path)));
+    },
+  });
 }
 
 /** Builds a `"url"` field descriptor, returned as a `Descriptor<URL, O>`. Parses (and validates) a string value into a `URL` instance. */
 export function url<const O extends UrlFieldOptions = {}>(options?: O): Descriptor<URL, O> {
   const opts = (options ?? {}) as O;
-  return new Descriptor({ type: "url", options: opts, start: startFromParser(urlParser(opts), opts.default) });
+  const parse = urlParser(opts);
+  const compute = (raw: unknown, path: string[]): URL =>
+    raw === undefined || raw === null ? (opts.default !== undefined ? opts.default : (null as unknown as URL)) : parse(raw, path);
+
+  return new Descriptor({
+    type: "url",
+    options: opts,
+    start(control) {
+      control.set(compute(control.rawStore.get(), control.path));
+      control.rawStore.listen((raw) => control.set(compute(raw, control.path)));
+    },
+  });
 }
 
 /**
@@ -205,10 +229,17 @@ export function shape<const O extends ShapeFieldOptions = {}>(
 ): Descriptor<InferShapeOptionValue<O>, O> {
   const opts = (options ?? {}) as O;
   const parse = shapeParser<InferShapeOptionValue<O>>(opts as { schema?: Parseable<InferShapeOptionValue<O>>; required?: boolean }, "shape");
+  const defaultValue = (opts as { default?: InferShapeOptionValue<O> }).default;
+  const compute = (raw: unknown, path: string[]): InferShapeOptionValue<O> =>
+    raw === undefined || raw === null ? (defaultValue !== undefined ? defaultValue : (null as unknown as InferShapeOptionValue<O>)) : parse(raw, path);
+
   return new Descriptor({
     type: "shape",
     options: opts,
-    start: startFromParser(parse, (opts as { default?: InferShapeOptionValue<O> }).default),
+    start(control) {
+      control.set(compute(control.rawStore.get(), control.path));
+      control.rawStore.listen((raw) => control.set(compute(raw, control.path)));
+    },
   });
 }
 
@@ -222,7 +253,22 @@ export function shape<const O extends ShapeFieldOptions = {}>(
 export function choice<const O extends ChoiceFieldOptions<string>>(
   options: O,
 ): Descriptor<O["options"][number], O> {
-  return new Descriptor({ type: "choice", options, start: startFromParser(choiceParser(options), options.default) });
+  const parse = choiceParser(options);
+  const compute = (raw: unknown, path: string[]): O["options"][number] =>
+    raw === undefined || raw === null
+      ? options.default !== undefined
+        ? options.default
+        : (null as unknown as O["options"][number])
+      : parse(raw, path);
+
+  return new Descriptor({
+    type: "choice",
+    options,
+    start(control) {
+      control.set(compute(control.rawStore.get(), control.path));
+      control.rawStore.listen((raw) => control.set(compute(raw, control.path)));
+    },
+  });
 }
 
 /**

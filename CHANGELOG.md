@@ -54,10 +54,12 @@ synchronously (before `create()` even returns) or any number of times later (a
 `control.rawStore.listen()` callback, a `setTimeout`, a resolved `fetch()`, ...). There's no
 implicit reactivity: a `start` that calls `control.set()` once and never listens to
 `control.rawStore` leaves the field at that value forever, even the source's very first update
-never reaches it. Every built-in field type (`string()`/`numeric()`/...) gets its own reactivity
-from the newly-exported `startFromParser(parse, defaultValue)`, which builds exactly that
-seed-once-then-listen `start` from a plain `(raw, path) => T` parser — any hand-written `Descriptor`
-can reuse it the same way. See the README's "Writing a custom `Descriptor`" section.
+never reaches it. There's no shared helper for this — every built-in field type
+(`string()`/`numeric()`/`boolean()`/`url()`/`choice()`/`shape()`, and `file()` from `./node.js`)
+writes its own `start`, seeding `control.set()` once synchronously against its own parser (falling
+back to `options.default` when raw is missing) and again on every `control.rawStore.listen()`
+update — a hand-written `Descriptor` can write the same shape to get the same "live from the moment
+the source opens" behavior. See the README's "Writing a custom `Descriptor`" section.
 
 ### Changed — BREAKING: new `create()`/`load()` engine, legacy engine removed
 

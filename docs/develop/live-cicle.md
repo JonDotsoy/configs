@@ -42,7 +42,6 @@ empezar a leer `.get()`.
 | `keyStore(rawSources, path)` | `config-node.ts` | Por cada campo: mira `path` en cada `rawSources[i]` **en orden de prioridad** (el primero que tenga el valor gana) y expone eso como un `Store<unknown>` — el "raw" del campo. |
 | `Descriptor<T>` | `config-descriptor.ts` | Un único hook, `start(control): void \| Promise<void>` — **exactamente el mismo contrato que `Source`'s propio `start(control)`** — más un `close(): Promise<void>` opcional. |
 | `DescriptorControl<T>` | `config-descriptor.ts` | Lo que `start` recibe: `.rawStore` (el raw en vivo de ese campo, solo lectura), `.path` (para mensajes de error) y `.set(value)` (publica el siguiente valor del campo — síncrono en tick 0, o cualquier cantidad de veces después). |
-| `startFromParser(parse, defaultValue)` | `config-descriptor.ts` (exportado) | El `start` que usan todos los builders integrados: llama `control.set()` una vez con `parse(control.rawStore.get())` (o `defaultValue`), y de nuevo en cada `control.rawStore.listen()`. Cualquier `Descriptor` hecho a mano puede reusarlo. |
 | `FieldStore` | `config-node.ts` (`buildField`) | El `Store<T>` que el consumidor lee vía `cfg.campo.get()`. Lo crea y posee `buildField()` — el `Descriptor` nunca guarda un `Store` propio; solo escribe en él a través de `control.set()`. |
 | `ConfigsNodePending<T>` | `config-node.ts` | Lo que `create()` devuelve: el nodo ya usable + `.then()` + `.close()`. |
 
@@ -78,9 +77,9 @@ publicado nada todavía:
 4. El resultado (`node`) ya es un objeto plano con un `Store` real por cada
    campo hoja — **usable de inmediato**, sin `await` ni `Proxy`. Si el
    `start` de un campo llamó `control.set(...)` síncronamente (como hace
-   `startFromParser`, típicamente con `options.default` ya que ninguna
-   fuente ha abierto aún), ese es su valor desde ya; si no llamó nada
-   todavía, el campo lee `null` hasta que lo haga.
+   cada builder integrado, típicamente con `options.default` ya que
+   ninguna fuente ha abierto aún), ese es su valor desde ya; si no llamó
+   nada todavía, el campo lee `null` hasta que lo haga.
 
 ## Fase 2 — Apertura de las fuentes (`ownReady`)
 
@@ -128,8 +127,8 @@ reactividad de cada campo es enteramente cosa de lo que su propio
 - Si `start` no hizo ninguna de las dos cosas — llamó `control.set()` una
   vez y ya — el campo queda fijo en ese valor para siempre.
 
-La cadena típica (cuando `start` sí escucha `rawStore`, como hace
-`startFromParser`) es:
+La cadena típica (cuando `start` sí escucha `rawStore`, como hace cada
+builder integrado) es:
 
 ```
 Source.control.set(value)
@@ -275,8 +274,8 @@ t=40ms   el setTimeout propio de start() dispara → control.set(4000) → value
 ## Errores durante el ciclo de vida
 
 - Un `start(control)` que **lanza** de forma síncrona, dentro de la propia
-  llamada en la Fase 1 (p. ej. `options.default` es inválido y el `parse`
-  de `startFromParser` lo rechaza ahí mismo), hace que la excepción salga
+  llamada en la Fase 1 (p. ej. `options.default` es inválido y el propio
+  `parse` de ese builder lo rechaza ahí mismo), hace que la excepción salga
   síncronamente de `create()` mismo — en la práctica esto es raro, ya que
   `control.rawStore.get()` casi siempre es `null` en ese instante (ninguna
   fuente ha abierto) y el `parse` no llega a correr contra un valor real.

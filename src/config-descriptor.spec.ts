@@ -5,7 +5,6 @@ import {
   Descriptor,
   isConfigDescriptor,
   numeric,
-  startFromParser,
   shape,
   string,
   url,
@@ -122,53 +121,31 @@ describe("shape() field builder", () => {
   });
 });
 
-describe("startFromParser()", () => {
-  test("falls back to the given default when raw is undefined/null, without running parse", () => {
-    const parse = (raw: unknown): number => Number(raw);
-    const start = startFromParser(parse, 3000);
-
-    const values: number[] = [];
-    start({ rawStore: new Store<unknown>(undefined), path: [], set: (v) => values.push(v) });
-    start({ rawStore: new Store<unknown>(null), path: [], set: (v) => values.push(v) });
-
-    expect(values).toEqual([3000, 3000]);
+describe("every built-in field builder's own start(): default fallback and liveness (numeric() as a representative)", () => {
+  test("falls back to options.default when raw is undefined/null, without running the parser", () => {
+    expect(runStart(numeric({ default: 3000 }), undefined).last()).toBe(3000);
+    expect(runStart(numeric({ default: 3000 }), null).last()).toBe(3000);
   });
 
-  test("resolves to null when raw is missing and no default was given", () => {
-    const start = startFromParser((raw: unknown) => Number(raw), undefined);
-
-    const values: (number | null)[] = [];
-    start({ rawStore: new Store<unknown>(undefined), path: [], set: (v) => values.push(v) });
-
-    expect(values).toEqual([null]);
+  test("resolves to null when raw is missing and there is no default", () => {
+    expect(runStart(numeric(), undefined).last()).toBeNull();
   });
 
-  test("runs parse against raw synchronously, right when start() is called", () => {
-    const start = startFromParser((raw: unknown, path: string[]) => {
-      if (typeof raw !== "string" || !/^\w+$/.test(raw)) throw new ConfigError(`bad value at ${path.join(".")}`);
-      return raw;
-    }, undefined);
-
-    const values: string[] = [];
-    start({ rawStore: new Store<unknown>("abc"), path: [], set: (v) => values.push(v) });
-    expect(values).toEqual(["abc"]);
-
-    expect(() => start({ rawStore: new Store<unknown>("not valid"), path: [], set: () => {} })).toThrow(ConfigError);
+  test("runs raw through the field's own parser synchronously, right when start() is called", () => {
+    expect(runStart(numeric(), "8080").last()).toBe(8080);
+    expect(runStart(string({ pattern: /^\w+$/ }), "abc").last()).toBe("abc");
+    expect(() => runStart(string({ pattern: /^\w+$/ }), "not valid")).toThrow(ConfigError);
   });
 
-  test("stays live: re-runs parse (calling control.set again) on every rawStore change", () => {
-    const start = startFromParser((raw: unknown) => Number(raw), undefined);
-    const rawStore = new Store<unknown>("8080");
-    const values: (number | null)[] = [];
-
-    start({ rawStore, path: [], set: (v) => values.push(v) });
+  test("stays live: re-runs the parser (calling control.set again) on every rawStore change", () => {
+    const { rawStore, values } = runStart(numeric(), "8080");
     expect(values).toEqual([8080]);
 
     rawStore.set("9090");
     expect(values).toEqual([8080, 9090]);
 
     rawStore.set(undefined);
-    expect(values).toEqual([8080, 9090, null]);
+    expect(values as (number | null)[]).toEqual([8080, 9090, null]);
   });
 });
 
@@ -181,17 +158,6 @@ describe("Descriptor.start()", () => {
     });
 
     expect(runStart(descriptor, "abc").values).toEqual(["abc"]);
-  });
-
-  test("numeric()'s own start (built with startFromParser) stays live off rawStore changes", () => {
-    const rawStore = new Store<unknown>("8080");
-    const values: number[] = [];
-    numeric().start({ rawStore, path: [], set: (v) => values.push(v) });
-
-    expect(values).toEqual([8080]);
-
-    rawStore.set("9090");
-    expect(values).toEqual([8080, 9090]);
   });
 
   test("start can call control.set() more than once synchronously, at tick 0", () => {
