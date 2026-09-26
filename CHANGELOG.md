@@ -7,13 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Deprecated — `CONFIG_DESCRIPTOR_TAG`
+### Removed — `CONFIG_DESCRIPTOR_TAG`
 
-Still required internally (`isConfigDescriptor()`/`create()` still check for it, and every real
-`Descriptor` still carries it), but writing the whole hand-written descriptor contract yourself
-(this tag plus a `.start()`) is no longer the recommended extension point — construct `new
-Descriptor({ type, options, start, reduce?, close? })` instead, which already carries the tag for
-you. See the README's "Writing a custom `Descriptor`" section.
+Removed entirely (`src/utils/config-descriptor-tag.ts` is gone), along with the `[symbol]: true`
+hand-written contract it enabled. `isConfigDescriptor()` recognizes a `Descriptor` structurally now
+— any object with callable `.start()` and `.reduce()` (no tag, no `instanceof` check needed) — so
+every real `Descriptor` still gets recognized across separately-bundled entry points, and a
+hand-written descriptor no longer needs to import anything to be one. A hand-written object with
+only `.start()` (no `.reduce()`) is no longer recognized as a descriptor at all — `create()` treats
+it as a nested group instead. See the README's "Writing a custom `Descriptor`" section.
 
 ### Added — `Descriptor`/`create()` cleanup via `close()`
 
@@ -45,10 +47,11 @@ from then on comes exclusively from `.reduce(rawStore, path)`, which returns `Pr
 its promise is folded into `create()`'s own readiness, and the `Store<T>` it resolves to becomes
 the field's live value going forward — `.start()` is never called again. Omitting `reduce` gets a
 default one for free, built from `start` itself (re-run on every raw change), so built-in fields
-stay reactive with no extra code. The hand-written `CONFIG_DESCRIPTOR_TAG` contract changes to
-match: a descriptor written by hand now needs a callable `.start()` (not `.reduce()`) to be
-recognized by `isConfigDescriptor()` — but without its own `.reduce()` too, it only ever gets that
-one `start()`-seeded value, never a live update. See the README's "Writing a custom `Descriptor`"
+stay reactive with no extra code. The hand-written extension contract changes to match: a
+descriptor written by hand now needs callable `.start()` and `.reduce()` (structurally recognized
+— see the "Removed `CONFIG_DESCRIPTOR_TAG`" entry above) to be recognized by
+`isConfigDescriptor()`, and without its own `.reduce()`, it only ever gets that one
+`start()`-seeded value, never a live update. See the README's "Writing a custom `Descriptor`"
 section.
 
 ### Changed — BREAKING: new `create()`/`load()` engine, legacy engine removed

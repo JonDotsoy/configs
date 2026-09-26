@@ -1,18 +1,6 @@
-import { CONFIG_DESCRIPTOR_TAG } from "./utils/config-descriptor-tag.js";
 import { Store } from "./utils/store.js";
 import { tSync } from "./utils/t.js";
 import { ConfigError } from "./errors.js";
-
-/**
- * Re-exported for anyone writing their own `Descriptor`-shaped object by hand instead of
- * constructing a real `new Descriptor({ type, options, start, reduce?, close? })` — this is the
- * one marker `isConfigDescriptor()` requires alongside a callable `.start()`, set to `true`. A
- * `Symbol.for()` registry symbol, not a plain `Symbol()` — see its own module doc for why.
- *
- * @deprecated Prefer `new Descriptor(...)` (see the README's "Writing a custom `Descriptor`"
- * section) — it already carries this tag for you, so most code never needs to import it directly.
- */
-export { CONFIG_DESCRIPTOR_TAG } from "./utils/config-descriptor-tag.js";
 
 /**
  * The built-in labels get their own literals (kept for autocomplete/documentation); the trailing
@@ -98,9 +86,6 @@ export interface DescriptorUnderlying<T, O extends object = object> {
 
 /** What `string()`/`numeric()`/`boolean()` build. See `DescriptorUnderlying` for the constructor shape. */
 export class Descriptor<T, O extends object = object> {
-  /** @internal Tags instances for `isConfigDescriptor` — see `CONFIG_DESCRIPTOR_TAG`'s doc. */
-  readonly [CONFIG_DESCRIPTOR_TAG] = true;
-
   readonly type: FieldType;
   readonly options: O;
   private readonly startFn: Parser<T>;
@@ -234,16 +219,20 @@ export function choice<const O extends ChoiceFieldOptions<string>>(
 }
 
 /**
- * A genuine `Descriptor` needs both markers to count as one: the `CONFIG_DESCRIPTOR_TAG`
- * symbol alone doesn't prove the rest of the contract (`.key`, `.start()`) is actually there —
- * every builder (`string()`/`numeric()`/`boolean()`/`url()`/`shape()`, and `file()` from
- * `./node.js`) satisfies both by construction, since they all return a real `Descriptor`
- * instance, but this check doesn't take that on faith.
+ * Structural, not `instanceof Descriptor`: `bun build` bundles each public entry point (`.`,
+ * `./node`, ...) independently, so a `Descriptor` built by one entry point's own bundled copy of
+ * this module (e.g. `file()` from `./node`) would fail an `instanceof` check against another entry
+ * point's separately-bundled copy of the same class (e.g. `configs.ts`'s own
+ * `isConfigDescriptor`). Checking for the two methods every real `Descriptor` always has —
+ * `.start()` and `.reduce()` — survives that duplication, the same way the deprecated, now-removed
+ * `CONFIG_DESCRIPTOR_TAG` registry symbol used to. `.close()` is deliberately not required here:
+ * it's optional even on a hand-written descriptor (`create()`'s own `close()`, in
+ * `./config-node.js`, only calls it when present).
  */
 export function isConfigDescriptor(node: unknown): node is Descriptor<unknown, object> {
   if (typeof node !== "object" || node === null) return false;
-  if ((node as Record<symbol, unknown>)[CONFIG_DESCRIPTOR_TAG] !== true) return false;
-  return typeof (node as { start?: unknown }).start === "function";
+  const candidate = node as { start?: unknown; reduce?: unknown };
+  return typeof candidate.start === "function" && typeof candidate.reduce === "function";
 }
 
 function typeMismatch(type: FieldType, value: unknown, path: string[]): never {

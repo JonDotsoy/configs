@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   boolean,
   choice,
-  CONFIG_DESCRIPTOR_TAG,
   Descriptor,
   isConfigDescriptor,
   numeric,
@@ -188,16 +187,18 @@ describe("isConfigDescriptor()", () => {
     expect(isConfigDescriptor(new Descriptor({ type: "csv", options: {}, start: (raw) => String(raw).split(",") }))).toBe(true);
   });
 
-  test("recognizes a hand-written object carrying the tag plus a callable start()", () => {
+  test("recognizes a hand-written object exposing callable start()/reduce() — no tag needed, close() is optional", () => {
     const handWritten = {
-      [CONFIG_DESCRIPTOR_TAG]: true as const,
       start: (raw: unknown) => String(raw),
+      reduce: async (rawStore: Store<unknown>) => new Store(String(rawStore.get())),
     };
     expect(isConfigDescriptor(handWritten)).toBe(true);
+    expect(isConfigDescriptor({ ...handWritten, close: async () => {} })).toBe(true);
   });
 
-  test("rejects an object carrying the tag but no start()", () => {
-    expect(isConfigDescriptor({ [CONFIG_DESCRIPTOR_TAG]: true })).toBe(false);
+  test("rejects an object missing reduce()", () => {
+    expect(isConfigDescriptor({ start: (raw: unknown) => raw })).toBe(false);
+    expect(isConfigDescriptor({ start: (raw: unknown) => raw, close: async () => {} })).toBe(false);
   });
 
   test("rejects a plain shape entry (nested group, or an unrelated object)", () => {
@@ -213,14 +214,18 @@ describe("isConfigDescriptor()", () => {
   });
 });
 
-describe("writing a custom Descriptor by hand (CONFIG_DESCRIPTOR_TAG contract)", () => {
-  test("a hand-written descriptor (tag + key + start()) behaves like a real one", () => {
+describe("writing a custom Descriptor by hand (structural start()/reduce() contract)", () => {
+  test("a hand-written descriptor (key + start() + reduce()) behaves like a real one", () => {
     function csv(options: { key?: string | string[] } = {}) {
+      const parse = (raw: unknown): string[] => (typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
+
       return {
-        [CONFIG_DESCRIPTOR_TAG]: true as const,
         key: options.key,
-        start(raw: unknown): string[] {
-          return typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : [];
+        start: parse,
+        async reduce(rawStore: Store<unknown>) {
+          const store = new Store(parse(rawStore.get()));
+          rawStore.listen((raw) => store.set(parse(raw)));
+          return store;
         },
       };
     }

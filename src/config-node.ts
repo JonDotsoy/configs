@@ -3,9 +3,10 @@ import type { Source } from "./sources/source.js";
 import { Store } from "./utils/store.js";
 
 /**
- * `Symbol.for` (not a plain `Symbol()`) for the same reason `CONFIG_DESCRIPTOR_TAG` uses it (see
- * `./utils/config-descriptor-tag.ts`): `bun build` bundles each public entry point independently,
- * so a node built by one bundled copy of this module must still be recognized by another's.
+ * `Symbol.for` (not a plain `Symbol()`): `bun build` bundles each public entry point
+ * independently, so a node built by one bundled copy of this module must still be recognized by
+ * another's — a registry symbol survives that duplication (same reason `isConfigDescriptor()`, in
+ * `./config-descriptor.js`, checks structurally instead of `instanceof Descriptor`).
  */
 const CONFIGS_NODE_TAG = Symbol.for("@jondotsoy/configs/ConfigsNode");
 
@@ -111,9 +112,10 @@ function resolveFieldPath(descriptor: Descriptor<unknown, object>, entryPath: st
  * created for it, and `start()` is never called again after this. Every live update from then on
  * comes from `descriptor.reduce()`: its promise is folded into `embeddedReady` (so `create()`'s
  * own readiness waits on it, same as a source's `open()`), and the `Store<T>` it resolves to takes
- * over as this field's value, staying live off its own updates. A hand-written descriptor with no
- * `.reduce()` at all (the `CONFIG_DESCRIPTOR_TAG` contract only requires `.start()`) just keeps
- * its one seeded value — real `Descriptor` instances always have a `.reduce()` (see its own doc).
+ * over as this field's value, staying live off its own updates. If that resolved `Store` doesn't
+ * itself stay live off `rawStore` (by `.listen()`ing to it, same as `Descriptor`'s own default
+ * `reduce` does), the field is stuck at whatever value `reduce` resolved with — this is the only
+ * place a live update can come from, `start()` is never revisited.
  */
 function buildField(
   descriptor: Descriptor<unknown, object>,

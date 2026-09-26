@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, spyOn, test } from "bun:test";
 import { create, isConfigsNode, type ConfigsNode, type ConfigsNodePending, type ConfigsShape, type Options } from "./config-node.ts";
-import { boolean, choice, CONFIG_DESCRIPTOR_TAG, Descriptor, numeric, shape, string, url } from "./config-descriptor.ts";
+import { boolean, choice, Descriptor, isConfigDescriptor, numeric, shape, string, url } from "./config-descriptor.ts";
 import { ConfigError } from "./errors.ts";
 import { envSource } from "./sources/env.ts";
 import { Source } from "./sources/source.ts";
@@ -504,8 +504,10 @@ describe("create — close()", () => {
 
   test("a hand-written descriptor with no close() doesn't break close()", async () => {
     const handWritten = {
-      [CONFIG_DESCRIPTOR_TAG]: true as const,
       start: (raw: unknown) => String(raw),
+      async reduce(rawStore: Store<unknown>) {
+        return new Store(String(rawStore.get()));
+      },
     };
 
     const cfg = create({ field: handWritten as any }, { sources: [testSource({ field: "abc" })] });
@@ -603,17 +605,16 @@ describe("create — every field builder resolves its raw value at runtime", () 
   });
 });
 
-describe("create — a hand-written custom Descriptor (CONFIG_DESCRIPTOR_TAG contract)", () => {
+describe("create — a hand-written custom Descriptor (structural start()/reduce() contract)", () => {
   // Cast to `Descriptor` since `ConfigsShape` is typed against the real class — the hand-written
-  // contract (tag + key? + start() + reduce()) is a runtime-only extension point, recognized
-  // structurally by `isConfigDescriptor()` but not by the shape's own static type. `reduce()` is
-  // what actually keeps the field live — `start()` alone only seeds its very first value, before
-  // any source has even opened.
+  // contract (key? + start() + reduce()) is a runtime-only extension point, recognized
+  // structurally by `isConfigDescriptor()` (no tag needed) but not by the shape's own static type.
+  // `reduce()` is what actually keeps the field live — `start()` alone only seeds its very first
+  // value, before any source has even opened.
   function csv(options: { key?: string | string[] } = {}): Descriptor<string[], { key?: string | string[] }> {
     const parse = (raw: unknown) => (typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
 
     return {
-      [CONFIG_DESCRIPTOR_TAG]: true as const,
       key: options.key,
       start(raw: unknown) {
         return parse(raw);
@@ -655,21 +656,33 @@ describe("create — a hand-written custom Descriptor (CONFIG_DESCRIPTOR_TAG con
     expect(cfg.allowedOrigins.get()).toEqual(["b.com", "c.com"]);
   });
 
-  test("without a reduce(), a hand-written descriptor only ever gets its one start()-seeded value — never a source's own value", async () => {
-    const startOnly = {
-      [CONFIG_DESCRIPTOR_TAG]: true as const,
+  test("an object with only start() (no reduce()) isn't a Descriptor at all — create() treats it as a nested group instead", () => {
+    const startOnly = { start: (raw: unknown) => String(raw) };
+
+    expect(isConfigDescriptor(startOnly)).toBe(false);
+  });
+
+  test("if reduce()'s own Store doesn't stay live off rawStore, the field is pinned at whatever it resolved with", async () => {
+    const pinned = {
       start(raw: unknown) {
         return typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : [];
       },
+      async reduce(rawStore: Store<unknown>) {
+        // Snapshots once and never listens — deliberately not live, unlike `csv()` above.
+        const raw = rawStore.get();
+        return new Store<string[]>(typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
+      },
     } as unknown as Descriptor<string[], object>;
 
-    const cfg = await create(
-      { allowedOrigins: startOnly },
-      { sources: [testSource({ allowedOrigins: "a.com, b.com" })] },
-    );
+    const { source, push } = liveTestSource({ allowedOrigins: "a.com" });
+    const cfg = await create({ allowedOrigins: pinned }, { sources: [source] });
 
-    // No source has opened yet at the moment `start()` runs, so it seeds `[]` — and, with no
-    // `reduce()` to pick up the source's later value, that's what the field is stuck at forever.
+    // `reduce()` ran (and snapshotted `rawStore`) before `source` had even opened, so it's stuck
+    // with the empty snapshot it saw then — it never listened, so it never sees anything later.
+    expect(cfg.allowedOrigins.get()).toEqual([]);
+
+    push({ allowedOrigins: "b.com, c.com" });
+
     expect(cfg.allowedOrigins.get()).toEqual([]);
   });
 });
