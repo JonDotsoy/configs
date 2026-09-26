@@ -723,7 +723,7 @@ describe("create — a hand-written custom Descriptor (structural start() contra
   // contract (key? + start()) is a runtime-only extension point, recognized structurally by
   // `isConfigDescriptor()` (no tag needed) but not by the shape's own static type. `start(control)`
   // is the only place this field's value ever comes from — same as `Source`'s own `start(control)`.
-  function csv(options: { key?: string | string[] } = {}): Descriptor<string[], { key?: string | string[] }> {
+  function csv(options: { key?: string | string[] } = {}): Descriptor<string[]> {
     const parse = (raw: unknown) => (typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
 
     return {
@@ -732,7 +732,7 @@ describe("create — a hand-written custom Descriptor (structural start() contra
         control.set(parse(control.rawStore.get()));
         control.rawStore.listen((raw) => control.set(parse(raw)));
       },
-    } as unknown as Descriptor<string[], { key?: string | string[] }>;
+    } as unknown as Descriptor<string[]>;
   }
 
   test("create() resolves a field backed by a hand-written descriptor, same as a built-in one", async () => {
@@ -775,7 +775,7 @@ describe("create — a hand-written custom Descriptor (structural start() contra
         const raw = control.rawStore.get();
         control.set(typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
       },
-    } as unknown as Descriptor<string[], object>;
+    } as unknown as Descriptor<string[]>;
 
     const { source, push } = liveTestSource({ allowedOrigins: "a.com" });
     const cfg = await create({ allowedOrigins: pinned }, { sources: [source] });

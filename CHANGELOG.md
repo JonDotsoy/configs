@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — `Descriptor<T, O>` is now `Descriptor<A, B>`
+
+`Descriptor`'s type parameters now directly encode a field's two type-level states instead of
+carrying the plain value type plus its raw `options`: `A` is what `.get()` actually returns right
+now (`T | null` without a `default`, `T` with one), `B` is the field's *resolved* type once it has
+a value (always `T`, regardless of `default`). `numeric()` returns `Descriptor<number | null,
+number>` on its own, or `Descriptor<number, number>` with a `default` — previously this was always
+`Descriptor<number, O>`, with the `T | null` vs. `T` distinction computed separately, downstream,
+by `create()`'s own type inference (`O extends { default: any } ? T : T | null`). That computation
+now lives on `Descriptor` itself, via a new exported `WithDefault<O, T>` type (`T` when `O` has a
+`default`, `T | null` otherwise) that every built-in builder plugs into its own `A`. `create()`'s
+inference simplifies to reading `A` straight off the field's own `Descriptor`. `Descriptor`'s
+constructor and `.start(control)` shape are unaffected — this is a type-only change; the second
+type argument, when given explicitly (e.g. a hand-written `Descriptor<T, O>` from before this
+change), now means something different (`B` instead of `O`), so update any such usage to
+`Descriptor<T>` (`B` defaults to `A`) unless it specifically needs `B`. See the README's
+"TypeScript inference" and "Writing a custom `Descriptor`" sections.
+
 ### Removed — the `Parser<T>` type
 
 No longer exported from the package root or `config-descriptor.ts`. `DescriptorUnderlying.start`

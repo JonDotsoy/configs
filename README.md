@@ -299,10 +299,13 @@ A basic custom descriptor is just that shape, filled in — `parse` and `default
 internally:
 
 ```ts
-import { Descriptor, create } from "@jondotsoy/configs";
+import { Descriptor, create, type WithDefault } from "@jondotsoy/configs";
 import { envSource } from "@jondotsoy/configs/sources/env";
 
-function port(options: { key?: string | string[]; default?: number } = {}) {
+function port<const O extends { key?: string | string[]; default?: number } = {}>(
+  options?: O,
+): Descriptor<WithDefault<O, number>, number> {
+  const opts = (options ?? {}) as O;
   const parse = (raw: unknown, path: string[]): number => {
     const num = Number(raw);
     if (typeof raw !== "string" || raw.trim() === "" || Number.isNaN(num) || num <= 0) {
@@ -310,11 +313,11 @@ function port(options: { key?: string | string[]; default?: number } = {}) {
     }
     return num;
   };
-  const defaultValue = options.default !== undefined ? options.default : (null as unknown as number);
+  const defaultValue = opts.default !== undefined ? opts.default : (null as unknown as number);
 
-  return new Descriptor({
+  return new Descriptor<number, number>({
     type: "port",
-    options,
+    options: opts,
     start(control) {
       const raw = control.rawStore.get();
       control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
@@ -322,7 +325,7 @@ function port(options: { key?: string | string[]; default?: number } = {}) {
         control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
       });
     },
-  });
+  }) as Descriptor<WithDefault<O, number>, number>;
 }
 
 // PORT=3000
@@ -330,7 +333,15 @@ const cfg = await create({ port: port({ key: "PORT", default: 8080 }) }, { sourc
 
 cfg.port.get();
 // 3000
+// ^? Descriptor<WithDefault<O, number>, number> resolves cfg.port to Store<number> here (a
+// default was given) — omit it and cfg.port.get() would be typed number | null instead.
 ```
+
+`WithDefault<O, T>` (also exported from the package root) is the same helper every built-in
+builder uses to compute its own first type parameter: `T` when `O` has a `default`, `T | null`
+otherwise. A hand-written `Descriptor` doesn't have to use it — a fixed `Descriptor<number,
+number>` (no `WithDefault`) works too, it just always types `.get()` as `number`, never `number |
+null`, regardless of whether `options.default` was actually given.
 
 The same shape scales to a descriptor whose value isn't a single scalar — `csv()` below parses its
 raw string into a `string[]` instead of a `number`, but the `parse`/`defaultValue`/`start` pattern
@@ -467,6 +478,22 @@ const cfg2 = await create({ port: numeric({ default: 3000 }) }, { sources: [/* .
 const port2 = cfg2.port.get();
 //    ^? const port2: number
 ```
+
+This isn't something `create()` computes after the fact — `Descriptor` itself is generic over two
+type parameters, `Descriptor<A, B>`: `A` is what the field's `.get()` actually returns (`T | null`
+without a `default`, `T` with one), and `B` is its *resolved* type once it has a value — always
+`T`, regardless of `default`. `numeric()` returns `Descriptor<number | null, number>` on its own,
+or `Descriptor<number, number>` with a `default`:
+
+```ts
+import { numeric, type Descriptor } from "@jondotsoy/configs";
+
+const withoutDefault: Descriptor<number | null, number> = numeric();
+const withDefault: Descriptor<number, number> = numeric({ default: 3000 });
+```
+
+A hand-written `Descriptor` computes its own `A` the same way, via the exported `WithDefault<O, T>`
+helper — see [Writing a custom `Descriptor`](#writing-a-custom-descriptor) above.
 
 `required: true` does **not** narrow the type — it only escalates a runtime failure (a value that
 fails validation) into a thrown `ConfigError`. Data comes from sources this package doesn't

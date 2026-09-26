@@ -13,6 +13,7 @@ export type {
   ShapeFieldOptions,
   StringFieldOptions,
   UrlFieldOptions,
+  WithDefault,
 } from "./config-descriptor.js";
 export type { SourceControl, UnderlyingSource } from "./types/index.js";
 export type { ReadOnlyStore } from "./utils/store.js";

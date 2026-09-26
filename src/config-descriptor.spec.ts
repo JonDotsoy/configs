@@ -18,9 +18,9 @@ import { z } from "zod";
 /** A `Descriptor` carries its own `start` closure, never equal by reference across two calls — assert `.type`/`.options` shape instead of a full `toEqual` against a hand-built instance. */
 function expectDescriptor(descriptor: unknown, type: FieldType, options: object): void {
   expect(descriptor).toBeInstanceOf(Descriptor);
-  expect((descriptor as Descriptor<unknown>).type).toBe(type);
-  expect((descriptor as Descriptor<unknown>).options).toEqual(options);
-  expect(typeof (descriptor as Descriptor<unknown>).start).toBe("function");
+  expect((descriptor as Descriptor<unknown, any>).type).toBe(type);
+  expect((descriptor as Descriptor<unknown, any>).options).toEqual(options);
+  expect(typeof (descriptor as Descriptor<unknown, any>).start).toBe("function");
 }
 
 /**
@@ -28,7 +28,7 @@ function expectDescriptor(descriptor: unknown, type: FieldType, options: object)
  * every `control.set(...)` call in order — the same way `config-node.ts`'s `buildField()` drives a
  * real field, minus the `Store` it would otherwise write into.
  */
-function runStart<T>(descriptor: Descriptor<T, object>, initialRaw: unknown, path: string[] = []) {
+function runStart<T>(descriptor: Descriptor<T, any>, initialRaw: unknown, path: string[] = []) {
   const rawStore = new Store<unknown>(initialRaw);
   const values: T[] = [];
   descriptor.start({ rawStore, path, set: (value) => values.push(value) });

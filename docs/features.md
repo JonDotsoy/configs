@@ -61,7 +61,15 @@ El punto de entrada público (`src/config-node.ts`, re-exportado desde
 
 `src/config-descriptor.ts` — el bloque de construcción de cada campo:
 
-- **`Descriptor<T, O>`** — la clase base, modelada igual que `Source`: un
+- **`Descriptor<A, B>`** — la clase base, modelada igual que `Source`:
+  `A` es lo que `.get()` realmente devuelve (`T | null` sin `default`, o
+  `T` con uno) y `B` es el tipo ya resuelto del campo, siempre `T` sin
+  importar el `default` — `numeric()` devuelve `Descriptor<number | null,
+  number>` sola, o `Descriptor<number, number>` con `default`. Esa
+  distinción, antes calculada por `create()` fuera de la clase, ahora
+  vive directamente en el propio `Descriptor`, vía el helper exportado
+  `WithDefault<O, T>` (`T` cuando `O` trae `default`, `T | null` si no) —
+  cada builder integrado lo usa para su propio primer parámetro. Un
   único hook `.start(control)`, llamado **una sola vez** por `create()`,
   que recibe el control total del campo. `control` expone `.rawStore`
   (el valor crudo en vivo de ese campo, solo lectura: `.get()`/

@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Descriptor, shapeFailure } from "./config-descriptor.js";
+import { Descriptor, shapeFailure, type WithDefault } from "./config-descriptor.js";
 import { ConfigError } from "./errors.js";
 import { tSync } from "./utils/t.js";
 
@@ -220,17 +220,15 @@ function resolveDefault(defaultValue: string | URL | undefined, format: FileValu
 }
 
 /**
- * `file()`'s return type: same as `Descriptor<FileBlob, O>`, except `required: true` also
- * narrows `.get()` to `FileBlob` (never `null`) — same effect a real `default` has elsewhere,
- * applied here from `required` instead since a `file()` field almost always wants "always
- * present" enforced by `required`, not by a fallback value. Same caveat as `default` everywhere
- * else in this package: this is a type-level promise, not a runtime guarantee — a `required`
- * field with nothing from any source still resolves to `null` at runtime, it just isn't supposed
- * to happen.
+ * `file()`'s own not-yet-resolved type: same as `WithDefault<O, FileBlob>`, except `required:
+ * true` also narrows it to `FileBlob` (never `null`) — same effect a real `default` has
+ * elsewhere, applied here from `required` instead since a `file()` field almost always wants
+ * "always present" enforced by `required`, not by a fallback value. Same caveat as `default`
+ * everywhere else in this package: this is a type-level promise, not a runtime guarantee — a
+ * `required` field with nothing from any source still resolves to `null` at runtime, it just
+ * isn't supposed to happen.
  */
-type FileFieldReturn<O extends FileFieldOptions> = O extends { required: true }
-  ? Descriptor<FileBlob, O & { default: FileBlob }>
-  : Descriptor<FileBlob, O>;
+type FileFieldValue<O extends FileFieldOptions> = O extends { required: true } ? FileBlob : WithDefault<O, FileBlob>;
 
 /**
  * `file()`'s own `start` — decodes a raw string value (as base64 or text, per `format` or
@@ -269,7 +267,7 @@ function fileStart(options: Pick<FileFieldOptions, "required" | "format">): (raw
  * source's raw value, or a string `default`) is written out to a fresh temp file whose `file:`
  * `URL` becomes `.location`.
  */
-export function file<const O extends FileFieldOptions = {}>(options?: O): FileFieldReturn<O> {
+export function file<const O extends FileFieldOptions = {}>(options?: O): Descriptor<FileFieldValue<O>, FileBlob> {
   const opts = options ?? ({} as O);
 
   const runtimeOptions: Omit<FileFieldOptions, "default"> & { default?: FileBlob } = {
@@ -286,7 +284,7 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): FileFi
   const parse = fileStart(runtimeOptions);
   const defaultValue = runtimeOptions.default !== undefined ? runtimeOptions.default : (null as unknown as FileBlob);
 
-  return new Descriptor({
+  return new Descriptor<FileBlob, FileBlob>({
     type: "file",
     options: runtimeOptions,
     start(control) {
@@ -296,5 +294,5 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): FileFi
         control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
       });
     },
-  }) as unknown as FileFieldReturn<O>;
+  }) as Descriptor<FileFieldValue<O>, FileBlob>;
 }

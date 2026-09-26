@@ -55,6 +55,17 @@ export interface ChoiceFieldOptions<T extends string = string> extends BaseField
 }
 
 /**
+ * The field's not-yet-resolved value type: `T` when `O` carries a `default`, otherwise `T | null`
+ * — a field with no default can still resolve to `null` (no source has it yet, or ever will ever
+ * publish it). This is what each built-in field builder (`string()`/`numeric()`/...) plugs into
+ * `Descriptor`'s own first type parameter, so the "does this field have a default" check happens
+ * once, right where the builder already knows `O`, instead of downstream in `create()`'s own type
+ * inference. Exported so a hand-written field builder (e.g. `file()` in `./node.js`) can compute
+ * its own `Descriptor<A, B>` return type the same way.
+ */
+export type WithDefault<O, T> = O extends { default: any } ? T : T | null;
+
+/**
  * What `start(control)` gets, modeled directly after `Source`'s own `SourceControl` — same shape,
  * same rules: `control.set(value)` publishes this field's next value, callable synchronously
  * inside `start` itself (tick 0 — the field already has that value by the time `create()` returns,
@@ -93,14 +104,24 @@ export interface DescriptorUnderlying<T, O extends object = object> {
   close?(): Promise<void>;
 }
 
-/** What `string()`/`numeric()`/`boolean()` build. See `DescriptorUnderlying` for the constructor shape. */
-export class Descriptor<T, O extends object = object> {
+/**
+ * What `string()`/`numeric()`/`boolean()` build. Two type parameters, mirroring a field's own two
+ * states: `A` is what `.get()` actually returns right now — `T | null` for a field with no
+ * `default` (nothing may have resolved it yet, or ever will), or `T` once one is set. `B` is the
+ * field's *resolved* type once it does have a value — always `T`, regardless of `default` — so a
+ * generic helper written against `Descriptor<A, B>` can recover the underlying value type without
+ * re-deriving it from `A`'s own nullability. `numeric()` returns `Descriptor<number | null,
+ * number>` with no `default`, or `Descriptor<number, number>` with one — see `WithDefault`, which
+ * every built-in builder uses to compute its own `A`. See `DescriptorUnderlying` for the
+ * constructor shape.
+ */
+export class Descriptor<A, B = A, O extends object = object> {
   readonly type: FieldType;
   readonly options: O;
-  private readonly startFn: (control: DescriptorControl<T>) => void | Promise<void>;
+  private readonly startFn: (control: DescriptorControl<A>) => void | Promise<void>;
   private readonly closeFn?: () => Promise<void>;
 
-  constructor(underlying: DescriptorUnderlying<T, O>) {
+  constructor(underlying: DescriptorUnderlying<A, O>) {
     this.type = underlying.type;
     this.options = underlying.options;
     this.startFn = underlying.start;
@@ -131,7 +152,7 @@ export class Descriptor<T, O extends object = object> {
    * `DescriptorUnderlying`'s own doc. Whatever `start` returns (`void` or a `Promise<void>`) is
    * discarded here — same as `Source`'s own `start`, nothing awaits it.
    */
-  start(control: DescriptorControl<T>): void {
+  start(control: DescriptorControl<A>): void {
     void this.startFn(control);
   }
 
@@ -144,13 +165,13 @@ export class Descriptor<T, O extends object = object> {
   }
 }
 
-/** Builds a `"string"` field descriptor, returned as a `Descriptor<string, O>`. */
-export function string<const O extends StringFieldOptions = {}>(options?: O): Descriptor<string, O> {
+/** Builds a `"string"` field descriptor, returned as a `Descriptor<string | null, string>` (or `Descriptor<string, string>` with a `default`). */
+export function string<const O extends StringFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, string>, string> {
   const opts = (options ?? {}) as O;
   const parse = stringParser(opts);
   const defaultValue = opts.default !== undefined ? opts.default : (null as unknown as string);
 
-  return new Descriptor({
+  return new Descriptor<string, string, O>({
     type: "string",
     options: opts,
     start(control) {
@@ -160,16 +181,16 @@ export function string<const O extends StringFieldOptions = {}>(options?: O): De
         control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
       });
     },
-  });
+  }) as Descriptor<WithDefault<O, string>, string>;
 }
 
-/** Builds a `"number"` field descriptor, returned as a `Descriptor<number, O>`. */
-export function numeric<const O extends NumberFieldOptions = {}>(options?: O): Descriptor<number, O> {
+/** Builds a `"number"` field descriptor, returned as a `Descriptor<number | null, number>` (or `Descriptor<number, number>` with a `default`). */
+export function numeric<const O extends NumberFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, number>, number> {
   const opts = (options ?? {}) as O;
   const parse = numberParser(opts);
   const defaultValue = opts.default !== undefined ? opts.default : (null as unknown as number);
 
-  return new Descriptor({
+  return new Descriptor<number, number, O>({
     type: "number",
     options: opts,
     start(control) {
@@ -179,16 +200,16 @@ export function numeric<const O extends NumberFieldOptions = {}>(options?: O): D
         control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
       });
     },
-  });
+  }) as Descriptor<WithDefault<O, number>, number>;
 }
 
-/** Builds a `"boolean"` field descriptor, returned as a `Descriptor<boolean, O>`. */
-export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): Descriptor<boolean, O> {
+/** Builds a `"boolean"` field descriptor, returned as a `Descriptor<boolean | null, boolean>` (or `Descriptor<boolean, boolean>` with a `default`). */
+export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, boolean>, boolean> {
   const opts = (options ?? {}) as O;
   const parse = booleanParser(opts);
   const defaultValue = opts.default !== undefined ? opts.default : (null as unknown as boolean);
 
-  return new Descriptor({
+  return new Descriptor<boolean, boolean, O>({
     type: "boolean",
     options: opts,
     start(control) {
@@ -198,16 +219,16 @@ export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): 
         control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
       });
     },
-  });
+  }) as Descriptor<WithDefault<O, boolean>, boolean>;
 }
 
-/** Builds a `"url"` field descriptor, returned as a `Descriptor<URL, O>`. Parses (and validates) a string value into a `URL` instance. */
-export function url<const O extends UrlFieldOptions = {}>(options?: O): Descriptor<URL, O> {
+/** Builds a `"url"` field descriptor, returned as a `Descriptor<URL | null, URL>` (or `Descriptor<URL, URL>` with a `default`). Parses (and validates) a string value into a `URL` instance. */
+export function url<const O extends UrlFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, URL>, URL> {
   const opts = (options ?? {}) as O;
   const parse = urlParser(opts);
   const defaultValue = opts.default !== undefined ? opts.default : (null as unknown as URL);
 
-  return new Descriptor({
+  return new Descriptor<URL, URL, O>({
     type: "url",
     options: opts,
     start(control) {
@@ -217,7 +238,7 @@ export function url<const O extends UrlFieldOptions = {}>(options?: O): Descript
         control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
       });
     },
-  });
+  }) as Descriptor<WithDefault<O, URL>, URL>;
 }
 
 /**
@@ -229,18 +250,20 @@ export function url<const O extends UrlFieldOptions = {}>(options?: O): Descript
 type InferShapeOptionValue<O> = O extends { schema: infer Z } ? (Z extends { parse(value: unknown): infer R } ? R : unknown) : unknown;
 
 /**
- * Builds a `"shape"` field descriptor, returned as a `Descriptor<T, O>` — infers its value
- * type from `schema`'s `parse` return type; omitting `schema` (`shape()` alone) infers `unknown`.
+ * Builds a `"shape"` field descriptor, returned as a `Descriptor<V | null, V>` (or
+ * `Descriptor<V, V>` with a `default`), where `V` is inferred from `schema`'s `parse` return type;
+ * omitting `schema` (`shape()` alone) infers `V` as `unknown`.
  */
 export function shape<const O extends ShapeFieldOptions = {}>(
   options?: O,
-): Descriptor<InferShapeOptionValue<O>, O> {
+): Descriptor<WithDefault<O, InferShapeOptionValue<O>>, InferShapeOptionValue<O>> {
+  type V = InferShapeOptionValue<O>;
   const opts = (options ?? {}) as O;
-  const parse = shapeParser<InferShapeOptionValue<O>>(opts as { schema?: Parseable<InferShapeOptionValue<O>>; required?: boolean }, "shape");
-  const rawDefault = (opts as { default?: InferShapeOptionValue<O> }).default;
-  const defaultValue = rawDefault !== undefined ? rawDefault : (null as unknown as InferShapeOptionValue<O>);
+  const parse = shapeParser<V>(opts as { schema?: Parseable<V>; required?: boolean }, "shape");
+  const rawDefault = (opts as { default?: V }).default;
+  const defaultValue = rawDefault !== undefined ? rawDefault : (null as unknown as V);
 
-  return new Descriptor({
+  return new Descriptor<V, V, O>({
     type: "shape",
     options: opts,
     start(control) {
@@ -250,23 +273,25 @@ export function shape<const O extends ShapeFieldOptions = {}>(
         control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
       });
     },
-  });
+  }) as Descriptor<WithDefault<O, V>, V>;
 }
 
 /**
  * Builds a `"choice"` field descriptor — resolves only to one of the strings listed in
  * `options.options`, rejecting (per the same log-or-throw rule as `shape()`'s `required`, see
- * `typeMismatch`) anything else. `T` is inferred from `options.options` itself (via the `const`
- * type parameter), so `choice({ options: ["a", "b"] })` resolves to `Descriptor<"a" | "b", O>`
- * rather than the widened `string`.
+ * `typeMismatch`) anything else. `V` is inferred from `options.options` itself (via the `const`
+ * type parameter), so `choice({ options: ["a", "b"] })` resolves to `Descriptor<"a" | "b" | null,
+ * "a" | "b">` rather than the widened `string`, or `Descriptor<"a" | "b", "a" | "b">` with a
+ * `default`.
  */
 export function choice<const O extends ChoiceFieldOptions<string>>(
   options: O,
-): Descriptor<O["options"][number], O> {
+): Descriptor<WithDefault<O, O["options"][number]>, O["options"][number]> {
+  type V = O["options"][number];
   const parse = choiceParser(options);
-  const defaultValue = options.default !== undefined ? options.default : (null as unknown as O["options"][number]);
+  const defaultValue = options.default !== undefined ? options.default : (null as unknown as V);
 
-  return new Descriptor({
+  return new Descriptor<V, V, O>({
     type: "choice",
     options,
     start(control) {
@@ -276,7 +301,7 @@ export function choice<const O extends ChoiceFieldOptions<string>>(
         control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
       });
     },
-  });
+  }) as Descriptor<WithDefault<O, V>, V>;
 }
 
 /**
@@ -290,7 +315,7 @@ export function choice<const O extends ChoiceFieldOptions<string>>(
  * it's optional even on a hand-written descriptor (`create()`'s own `close()`, in
  * `./config-node.js`, only calls it when present).
  */
-export function isConfigDescriptor(node: unknown): node is Descriptor<unknown, object> {
+export function isConfigDescriptor(node: unknown): node is Descriptor<unknown, unknown> {
   if (typeof node !== "object" || node === null) return false;
   return typeof (node as { start?: unknown }).start === "function";
 }

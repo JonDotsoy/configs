@@ -36,7 +36,8 @@ export function isConfigsNode(value: unknown): value is ConfigsNodePending<Confi
   return typeof value === "object" && value !== null && (value as Record<symbol, unknown>)[CONFIGS_NODE_TAG] === true;
 }
 
-type InferValue<D> = D extends Descriptor<infer V, infer O> ? (O extends { default: any } ? V : V | null) : never;
+/** A field's exposed type is already encoded in `Descriptor`'s own first type parameter — see `WithDefault` in `./config-descriptor.js`. */
+type InferValue<D> = D extends Descriptor<infer A, any> ? A : never;
 
 type InferConfigsNode<T extends ConfigsShape> = {
   [K in keyof T]: T[K] extends Descriptor<any, any>
@@ -100,7 +101,7 @@ function keyStore(rawSources: Store<unknown>[], path: string[]): Store<unknown> 
 }
 
 /** A field's explicit `key` override (if set) is an absolute path, taken as-is instead of `entryPath`. */
-function resolveFieldPath(descriptor: Descriptor<unknown, object>, entryPath: string[]): string[] {
+function resolveFieldPath(descriptor: Descriptor<unknown, unknown>, entryPath: string[]): string[] {
   const explicitKey = descriptor.key;
   if (explicitKey === undefined) return entryPath;
   return Array.isArray(explicitKey) ? explicitKey : [explicitKey];
@@ -115,7 +116,7 @@ function resolveFieldPath(descriptor: Descriptor<unknown, object>, entryPath: st
  * `control.rawStore.listen(...)`, after an `await`, from a timer, ... — is the field's entire
  * lifetime; nothing else in this engine ever calls `.set()` on this `Store`.
  */
-function buildField(descriptor: Descriptor<unknown, object>, rawStore: Store<unknown>, path: string[]): Store<unknown> {
+function buildField(descriptor: Descriptor<unknown, unknown>, rawStore: Store<unknown>, path: string[]): Store<unknown> {
   const fieldStore = new Store<unknown>(null);
   const control: DescriptorControl<unknown> = {
     rawStore,
