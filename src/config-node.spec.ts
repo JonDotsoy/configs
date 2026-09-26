@@ -409,6 +409,23 @@ describe("create — live updates", () => {
     expect(cfg.port.get()).toBe(4000);
   });
 
+  test("a numeric field's Store reflects the value its source publishes a few ms after opening", async () => {
+    const source = new Source<{ port?: string }>({
+      start(control) {
+        control.set({ port: "3000" });
+        setTimeout(() => control.set({ port: "5000" }), 20);
+      },
+    });
+
+    const cfg = await create({ port: numeric() }, { sources: [source] });
+
+    expect(cfg.port.get()).toBe(3000);
+
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    expect(cfg.port.get()).toBe(5000);
+  });
+
   test("a live update to a nested leaf updates that leaf's Store, without disturbing its siblings", async () => {
     const { source, push } = liveTestSource({ server: { port: "3000", host: "a.example.com" } });
     const cfg = await create({ server: { port: numeric(), host: string() } }, { sources: [source] });
