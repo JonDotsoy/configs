@@ -242,14 +242,16 @@ function csv(options: { key?: string | string[]; default?: string[] } = {}) {
     if (typeof raw !== "string") throw new Error(`Expected a comma-separated string at "${path.join(".")}"`);
     return raw.split(",").map((s) => s.trim());
   };
-  const compute = (raw: unknown, path: string[]): string[] => (raw == null ? (options.default ?? []) : parse(raw, path));
 
   return new Descriptor({
     type: "csv",
     options,
     start(control) {
-      control.set(compute(control.rawStore.get(), control.path));
-      control.rawStore.listen((raw) => control.set(compute(raw, control.path)));
+      const raw = control.rawStore.get();
+      control.set(raw == null ? (options.default ?? []) : parse(raw, control.path));
+      control.rawStore.listen((raw) => {
+        control.set(raw == null ? (options.default ?? []) : parse(raw, control.path));
+      });
     },
   });
 }

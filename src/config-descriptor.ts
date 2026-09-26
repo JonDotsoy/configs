@@ -148,15 +148,20 @@ export class Descriptor<T, O extends object = object> {
 export function string<const O extends StringFieldOptions = {}>(options?: O): Descriptor<string, O> {
   const opts = (options ?? {}) as O;
   const parse = stringParser(opts);
-  const compute = (raw: unknown, path: string[]): string =>
-    raw === undefined || raw === null ? (opts.default !== undefined ? opts.default : (null as unknown as string)) : parse(raw, path);
 
   return new Descriptor({
     type: "string",
     options: opts,
     start(control) {
-      control.set(compute(control.rawStore.get(), control.path));
-      control.rawStore.listen((raw) => control.set(compute(raw, control.path)));
+      const raw = control.rawStore.get();
+      control.set(
+        raw === undefined || raw === null ? (opts.default !== undefined ? opts.default : (null as unknown as string)) : parse(raw, control.path),
+      );
+      control.rawStore.listen((raw) => {
+        control.set(
+          raw === undefined || raw === null ? (opts.default !== undefined ? opts.default : (null as unknown as string)) : parse(raw, control.path),
+        );
+      });
     },
   });
 }
@@ -165,15 +170,20 @@ export function string<const O extends StringFieldOptions = {}>(options?: O): De
 export function numeric<const O extends NumberFieldOptions = {}>(options?: O): Descriptor<number, O> {
   const opts = (options ?? {}) as O;
   const parse = numberParser(opts);
-  const compute = (raw: unknown, path: string[]): number =>
-    raw === undefined || raw === null ? (opts.default !== undefined ? opts.default : (null as unknown as number)) : parse(raw, path);
 
   return new Descriptor({
     type: "number",
     options: opts,
     start(control) {
-      control.set(compute(control.rawStore.get(), control.path));
-      control.rawStore.listen((raw) => control.set(compute(raw, control.path)));
+      const raw = control.rawStore.get();
+      control.set(
+        raw === undefined || raw === null ? (opts.default !== undefined ? opts.default : (null as unknown as number)) : parse(raw, control.path),
+      );
+      control.rawStore.listen((raw) => {
+        control.set(
+          raw === undefined || raw === null ? (opts.default !== undefined ? opts.default : (null as unknown as number)) : parse(raw, control.path),
+        );
+      });
     },
   });
 }
@@ -182,15 +192,20 @@ export function numeric<const O extends NumberFieldOptions = {}>(options?: O): D
 export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): Descriptor<boolean, O> {
   const opts = (options ?? {}) as O;
   const parse = booleanParser(opts);
-  const compute = (raw: unknown, path: string[]): boolean =>
-    raw === undefined || raw === null ? (opts.default !== undefined ? opts.default : (null as unknown as boolean)) : parse(raw, path);
 
   return new Descriptor({
     type: "boolean",
     options: opts,
     start(control) {
-      control.set(compute(control.rawStore.get(), control.path));
-      control.rawStore.listen((raw) => control.set(compute(raw, control.path)));
+      const raw = control.rawStore.get();
+      control.set(
+        raw === undefined || raw === null ? (opts.default !== undefined ? opts.default : (null as unknown as boolean)) : parse(raw, control.path),
+      );
+      control.rawStore.listen((raw) => {
+        control.set(
+          raw === undefined || raw === null ? (opts.default !== undefined ? opts.default : (null as unknown as boolean)) : parse(raw, control.path),
+        );
+      });
     },
   });
 }
@@ -199,15 +214,20 @@ export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): 
 export function url<const O extends UrlFieldOptions = {}>(options?: O): Descriptor<URL, O> {
   const opts = (options ?? {}) as O;
   const parse = urlParser(opts);
-  const compute = (raw: unknown, path: string[]): URL =>
-    raw === undefined || raw === null ? (opts.default !== undefined ? opts.default : (null as unknown as URL)) : parse(raw, path);
 
   return new Descriptor({
     type: "url",
     options: opts,
     start(control) {
-      control.set(compute(control.rawStore.get(), control.path));
-      control.rawStore.listen((raw) => control.set(compute(raw, control.path)));
+      const raw = control.rawStore.get();
+      control.set(
+        raw === undefined || raw === null ? (opts.default !== undefined ? opts.default : (null as unknown as URL)) : parse(raw, control.path),
+      );
+      control.rawStore.listen((raw) => {
+        control.set(
+          raw === undefined || raw === null ? (opts.default !== undefined ? opts.default : (null as unknown as URL)) : parse(raw, control.path),
+        );
+      });
     },
   });
 }
@@ -230,15 +250,28 @@ export function shape<const O extends ShapeFieldOptions = {}>(
   const opts = (options ?? {}) as O;
   const parse = shapeParser<InferShapeOptionValue<O>>(opts as { schema?: Parseable<InferShapeOptionValue<O>>; required?: boolean }, "shape");
   const defaultValue = (opts as { default?: InferShapeOptionValue<O> }).default;
-  const compute = (raw: unknown, path: string[]): InferShapeOptionValue<O> =>
-    raw === undefined || raw === null ? (defaultValue !== undefined ? defaultValue : (null as unknown as InferShapeOptionValue<O>)) : parse(raw, path);
 
   return new Descriptor({
     type: "shape",
     options: opts,
     start(control) {
-      control.set(compute(control.rawStore.get(), control.path));
-      control.rawStore.listen((raw) => control.set(compute(raw, control.path)));
+      const raw = control.rawStore.get();
+      control.set(
+        raw === undefined || raw === null
+          ? defaultValue !== undefined
+            ? defaultValue
+            : (null as unknown as InferShapeOptionValue<O>)
+          : parse(raw, control.path),
+      );
+      control.rawStore.listen((raw) => {
+        control.set(
+          raw === undefined || raw === null
+            ? defaultValue !== undefined
+              ? defaultValue
+              : (null as unknown as InferShapeOptionValue<O>)
+            : parse(raw, control.path),
+        );
+      });
     },
   });
 }
@@ -254,19 +287,28 @@ export function choice<const O extends ChoiceFieldOptions<string>>(
   options: O,
 ): Descriptor<O["options"][number], O> {
   const parse = choiceParser(options);
-  const compute = (raw: unknown, path: string[]): O["options"][number] =>
-    raw === undefined || raw === null
-      ? options.default !== undefined
-        ? options.default
-        : (null as unknown as O["options"][number])
-      : parse(raw, path);
 
   return new Descriptor({
     type: "choice",
     options,
     start(control) {
-      control.set(compute(control.rawStore.get(), control.path));
-      control.rawStore.listen((raw) => control.set(compute(raw, control.path)));
+      const raw = control.rawStore.get();
+      control.set(
+        raw === undefined || raw === null
+          ? options.default !== undefined
+            ? options.default
+            : (null as unknown as O["options"][number])
+          : parse(raw, control.path),
+      );
+      control.rawStore.listen((raw) => {
+        control.set(
+          raw === undefined || raw === null
+            ? options.default !== undefined
+              ? options.default
+              : (null as unknown as O["options"][number])
+            : parse(raw, control.path),
+        );
+      });
     },
   });
 }

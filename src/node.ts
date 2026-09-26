@@ -284,19 +284,28 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): FileFi
   if (resolvedDefault !== undefined) runtimeOptions.default = resolvedDefault;
 
   const parse = fileStart(runtimeOptions);
-  const compute = (raw: unknown, path: string[]): FileBlob =>
-    raw === undefined || raw === null
-      ? runtimeOptions.default !== undefined
-        ? runtimeOptions.default
-        : (null as unknown as FileBlob)
-      : parse(raw, path);
 
   return new Descriptor({
     type: "file",
     options: runtimeOptions,
     start(control) {
-      control.set(compute(control.rawStore.get(), control.path));
-      control.rawStore.listen((raw) => control.set(compute(raw, control.path)));
+      const raw = control.rawStore.get();
+      control.set(
+        raw === undefined || raw === null
+          ? runtimeOptions.default !== undefined
+            ? runtimeOptions.default
+            : (null as unknown as FileBlob)
+          : parse(raw, control.path),
+      );
+      control.rawStore.listen((raw) => {
+        control.set(
+          raw === undefined || raw === null
+            ? runtimeOptions.default !== undefined
+              ? runtimeOptions.default
+              : (null as unknown as FileBlob)
+            : parse(raw, control.path),
+        );
+      });
     },
   }) as unknown as FileFieldReturn<O>;
 }
