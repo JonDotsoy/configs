@@ -337,6 +337,40 @@ describe("store.computed", () => {
     expectTypeOf(port).toEqualTypeOf<Store<number>>();
   });
 
+  test("one store's subscribe callback can drive another store's value", () => {
+    const store1 = store.create<number | [number, number]>(1);
+    const store2 = store.create<number>(2);
+
+    store2.subscribe((val) => {
+      store1.set([1, val]);
+    });
+
+    expect(store1.get()).toEqual([1, 2]);
+    expect(store2.get()).toBe(2);
+
+    store2.set(3);
+
+    expect(store1.get()).toEqual([1, 3]);
+    expect(store2.get()).toBe(3);
+  });
+
+  test("one store's listen callback can drive another store's value", () => {
+    const store1 = store.create<number | [number, number]>(1);
+    const store2 = store.create<number>(2);
+
+    store2.listen((val) => {
+      store1.set([1, val]);
+    });
+
+    expect(store1.get()).toBe(1);
+    expect(store2.get()).toBe(2);
+
+    store2.set(3);
+
+    expect(store1.get()).toEqual([1, 3]);
+    expect(store2.get()).toBe(3);
+  });
+
   test("updates when the source changes, once it has a subscriber", () => {
     const systemStore = store.create({ server: { port: 3000, host: "127.0.0.1" } });
     const port = store.computed(systemStore, (value) => value.server.port);
