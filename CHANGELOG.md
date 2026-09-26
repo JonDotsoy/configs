@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/build.ts` now copies `README.md`, `LICENSE`, and `docs/` into
+  `dist/` on every build, so the published package (`npm publish ./dist`)
+  carries them the same way it did back when the repo root itself was
+  published with `"files": ["dist", "docs"]`.
+
 ### Changed
 
 - The root `package.json` is now `"private": true` and no longer carries an

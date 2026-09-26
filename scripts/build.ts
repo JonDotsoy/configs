@@ -7,14 +7,17 @@
  * from "_buildEntripoint" — so dist/ is a self-contained, publishable
  * package on its own (no dist/-prefixed paths, no dev-only metadata). The
  * root package.json is "private": true and carries no "exports" of its own;
- * dist/package.json is the only manifest ever published.
+ * dist/package.json is the only manifest ever published. README.md, LICENSE,
+ * and docs/ are copied in alongside it, so the published package still
+ * carries them (npm's registry page reads README.md straight from the
+ * published package root).
  *
  * Replaces the old scripts/build.sh + `bun -e` entry-point extraction with a
  * single typed script; behavior (bundling, --external react, build:types) is
  * unchanged, plus --minify for smaller published output.
  */
 import { $ } from "bun";
-import { rm } from "node:fs/promises";
+import { cp, rm } from "node:fs/promises";
 
 const repoRoot = new URL("..", import.meta.url).pathname;
 process.chdir(repoRoot);
@@ -73,3 +76,7 @@ const distPackageJson = {
 };
 
 await Bun.write("dist/package.json", `${JSON.stringify(distPackageJson, null, 2)}\n`);
+
+await cp("README.md", "dist/README.md");
+await cp("LICENSE", "dist/LICENSE");
+await cp("docs", "dist/docs", { recursive: true });
