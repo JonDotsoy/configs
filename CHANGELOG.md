@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.12] - 2026-09-26
 
 ### Changed — every built-in `Descriptor`'s own `start` is now a single `control.rawStore.subscribe(...)` call
 
@@ -389,6 +389,7 @@ shape shorthand, `freeze`, or the root's `.get()`/`.subscribe()`/`.close()`.
 - `ConfigError` for schema/config-level errors, and `DataTypes`/`DataTypeName` for the field type
   and coercion helpers backing schema fields.
 
+[1.2.12]: https://github.com/JonDotsoy/configs/releases/tag/v1.2.12
 [1.2.6]: https://github.com/JonDotsoy/configs/releases/tag/v1.2.6
 [1.2.1]: https://github.com/JonDotsoy/configs/releases/tag/v1.2.1
 [1.2.0]: https://github.com/JonDotsoy/configs/releases/tag/v1.2.0

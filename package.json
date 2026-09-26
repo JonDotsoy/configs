@@ -1,6 +1,6 @@
 {
   "name": "@jondotsoy/configs",
-  "version": "1.2.11",
+  "version": "1.2.12",
   "description": "A reactive, typed configuration library backed by pluggable sources (env, fetch, sse, file, literal).",
   "keywords": [
     "config",
