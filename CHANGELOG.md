@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed — the `Parser<T>` type
+
+No longer exported from the package root or `config-descriptor.ts`. `DescriptorUnderlying.start`
+(and every built-in `*Parser()` helper's return type) is now written inline as
+`(raw: unknown, path: string[]) => T` instead of naming a dedicated type — nothing outside this
+package ever needed to reference `Parser<T>` by name, since `start` is always written as a plain
+function literal.
+
 ### Removed — `CONFIG_DESCRIPTOR_TAG`
 
 Removed entirely (`src/utils/config-descriptor-tag.ts` is gone), along with the `[symbol]: true`

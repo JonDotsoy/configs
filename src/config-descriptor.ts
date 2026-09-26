@@ -55,14 +55,6 @@ export interface ChoiceFieldOptions<T extends string = string> extends BaseField
 }
 
 /**
- * Coerces/validates one already-resolved raw value into `T`, throwing/logging per whatever rules
- * the descriptor that built this closure captured from its own `options` (a `required` shape
- * throws on failure instead of logging, a `string` checks its own `pattern`, ...). `path` is only
- * ever used to label an error message — it carries no information back into the parser.
- */
-export type Parser<T> = (raw: unknown, path: string[]) => T;
-
-/**
  * What `new Descriptor(...)` takes: `type`/`options` are purely descriptive (read by `.key`,
  * `.freeze`, `.options.default`, ...); `start` is this field's synchronous parser, run **once**
  * against the raw value already present when the field is built, to seed its `Store` before
@@ -79,7 +71,13 @@ export type Parser<T> = (raw: unknown, path: string[]) => T;
 export interface DescriptorUnderlying<T, O extends object = object> {
   type: FieldType;
   options: O;
-  start?: Parser<T>;
+  /**
+   * Coerces/validates one already-resolved raw value into `T`, throwing/logging per whatever
+   * rules this field's own `options` call for (a `required` shape throws on failure instead of
+   * logging, a `string` checks its own `pattern`, ...). `path` is only ever used to label an
+   * error message — it carries no information back into `start`.
+   */
+  start?(raw: unknown, path: string[]): T;
   reduce?(rawStore: Store<unknown>, path: string[]): Promise<Store<T>>;
   close?(): Promise<void>;
 }
@@ -88,7 +86,7 @@ export interface DescriptorUnderlying<T, O extends object = object> {
 export class Descriptor<T, O extends object = object> {
   readonly type: FieldType;
   readonly options: O;
-  private readonly startFn: Parser<T>;
+  private readonly startFn: (raw: unknown, path: string[]) => T;
   private readonly reduceFn?: (rawStore: Store<unknown>, path: string[]) => Promise<Store<T>>;
   private readonly closeFn?: () => Promise<void>;
 
@@ -244,8 +242,8 @@ function typeMismatch(type: FieldType, value: unknown, path: string[]): never {
  * default — data comes from sources outside this package's control, so a malformed value is
  * logged via `console.error` and the field resolves to `null`, same as a source that simply
  * doesn't have it. Only an explicit `required: true` escalates that failure into a thrown
- * `ConfigError`. Exported so any field type whose `Parser<T>` needs this same rule (e.g. `file()`'s
- * own `fileParser`, in `./node.js`) doesn't have to reimplement it.
+ * `ConfigError`. Exported so any field type whose `start` needs this same rule (e.g. `file()`'s
+ * own `fileStart`, in `./node.js`) doesn't have to reimplement it.
  */
 export function shapeFailure(required: boolean | undefined, error: ConfigError): unknown {
   if (required) throw error;
@@ -253,8 +251,8 @@ export function shapeFailure(required: boolean | undefined, error: ConfigError):
   return null;
 }
 
-/** `string()`'s own `Parser<string>` — the coercion/validation rules a `"string"` field applies, including its own `pattern`. */
-export function stringParser(options: StringFieldOptions): Parser<string> {
+/** `string()`'s own `start` — the coercion/validation rules a `"string"` field applies, including its own `pattern`. */
+export function stringParser(options: StringFieldOptions): (raw: unknown, path: string[]) => string {
   return (raw, path) => {
     if (typeof raw !== "string") typeMismatch("string", raw, path);
     if (options.pattern && !options.pattern.test(raw)) {
@@ -264,8 +262,8 @@ export function stringParser(options: StringFieldOptions): Parser<string> {
   };
 }
 
-/** `numeric()`'s own `Parser<number>` — a numeric-looking string is coerced, anything else is rejected. */
-export function numberParser(_options: NumberFieldOptions): Parser<number> {
+/** `numeric()`'s own `start` — a numeric-looking string is coerced, anything else is rejected. */
+export function numberParser(_options: NumberFieldOptions): (raw: unknown, path: string[]) => number {
   return (raw, path) => {
     if (typeof raw === "number") return raw;
     const num = Number(raw);
@@ -274,8 +272,8 @@ export function numberParser(_options: NumberFieldOptions): Parser<number> {
   };
 }
 
-/** `boolean()`'s own `Parser<boolean>` — `"true"`/`"1"` and `"false"`/`"0"` are coerced, anything else is rejected. */
-export function booleanParser(_options: BooleanFieldOptions): Parser<boolean> {
+/** `boolean()`'s own `start` — `"true"`/`"1"` and `"false"`/`"0"` are coerced, anything else is rejected. */
+export function booleanParser(_options: BooleanFieldOptions): (raw: unknown, path: string[]) => boolean {
   return (raw, path) => {
     if (typeof raw === "boolean") return raw;
     if (raw === "true" || raw === "1") return true;
@@ -284,8 +282,8 @@ export function booleanParser(_options: BooleanFieldOptions): Parser<boolean> {
   };
 }
 
-/** `url()`'s own `Parser<URL>` — a string is parsed (and validated) into a `URL` instance; an already-`URL` value passes through as-is. */
-export function urlParser(_options: UrlFieldOptions): Parser<URL> {
+/** `url()`'s own `start` — a string is parsed (and validated) into a `URL` instance; an already-`URL` value passes through as-is. */
+export function urlParser(_options: UrlFieldOptions): (raw: unknown, path: string[]) => URL {
   return (raw, path) => {
     if (raw instanceof URL) return raw;
     if (typeof raw !== "string") typeMismatch("url", raw, path);
@@ -297,8 +295,8 @@ export function urlParser(_options: UrlFieldOptions): Parser<URL> {
   };
 }
 
-/** `choice()`'s own `Parser<T>` — rejects anything not present in `options.options`. */
-export function choiceParser<T extends string>(options: { options: readonly T[] }): Parser<T> {
+/** `choice()`'s own `start` — rejects anything not present in `options.options`. */
+export function choiceParser<T extends string>(options: { options: readonly T[] }): (raw: unknown, path: string[]) => T {
   return (raw, path) => {
     if (typeof raw !== "string" || !options.options.includes(raw as T)) {
       throw new ConfigError(
@@ -310,13 +308,13 @@ export function choiceParser<T extends string>(options: { options: readonly T[] 
 }
 
 /**
- * `shape()`'s (and `file()`'s, from `./node.js`) own `Parser<T>` — hands the raw value to
+ * `shape()`'s (and `file()`'s, from `./node.js`) own `start` — hands the raw value to
  * `options.schema.parse` when one is given, otherwise passes any object value through as-is;
  * either way, a failure resolves to `null` (logged) or throws, per `options.required` (see
  * `shapeFailure`). `typeLabel` is only used to name the field's own type in an error message —
  * `shape()` passes `"shape"`, `file()` passes `"file"`.
  */
-export function shapeParser<T>(options: { schema?: Parseable<T>; required?: boolean }, typeLabel: FieldType): Parser<T> {
+export function shapeParser<T>(options: { schema?: Parseable<T>; required?: boolean }, typeLabel: FieldType): (raw: unknown, path: string[]) => T {
   return (raw, path) => {
     if (!options.schema) {
       if (typeof raw !== "object" || raw === null) {

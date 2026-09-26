@@ -8,7 +8,6 @@ export type {
   FieldType,
   NumberFieldOptions,
   Parseable,
-  Parser,
   ShapeFieldOptions,
   StringFieldOptions,
   UrlFieldOptions,
