@@ -7,19 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- `scripts/pack.ts` (`bun run pack`): builds `dist/` and then runs
-  `bun pm pack` *inside* `dist/`, producing the same tarball `npm publish`
-  would create from `dist/` directly (using `dist/package.json`), and moves
-  it to the repo root.
-
 ### Changed
 
 - `bun run test:cases` (`scripts/run-test-cases.ts`) now packs the tarball it
   installs and tests against with `npm pack` run *inside* `dist/` (its own
   `dist/package.json` as the manifest), instead of `bun pm pack` at the repo
-  root — the same publish-from-`dist/` artifact `scripts/pack.ts` produces,
+  root — the same publish-from-`dist/` artifact `npm publish` would produce,
   so the integration cases exercise exactly what gets published.
 - Replaced `scripts/build.sh` with `scripts/build.ts`: the build now runs as a
   typed Bun script instead of Bash, minifies the bundled output
