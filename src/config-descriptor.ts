@@ -69,8 +69,8 @@ export type WithDefault<O, T> = O extends { default: any } ? T : T | null;
  * What `start(control)` gets, modeled directly after `Source`'s own `SourceControl` — same shape,
  * same rules: `control.set(value)` publishes this field's next value, callable synchronously
  * inside `start` itself (tick 0 — the field already has that value by the time `create()` returns,
- * no `await` needed) or any time later (a `rawStore.listen()` callback, a `setTimeout`, a resolved
- * `fetch()`, ...). The field's `Store` is 100% owned by whatever `start` does with `control.set` —
+ * no `await` needed) or any time later (a `rawStore.subscribe()` callback, a `setTimeout`, a
+ * resolved `fetch()`, ...). The field's `Store` is 100% owned by whatever `start` does with `control.set` —
  * nothing else can update it. `rawStore` is this field's own live raw value, merged across sources
  * (read-only: `.get()`/`.subscribe()`/`.listen()`, no `.set()` — writing raw values isn't this
  * hook's job). `path` is only ever used to label an error message.
@@ -89,10 +89,10 @@ export interface DescriptorControl<T> {
  * `Promise<void>` lets `start` use `async`/`await` internally, but nothing in `create()` ever
  * awaits it — a field is never blocked on its own `start` finishing. `start(control)` is the
  * **only** place this field's value ever comes from: nothing updates it on its behalf. A `start`
- * that never calls `control.set()` again after its first call (or never sets up a
- * `control.rawStore.listen()`) leaves the field static forever; every built-in field type
- * (`string()`/`numeric()`/...) writes its own `start`, seeding `control.set()` once and then again
- * on every `control.rawStore.listen()` update, precisely so it stays live. `close`, when given,
+ * that never subscribes to `control.rawStore` at all leaves the field static forever; every
+ * built-in field type (`string()`/`numeric()`/...) writes its own `start` as a single
+ * `control.rawStore.subscribe(...)` call — it fires immediately with the current raw value (tick
+ * 0) and again on every later change, precisely so it stays live. `close`, when given,
  * releases whatever `start` set up (a connection, a timer,
  * ...) — `create()`'s own `close()` (`./config-node.js`) calls every field's `close` once, same as
  * `Source.close()` does for its own `underlying.close`.
@@ -175,9 +175,7 @@ export function string<const O extends StringFieldOptions = {}>(options?: O): De
     type: "string",
     options: opts,
     start(control) {
-      const raw = control.rawStore.get();
-      control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
-      control.rawStore.listen((raw) => {
+      control.rawStore.subscribe((raw) => {
         control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
       });
     },
@@ -194,9 +192,7 @@ export function numeric<const O extends NumberFieldOptions = {}>(options?: O): D
     type: "number",
     options: opts,
     start(control) {
-      const raw = control.rawStore.get();
-      control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
-      control.rawStore.listen((raw) => {
+      control.rawStore.subscribe((raw) => {
         control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
       });
     },
@@ -213,9 +209,7 @@ export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): 
     type: "boolean",
     options: opts,
     start(control) {
-      const raw = control.rawStore.get();
-      control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
-      control.rawStore.listen((raw) => {
+      control.rawStore.subscribe((raw) => {
         control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
       });
     },
@@ -232,9 +226,7 @@ export function url<const O extends UrlFieldOptions = {}>(options?: O): Descript
     type: "url",
     options: opts,
     start(control) {
-      const raw = control.rawStore.get();
-      control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
-      control.rawStore.listen((raw) => {
+      control.rawStore.subscribe((raw) => {
         control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
       });
     },
@@ -267,9 +259,7 @@ export function shape<const O extends ShapeFieldOptions = {}>(
     type: "shape",
     options: opts,
     start(control) {
-      const raw = control.rawStore.get();
-      control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
-      control.rawStore.listen((raw) => {
+      control.rawStore.subscribe((raw) => {
         control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
       });
     },
@@ -295,9 +285,7 @@ export function choice<const O extends ChoiceFieldOptions<string>>(
     type: "choice",
     options,
     start(control) {
-      const raw = control.rawStore.get();
-      control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
-      control.rawStore.listen((raw) => {
+      control.rawStore.subscribe((raw) => {
         control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
       });
     },

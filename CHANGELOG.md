@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — every built-in `Descriptor`'s own `start` is now a single `control.rawStore.subscribe(...)` call
+
+Previously each built-in field builder (`string()`/`numeric()`/`boolean()`/`url()`/`shape()`/
+`choice()`, and `file()` from `./node.js`) wrote its own `start` as two steps: an initial
+`control.set(...)` seeded from `control.rawStore.get()`, then a `control.rawStore.listen((raw) =>
+control.set(...))` to stay live — the same parse-or-default expression duplicated at both call
+sites. `ReadOnlyStore.subscribe()` already fires immediately with the current value and again on
+every later change, so a single `control.rawStore.subscribe((raw) => control.set(...))` call does
+both jobs at once. No behavior change — `subscribe`'s immediate call happens synchronously inside
+`start`, same tick-0 timing as the old `get()` + `set()` pair. A hand-written `Descriptor` gets the
+same simplification for free — see the README's "Writing a custom `Descriptor`" section.
+
 ### Changed — `Descriptor<T, O>` is now `Descriptor<A, B>`
 
 `Descriptor`'s type parameters now directly encode a field's two type-level states instead of

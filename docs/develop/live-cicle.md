@@ -106,8 +106,8 @@ fuente entra sin esperar un cambio posterior.
 Cada vez que `rawSources[index]` cambia, todo `keyStore` que lo mira
 recalcula su propio valor (comparando el primero, en orden de prioridad, que
 tenga el `path` del campo) — y si cambió, dispara sus propios `listen()`, lo
-que a su vez dispara cualquier `control.rawStore.listen()` que el `start` de
-ese campo haya registrado en la Fase 1 (ver Fase 3).
+que a su vez dispara cualquier `control.rawStore.subscribe()` que el `start`
+de ese campo haya registrado en la Fase 1 (ver Fase 3).
 
 ## Fase 3 — Vida en vivo
 
@@ -116,10 +116,11 @@ equivalente al `open()` de una `Source` que el nodo espere por su cuenta. La
 reactividad de cada campo es enteramente cosa de lo que su propio
 `start(control)` haya hecho con `control` en la Fase 1:
 
-- Si `start` llamó `control.rawStore.listen(...)`, cualquier cambio
-  posterior en `rawStore` (típicamente porque una fuente publicó un valor
-  nuevo — ver Fase 2) dispara ese callback, que puede llamar `control.set()`
-  de nuevo.
+- Si `start` llamó `control.rawStore.subscribe(...)`, ese callback ya
+  disparó una vez de inmediato (tick 0, con el `rawStore` de ese momento) y
+  vuelve a dispararse en cualquier cambio posterior de `rawStore`
+  (típicamente porque una fuente publicó un valor nuevo — ver Fase 2),
+  pudiendo llamar `control.set()` de nuevo cada vez.
 - Si `start` programó algo propio (un `setTimeout`, una promesa que
   resuelve más tarde, una suscripción externa), eso puede llamar
   `control.set()` en cualquier momento, sin relación con `rawStore` en
@@ -196,7 +197,7 @@ ejecutarlos.
 | `control.rawStore.get()`/`.listen()`/`.subscribe()` | Lectura libre en cualquier momento — es un `ReadOnlyStore`, `start` nunca puede escribirle directamente (solo mediante su propio `control.set()`, que va al `FieldStore`, no al raw). |
 
 `start` nunca se re-invoca — toda la reactividad del campo vive en lo que esa
-única llamada dejó armado. **Sin ningún `control.rawStore.listen()` ni
+única llamada dejó armado. **Sin ningún `control.rawStore.subscribe()` ni
 ninguna otra fuente de `control.set()` futura, el campo queda fijo para
 siempre** — no es un caso raro que "cae a algo", es literalmente lo que pasa
 si `start` no arma nada más. Ver
@@ -205,8 +206,9 @@ si `start` no arma nada más. Ver
 cuatro casos: sin llamar `control.set()` nunca (siempre `null`), llamándolo
 una vez sin escuchar `rawStore` (fijo en ese valor), escuchando `rawStore`
 con una transformación propia (reactivo), y un `start` que combina las tres
-cosas — un seed síncrono, un `control.rawStore.listen()` para la fuente, y
-un `setTimeout` propio, independiente de la fuente.
+cosas — un seed a través de `control.rawStore.subscribe()` (que dispara de
+inmediato con el valor actual, tick 0) y un `setTimeout` propio,
+independiente de la fuente.
 
 ## Grupos anidados y nodos `create()` embebidos
 
@@ -241,8 +243,7 @@ function delayed(defaultValue: number, overrideAfterMs: number, overrideValue: n
     type: "delayed",
     options: {},
     start(control) {
-      control.set(parse(control.rawStore.get()));
-      control.rawStore.listen((raw) => control.set(parse(raw)));
+      control.rawStore.subscribe((raw) => control.set(parse(raw)));
       setTimeout(() => control.set(overrideValue), overrideAfterMs);
     },
   });
@@ -256,9 +257,9 @@ const source = new Source<{ value?: string }>({
 
 const cfg = create({ value: delayed(3000, 40, 4000) }, { sources: [source] });
 
-cfg.value.get(); // 3000 — Fase 1: start() corrió, control.rawStore.get() === null todavía
+cfg.value.get(); // 3000 — Fase 1: start() corrió, subscribe() disparó de inmediato con rawStore.get() === null
 // ... ~30ms después
-cfg.value.get(); // 2000 — Fase 3: la fuente publicó, el control.rawStore.listen() lo propagó
+cfg.value.get(); // 2000 — Fase 3: la fuente publicó, el subscribe() de start() lo propagó
 // ... ~50ms después
 cfg.value.get(); // 4000 — Fase 3: el setTimeout propio de start() disparó su propio control.set()
 ```
@@ -266,8 +267,9 @@ cfg.value.get(); // 4000 — Fase 3: el setTimeout propio de start() disparó su
 Línea de tiempo:
 
 ```
-t=0ms    create() devuelve el nodo. start() ya corrió (una vez). value = 3000
-t=20ms   la Source publica "2000" → rawStore cambia → el listen() de start() lo propaga → value = 2000
+t=0ms    create() devuelve el nodo. start() ya corrió (una vez). subscribe() disparó de
+         inmediato contra rawStore.get() === null. value = 3000
+t=20ms   la Source publica "2000" → rawStore cambia → el subscribe() de start() lo propaga → value = 2000
 t=40ms   el setTimeout propio de start() dispara → control.set(4000) → value = 4000
 ```
 
@@ -280,9 +282,9 @@ t=40ms   el setTimeout propio de start() dispara → control.set(4000) → value
   `control.rawStore.get()` casi siempre es `null` en ese instante (ninguna
   fuente ha abierto) y el `parse` no llega a correr contra un valor real.
 - El caso típico — una fuente publica un valor inválido — pasa por el
-  `control.rawStore.listen(...)` que `start` registró: la excepción se
+  `control.rawStore.subscribe(...)` que `start` registró: la excepción se
   lanza **síncronamente** dentro de esa cadena de `.set()` (`Source.control
-  .set()` → `rawSources[i].set()` → `keyStore` → `control.rawStore.listen()`
+  .set()` → `rawSources[i].set()` → `keyStore` → `control.rawStore.subscribe()`
   → `parse()` lanza), la cual — para la primera publicación de una fuente —
   ocurre dentro del `.then()` de `source.open()` que arma `ownReady` (Fase
   2). Eso convierte ese `.then()` en una promesa rechazada, lo que rechaza

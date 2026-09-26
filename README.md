@@ -276,7 +276,7 @@ and call `start(control)` on it exactly once — nothing else in `create()` ever
 - `control.path` — this field's path, for labeling an error message.
 - `control.set(value)` — publishes the field's next value. Callable synchronously, right inside
   `start` (**tick 0** — the field already has that value by the time `create()` returns, no `await`
-  needed anywhere), and/or any number of times later — from a `control.rawStore.listen()`
+  needed anywhere), and/or any number of times later — from a `control.rawStore.subscribe()`
   callback, a `setTimeout`, a resolved `fetch()`, whatever `start` wants.
 
 The simplest way to build one is `new Descriptor({ type, options, start })` directly — `type` is
@@ -285,18 +285,19 @@ object that can carry a `key` (same `string | string[]` explicit-path override e
 type accepts) plus whatever else `start` wants to read (a `default`, ...).
 
 **`start` is the only place a field's value ever comes from — there's no default reactivity to fall
-back on.** A `start` that calls `control.set()` once and never touches `control.rawStore` again
-leaves the field at that one value forever, even the source's very first update never reaches it
-(see [Fase 1 en `docs/develop/live-cicle.md`](./docs/develop/live-cicle.md) for exactly why). There's
-no shared helper for this — every built-in field type (`string()`/`numeric()`/...) writes its own
-`start` directly: call `control.set()` once synchronously (running its own parser against
-`control.rawStore.get()`, falling back to a default when raw is missing) and again on every
-`control.rawStore.listen()` update. Write the same shape yourself to get the same "live from the
-moment the source opens" behavior:
+back on.** A `start` that never subscribes to `control.rawStore` at all leaves the field static
+forever, even the source's very first update never reaches it (see [Fase 1 en
+`docs/develop/live-cicle.md`](./docs/develop/live-cicle.md) for exactly why). There's no shared
+helper for this — every built-in field type (`string()`/`numeric()`/...) writes its own `start` as
+a single `control.rawStore.subscribe(...)` call: `subscribe` fires immediately with the current raw
+value (**tick 0**, before `create()` even returns) and again on every later change, so running the
+field's own parser inside that one callback (falling back to a default when raw is missing) is
+enough to seed the field *and* keep it live — no separate `control.rawStore.get()` call needed.
+Write the same shape yourself to get the same "live from the moment the source opens" behavior:
 
 A basic custom descriptor is just that shape, filled in — `parse` and `defaultValue` as local
-`const`s, referenced from both `control.set()` calls, exactly like `string()`/`numeric()` do it
-internally:
+`const`s, referenced once from inside the single `control.rawStore.subscribe(...)` callback, exactly
+like `string()`/`numeric()` do it internally:
 
 ```ts
 import { Descriptor, create, type WithDefault } from "@jondotsoy/configs";
@@ -319,9 +320,7 @@ function port<const O extends { key?: string | string[]; default?: number } = {}
     type: "port",
     options: opts,
     start(control) {
-      const raw = control.rawStore.get();
-      control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
-      control.rawStore.listen((raw) => {
+      control.rawStore.subscribe((raw) => {
         control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
       });
     },
@@ -359,9 +358,7 @@ function csv(options: { key?: string | string[]; default?: string[] } = {}) {
     type: "csv",
     options,
     start(control) {
-      const raw = control.rawStore.get();
-      control.set(raw == null ? defaultValue : parse(raw, control.path));
-      control.rawStore.listen((raw) => {
+      control.rawStore.subscribe((raw) => {
         control.set(raw == null ? defaultValue : parse(raw, control.path));
       });
     },
@@ -390,8 +387,7 @@ function pollingDescriptor() {
     type: "poll",
     options: {},
     start(control) {
-      control.set(Number(control.rawStore.get() ?? 0)); // tick 0 — no source has opened yet
-      control.rawStore.listen((raw) => control.set(Number(raw)));
+      control.rawStore.subscribe((raw) => control.set(Number(raw ?? 0))); // fires at tick 0 too
       timer = setInterval(() => control.set(Math.random()), 1000);
     },
     async close() {

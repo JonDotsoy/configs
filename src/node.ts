@@ -288,9 +288,7 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): Descri
     type: "file",
     options: runtimeOptions,
     start(control) {
-      const raw = control.rawStore.get();
-      control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
-      control.rawStore.listen((raw) => {
+      control.rawStore.subscribe((raw) => {
         control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
       });
     },

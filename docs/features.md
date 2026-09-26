@@ -77,18 +77,19 @@ El punto de entrada público (`src/config-node.ts`, re-exportado desde
   `.set(value)` — publica el siguiente valor del campo, ya sea de forma
   síncrona dentro del propio `start` (**tick 0**, antes de que `create()`
   siquiera retorne) y/o más adelante, cualquier cantidad de veces (desde
-  un `control.rawStore.listen()`, un `setTimeout`, un `fetch()` resuelto,
-  lo que `start` necesite). `start` es **la única** fuente de actualización
-  del campo — no hay ningún comportamiento por defecto que lo haga
-  reactivo: si nunca vuelve a llamar `control.set()` (ni escucha
-  `control.rawStore`), el campo queda fijo para siempre. No hay ningún
-  helper compartido para esto — cada builder integrado (`string()`,
-  `numeric()`, `boolean()`, `url()`, `choice()`, `shape()`, y `file()` en
-  `node.ts`) escribe su propio `start`: llama `control.set()` una vez de
-  forma síncrona (con su propio parser contra `control.rawStore.get()`,
-  cayendo a `options.default` si no hay valor) y de nuevo en cada
-  `control.rawStore.listen()`; cualquier `Descriptor` hecho a mano puede
-  escribir la misma forma para tener el mismo comportamiento "vivo".
+  un `control.rawStore.subscribe()`, un `setTimeout`, un `fetch()`
+  resuelto, lo que `start` necesite). `start` es **la única** fuente de
+  actualización del campo — no hay ningún comportamiento por defecto que
+  lo haga reactivo: si nunca se suscribe a `control.rawStore`, el campo
+  queda fijo para siempre. No hay ningún helper compartido para esto —
+  cada builder integrado (`string()`, `numeric()`, `boolean()`, `url()`,
+  `choice()`, `shape()`, y `file()` en `node.ts`) escribe su propio
+  `start` como una única llamada a `control.rawStore.subscribe(...)`:
+  dispara de inmediato con el valor actual (tick 0) y de nuevo en cada
+  cambio posterior, corriendo su propio parser contra ese valor (cayendo
+  a `options.default` si no hay valor) en ambos casos; cualquier
+  `Descriptor` hecho a mano puede escribir la misma forma para tener el
+  mismo comportamiento "vivo".
   También expone
   `.close()` (siempre presente, no-op si el constructor no dio `close`)
   que `create()` llama una vez por campo desde el `.close()` del nodo.

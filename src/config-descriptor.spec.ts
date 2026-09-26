@@ -272,8 +272,7 @@ describe("writing a custom Descriptor by hand (structural start() contract)", ()
       return {
         key: options.key,
         start(control: DescriptorControl<string[]>) {
-          control.set(parse(control.rawStore.get()));
-          control.rawStore.listen((raw) => control.set(parse(raw)));
+          control.rawStore.subscribe((raw) => control.set(parse(raw)));
         },
       };
     }

@@ -496,8 +496,7 @@ describe("create — start(control) is 100% in control of the field's value", ()
       options: {},
       start(control) {
         const parse = (raw: unknown): number => Number(raw ?? 0) * 2;
-        control.set(parse(control.rawStore.get()));
-        control.rawStore.listen((raw) => control.set(parse(raw)));
+        control.rawStore.subscribe((raw) => control.set(parse(raw)));
       },
     });
 
@@ -525,8 +524,7 @@ describe("create — start(control) is 100% in control of the field's value", ()
         type: "delayed",
         options: {},
         start(control) {
-          control.set(parse(control.rawStore.get()));
-          control.rawStore.listen((raw) => control.set(parse(raw)));
+          control.rawStore.subscribe((raw) => control.set(parse(raw)));
           setTimeout(() => control.set(overrideValue), overrideAfterMs);
         },
       });
@@ -729,8 +727,7 @@ describe("create — a hand-written custom Descriptor (structural start() contra
     return {
       key: options.key,
       start(control: DescriptorControl<string[]>) {
-        control.set(parse(control.rawStore.get()));
-        control.rawStore.listen((raw) => control.set(parse(raw)));
+        control.rawStore.subscribe((raw) => control.set(parse(raw)));
       },
     } as unknown as Descriptor<string[]>;
   }
