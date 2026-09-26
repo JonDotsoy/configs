@@ -233,10 +233,49 @@ no shared helper for this — every built-in field type (`string()`/`numeric()`/
 `control.rawStore.listen()` update. Write the same shape yourself to get the same "live from the
 moment the source opens" behavior:
 
+A basic custom descriptor is just that shape, filled in — `parse` and `defaultValue` as local
+`const`s, referenced from both `control.set()` calls, exactly like `string()`/`numeric()` do it
+internally:
+
 ```ts
 import { Descriptor, create } from "@jondotsoy/configs";
 import { envSource } from "@jondotsoy/configs/sources/env";
 
+function port(options: { key?: string | string[]; default?: number } = {}) {
+  const parse = (raw: unknown, path: string[]): number => {
+    const num = Number(raw);
+    if (typeof raw !== "string" || raw.trim() === "" || Number.isNaN(num) || num <= 0) {
+      throw new Error(`Expected a positive port number at "${path.join(".")}"`);
+    }
+    return num;
+  };
+  const defaultValue = options.default !== undefined ? options.default : (null as unknown as number);
+
+  return new Descriptor({
+    type: "port",
+    options,
+    start(control) {
+      const raw = control.rawStore.get();
+      control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
+      control.rawStore.listen((raw) => {
+        control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
+      });
+    },
+  });
+}
+
+// PORT=3000
+const cfg = await create({ port: port({ key: "PORT", default: 8080 }) }, { sources: [envSource()] });
+
+cfg.port.get();
+// 3000
+```
+
+The same shape scales to a descriptor whose value isn't a single scalar — `csv()` below parses its
+raw string into a `string[]` instead of a `number`, but the `parse`/`defaultValue`/`start` pattern
+is identical:
+
+```ts
 function csv(options: { key?: string | string[]; default?: string[] } = {}) {
   const parse = (raw: unknown, path: string[]): string[] => {
     if (typeof raw !== "string") throw new Error(`Expected a comma-separated string at "${path.join(".")}"`);
