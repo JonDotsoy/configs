@@ -519,6 +519,28 @@ describe("create — a custom Descriptor's own reduce() timing vs. its source's"
 
     expect(cfg.port.get()).toBe(3000);
   });
+
+  test("a Descriptor built with neither start() nor reduce() is always null (or options.default, if given)", async () => {
+    // Neither hook at all: `start` falls back to the identity function (`raw => raw`), and
+    // `.start()` itself still only runs against `rawStore.get()` at build time — before any
+    // source has opened, so raw is `null` there and `options.default` (or `null`, without one)
+    // wins. With no `reduce` either, that's the field's value forever.
+    const bare = new Descriptor<unknown>({ type: "bare", options: {} });
+    const withDefault = new Descriptor<string>({ type: "bare", options: { default: "fallback" } });
+
+    const { source, push } = liveTestSource({ bare: "abc", withDefault: "abc" });
+    const cfg = await create({ bare, withDefault }, { sources: [source] });
+
+    expect(cfg.bare.get()).toBeNull();
+    expect(cfg.withDefault.get()).toBe("fallback");
+
+    push({ bare: "xyz", withDefault: "xyz" });
+
+    // Still unchanged — no `reduce` means the source's value never reaches the field, whatever
+    // `start` would have done with it (here, the identity function).
+    expect(cfg.bare.get()).toBeNull();
+    expect(cfg.withDefault.get()).toBe("fallback");
+  });
 });
 
 describe("create — close()", () => {
