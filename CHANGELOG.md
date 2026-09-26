@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/pack.ts` (`bun run pack`): builds `dist/` and then runs
+  `bun pm pack` *inside* `dist/`, producing the same tarball `npm publish`
+  would create from `dist/` directly (using `dist/package.json`), and moves
+  it to the repo root.
+
 ### Changed
 
 - Replaced `scripts/build.sh` with `scripts/build.ts`: the build now runs as a

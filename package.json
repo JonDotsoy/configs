@@ -100,6 +100,7 @@
   "scripts": {
     "build": "bun scripts/build.ts",
     "build:types": "tsc -p tsconfig.build.json",
+    "pack": "bun scripts/pack.ts",
     "test:browser": "playwright test",
     "test:cases": "bun run scripts/run-test-cases.ts"
   },
