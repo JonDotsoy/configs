@@ -1162,7 +1162,7 @@ new one, so there's never more than one timer running for this field. The callba
 cleanup only fires once, when `unsubscribe()` itself is called, so it's the right place to stop the
 last timer for good — it's not a substitute for the `clearInterval` at the top of the callback.
 
-### ⚛️ `useConfig` — reading a field in React
+### `useConfig` — reading a field in React
 
 `@jondotsoy/configs/react` exports a `useConfig(store)` hook that subscribes a component to any
 field (or nested group) and re-renders it on every update. React is a peer dependency — the hook
