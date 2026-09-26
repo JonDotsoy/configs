@@ -5,9 +5,11 @@
  * test-cases-report/report.md.
  *
  * Every case runs against the packed, installed tarball, not the repo's own
- * source or dist/ via self-reference: `bun run build` produces dist/, `bun
- * pm pack` packs it exactly like a real `npm pack`/`npm publish` would, and
- * the resulting tarball is installed with `npm install` into a scratch
+ * source or dist/ via self-reference: `bun run build` produces dist/ (with
+ * its own dist/package.json, see scripts/build.ts), `npm pack` is run
+ * *inside* dist/ so the tarball's root is dist/ itself — exactly the
+ * artifact `npm publish` would produce from dist/ directly — and the
+ * resulting tarball is installed with `npm install` into a scratch
  * directory that has no relation to this repo's own package.json. Each case
  * file is copied into that scratch directory before running it, so its bare
  * `@jondotsoy/configs` (and subpath) imports can only resolve through the
@@ -82,15 +84,18 @@ interface CaseResult {
 }
 
 /**
- * Packs the current build (`bun run build` must have already run) with `bun pm pack` — the same
- * packing bun/npm consumers get from `npm pack`/`npm publish` — and installs the tarball with
- * `npm install` into a fresh scratch directory unrelated to this repo's own package.json, so
- * nothing in it can resolve `@jondotsoy/configs` via workspace self-reference. Returns that
- * directory; the caller is responsible for cleaning it up.
+ * Packs the current build (`bun run build` must have already run) with `npm pack`, run *inside*
+ * dist/ so dist/package.json (not the repo's root package.json) is the tarball's manifest and
+ * dist/ itself is the tarball's root — exactly the artifact `npm publish` would produce from
+ * dist/ directly. Installs the tarball with `npm install` into a fresh scratch directory
+ * unrelated to this repo's own package.json, so nothing in it can resolve `@jondotsoy/configs`
+ * via workspace self-reference. Returns that directory; the caller is responsible for cleaning
+ * it up.
  */
 async function packAndInstall(): Promise<string> {
   console.log("== pack ==");
-  const packOutput = await $`bun pm pack`.cwd(repoRoot).quiet().text();
+  const distDir = join(repoRoot, "dist");
+  const packOutput = await $`npm pack`.cwd(distDir).quiet().text();
   const tarballName = packOutput
     .split("\n")
     .map((line) => line.trim())
@@ -98,7 +103,7 @@ async function packAndInstall(): Promise<string> {
   if (!tarballName) {
     throw new Error(`Could not determine tarball name from pack output:\n${packOutput}`);
   }
-  const tarballPath = join(repoRoot, tarballName);
+  const tarballPath = join(distDir, tarballName);
 
   try {
     const scratchDir = await mkdtemp(join(tmpdir(), "jondotsoy-configs-test-cases-"));
@@ -158,7 +163,8 @@ async function runCli(engine: CliEngine, scratchDir: string, caseFile: string): 
 /**
  * Reads the installed package's own package.json "exports" map and resolves each subpath to its
  * real file under the scratch directory's node_modules — e.g. "@jondotsoy/configs/sources/env" ->
- * ".../node_modules/@jondotsoy/configs/dist/sources/env.js". Bundling against these resolved paths
+ * ".../node_modules/@jondotsoy/configs/sources/env.js" (dist/ was packed as the tarball's own
+ * root, so there's no "dist/" segment in the installed layout). Bundling against these resolved paths
  * directly (rather than leaving `Bun.build` to walk node_modules and match exports conditions on
  * its own for a `target: "browser"` build) sidesteps bundler-version quirks in that matching for a
  * scoped package, while still exercising the exact files the installed tarball's own exports map
@@ -332,8 +338,9 @@ async function renderReport(results: CaseResult[]): Promise<string> {
   lines.push(
     "Each case in `test/cases/` is a self-contained script exercising one specific",
     "piece of behavior, run under every engine it declares support for in",
-    "`test/cases/manifest.ts`, against a `bun pm pack` tarball installed with",
-    "`npm install` into a scratch directory — not this repo's own dist/ via",
+    "`test/cases/manifest.ts`, against an `npm pack` tarball built from dist/",
+    "(dist/package.json as its manifest) and installed with `npm install` into",
+    "a scratch directory — not this repo's own dist/ via",
     "self-reference, so a packaging mistake (a missing export, a stray or",
     "omitted file) actually surfaces here. node/bun/deno run the copied script",
     "directly; the browser engine bundles it with `Bun.build`, resolving",
