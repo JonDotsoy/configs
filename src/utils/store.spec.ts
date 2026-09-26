@@ -338,28 +338,28 @@ describe("store.computed", () => {
   });
 
   test("one store's subscribe callback can drive another store's value", () => {
-    const store1 = store.create<number | [number, number]>(1);
+    const store1 = store.create<number>(1);
     const store2 = store.create<number>(2);
 
     store2.subscribe((val) => {
-      store1.set([1, val]);
+      store1.set(10 + val);
     });
 
-    expect(store1.get()).toEqual([1, 2]);
+    expect(store1.get()).toBe(12);
     expect(store2.get()).toBe(2);
 
     store2.set(3);
 
-    expect(store1.get()).toEqual([1, 3]);
+    expect(store1.get()).toBe(13);
     expect(store2.get()).toBe(3);
   });
 
   test("one store's listen callback can drive another store's value", () => {
-    const store1 = store.create<number | [number, number]>(1);
+    const store1 = store.create<number>(1);
     const store2 = store.create<number>(2);
 
     store2.listen((val) => {
-      store1.set([1, val]);
+      store1.set(10 + val);
     });
 
     expect(store1.get()).toBe(1);
@@ -367,7 +367,7 @@ describe("store.computed", () => {
 
     store2.set(3);
 
-    expect(store1.get()).toEqual([1, 3]);
+    expect(store1.get()).toBe(13);
     expect(store2.get()).toBe(3);
   });
 
