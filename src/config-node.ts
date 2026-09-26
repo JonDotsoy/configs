@@ -1,4 +1,4 @@
-import { isConfigDescriptor, type Descriptor } from "./config-descriptor.js";
+import { isConfigDescriptor, type Descriptor, type DescriptorControl } from "./config-descriptor.js";
 import type { Source } from "./sources/source.js";
 import { Store } from "./utils/store.js";
 
@@ -107,34 +107,22 @@ function resolveFieldPath(descriptor: Descriptor<unknown, object>, entryPath: st
 }
 
 /**
- * Builds one field's own live `Store<T>`: seeded, once, off `rawStore`'s current value via
- * `descriptor.start()` — the descriptor itself holds no `Store`; this is the only place one gets
- * created for it, and `start()` is never called again after this. Every live update from then on
- * comes from `descriptor.reduce()`: its promise is folded into `embeddedReady` (so `create()`'s
- * own readiness waits on it, same as a source's `open()`), and the `Store<T>` it resolves to takes
- * over as this field's value, staying live off its own updates. If that resolved `Store` doesn't
- * itself stay live off `rawStore` (by `.listen()`ing to it, same as `Descriptor`'s own default
- * `reduce` does), the field is stuck at whatever value `reduce` resolved with — this is the only
- * place a live update can come from, `start()` is never revisited.
+ * Builds one field's own live `Store<T>` and hands control of it entirely to
+ * `descriptor.start(control)` — same shape as `Source`'s own `start(control)` contract. The
+ * descriptor itself holds no `Store`; this is the only place one gets created for it, and
+ * `start()` is called exactly once, synchronously, right here. Whatever `start` does with
+ * `control.set(...)` — once synchronously (tick 0, before this function even returns), later via
+ * `control.rawStore.listen(...)`, after an `await`, from a timer, ... — is the field's entire
+ * lifetime; nothing else in this engine ever calls `.set()` on this `Store`.
  */
-function buildField(
-  descriptor: Descriptor<unknown, object>,
-  rawStore: Store<unknown>,
-  path: string[],
-  embeddedReady: PromiseLike<unknown>[],
-): Store<unknown> {
-  const fieldStore = new Store<unknown>(descriptor.start(rawStore.get(), path));
-
-  const reducePromise = typeof descriptor.reduce === "function" ? descriptor.reduce(rawStore, path) : undefined;
-  if (reducePromise) {
-    embeddedReady.push(
-      reducePromise.then((resultStore) => {
-        fieldStore.set(resultStore.get());
-        resultStore.listen((value) => fieldStore.set(value));
-      }),
-    );
-  }
-
+function buildField(descriptor: Descriptor<unknown, object>, rawStore: Store<unknown>, path: string[]): Store<unknown> {
+  const fieldStore = new Store<unknown>(null);
+  const control: DescriptorControl<unknown> = {
+    rawStore,
+    path,
+    set: (value) => fieldStore.set(value),
+  };
+  descriptor.start(control);
   return fieldStore;
 }
 
@@ -164,7 +152,7 @@ function buildNode(
     const entryPath = [...path, key];
     if (isConfigDescriptor(entry)) {
       const fieldPath = resolveFieldPath(entry, entryPath);
-      node[key] = buildField(entry, keyStore(rawSources, fieldPath), fieldPath, embeddedReady);
+      node[key] = buildField(entry, keyStore(rawSources, fieldPath), fieldPath);
       closers.push(() => (typeof entry.close === "function" ? entry.close() : Promise.resolve()));
     } else if (isConfigsNode(entry)) {
       embeddedReady.push(entry);

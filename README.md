@@ -201,34 +201,40 @@ object — a `Descriptor` — and that's the whole extension point: any shape en
 `Descriptor` gets the same treatment from `create()`/`load()`, whether it came from one of these
 builders or you built it yourself.
 
-**The role `create()` plays**, for every `Descriptor`-backed field, regardless of who built it: it
-works out the field's path (its own nesting in the shape tree, or `.key` when set — see
-[`key`](#key--reading-a-field-from-an-explicit-path) above), builds and owns one live `Store` for
-that field, seeding it **once** off whatever raw value the sources currently publish there (merged
-across sources) via the descriptor's `start(raw, path)`, and then hands that field over entirely to
-`reduce(rawStore, path)` — every live update the field will ever see comes from the `Store<T>` that
-resolves to, never from `start` again. `create()` never inspects the raw value itself past that
-merge — coercing it into whatever the field's `.get()` should return is entirely the descriptor's
-job.
+**`Descriptor` is modeled directly after `Source`** (see [building a custom
+source](#source--building-a-custom-source) below):
+one `start(control)` hook, called exactly once, that gets 100% control of the field's value through
+`control`. `create()`'s role, for every `Descriptor`-backed field, regardless of who built it: work
+out the field's path (its own nesting in the shape tree, or `.key` when set — see
+[`key`](#key--reading-a-field-from-an-explicit-path) above), build the field's own live `Store`,
+and call `start(control)` on it exactly once — nothing else in `create()` ever writes to that
+`Store` again. `control` gives `start` everything it needs:
 
-The simplest way to build one is `new Descriptor({ type, options, start, reduce })` directly —
-`type` is just a label (any string; only the built-ins' own labels are special), `start` is a
-`(raw: unknown, path: string[]) => T` function doing the actual coercion/validation (throw a
-`ConfigError` to reject a value), and `options` is a plain object that can carry a `key` (same
-`string | string[]` explicit-path override every built-in field type accepts) plus a `default` used
-whenever no source has the field.
+- `control.rawStore` — this field's live raw value, merged across sources (read-only:
+  `.get()`/`.subscribe()`/`.listen()`).
+- `control.path` — this field's path, for labeling an error message.
+- `control.set(value)` — publishes the field's next value. Callable synchronously, right inside
+  `start` (**tick 0** — the field already has that value by the time `create()` returns, no `await`
+  needed anywhere), and/or any number of times later — from a `control.rawStore.listen()`
+  callback, a `setTimeout`, a resolved `fetch()`, whatever `start` wants.
 
-**`reduce` is what makes a field live — it isn't optional in practice.** Omitting it doesn't fall
-back to anything: the field is stuck at its `start()`-seeded value forever, even the source's very
-first one never reaches it (see [Fase 1 en
-`docs/develop/live-cicle.md`](./docs/develop/live-cicle.md) for exactly why). Every built-in field
-type gets its reactivity from `reduceFromStart(parse, defaultValue)` (also exported) — it builds a
-`reduce` that re-runs `parse` (the same function given to `start`) on every raw change, falling
-back to `defaultValue` the same way `start` does. Pass your own `start`'s function straight through
+The simplest way to build one is `new Descriptor({ type, options, start })` directly — `type` is
+just a label (any string; only the built-ins' own labels are special), and `options` is a plain
+object that can carry a `key` (same `string | string[]` explicit-path override every built-in field
+type accepts) plus whatever else `start` wants to read (a `default`, ...).
+
+**`start` is the only place a field's value ever comes from — there's no default reactivity to fall
+back on.** A `start` that calls `control.set()` once and never touches `control.rawStore` again
+leaves the field at that one value forever, even the source's very first update never reaches it
+(see [Fase 1 en `docs/develop/live-cicle.md`](./docs/develop/live-cicle.md) for exactly why). Every
+built-in field type gets its reactivity from `startFromParser(parse, defaultValue)` (also
+exported) — it builds a `start` that calls `control.set()` once synchronously (running `parse`
+against `control.rawStore.get()`, falling back to `defaultValue` when raw is missing) and then
+calls it again on every `control.rawStore.listen()` update. Pass your own parser straight through
 it and you get the same "live from the moment the source opens" behavior every built-in field has:
 
 ```ts
-import { Descriptor, reduceFromStart, create } from "@jondotsoy/configs";
+import { Descriptor, startFromParser, create } from "@jondotsoy/configs";
 import { envSource } from "@jondotsoy/configs/sources/env";
 
 function csv(options: { key?: string | string[]; default?: string[] } = {}) {
@@ -236,7 +242,7 @@ function csv(options: { key?: string | string[]; default?: string[] } = {}) {
     if (typeof raw !== "string") throw new Error(`Expected a comma-separated string at "${path.join(".")}"`);
     return raw.split(",").map((s) => s.trim());
   };
-  return new Descriptor({ type: "csv", options, start: parse, reduce: reduceFromStart(parse, options.default) });
+  return new Descriptor({ type: "csv", options, start: startFromParser(parse, options.default) });
 }
 
 // ALLOWED_ORIGINS=a.com, b.com, c.com
@@ -249,20 +255,10 @@ cfg.allowedOrigins.get();
 // ["a.com", "b.com", "c.com"]
 ```
 
-For a field whose value can only be produced (or recomputed live) in some other way than "re-run
-`start` on every raw change" — an async lookup, a value derived from more than the raw snapshot —
-write `reduce(rawStore, path)` by hand instead of using `reduceFromStart`. `create()` folds its
-promise into its own readiness (same as a source's `open()`) and adopts the `Store<T>` it resolves
-to as the field's live value; `start` still seeds the field synchronously in the meantime, so it's
-never left without a value. Whatever `reduce` you give it owns every update from then on — if its
-own `Store<T>` doesn't stay live off `rawStore` itself (by `.listen()`ing to it, the same way
-`reduceFromStart` does), the field simply never updates again, no matter what the source publishes.
-
-If `start`/`reduce` open something that needs releasing (a connection, a timer, ...), give the
-constructor a `close(): Promise<void>` hook too — `create()`'s own returned node is itself
-`close()`able (alongside `then()`): calling `cfg.close()` runs every field's own `close`, every
-embedded `create()` result's own `close()`, and every one of the node's own `options.sources`
-(`Source.close()`), all in one call:
+For anything `startFromParser` doesn't cover — an async lookup, a value derived from more than the
+raw snapshot, its own timer independent of the source — write `start(control)` by hand instead.
+Nothing in `create()` waits for it: `control.set()` can run synchronously (tick 0) and/or from an
+`async` continuation later, entirely on `start`'s own schedule:
 
 ```ts
 function pollingDescriptor() {
@@ -270,16 +266,25 @@ function pollingDescriptor() {
   return new Descriptor<number>({
     type: "poll",
     options: {},
-    start(raw) {
-      timer ??= setInterval(() => {}, 1000);
-      return Number(raw);
+    start(control) {
+      control.set(Number(control.rawStore.get() ?? 0)); // tick 0 — no source has opened yet
+      control.rawStore.listen((raw) => control.set(Number(raw)));
+      timer = setInterval(() => control.set(Math.random()), 1000);
     },
     async close() {
       clearInterval(timer);
     },
   });
 }
+```
 
+If `start` opens something that needs releasing (a connection, a timer, ...), give the constructor
+a `close(): Promise<void>` hook too, same as above — `create()`'s own returned node is itself
+`close()`able (alongside `then()`): calling `cfg.close()` runs every field's own `close`, every
+embedded `create()` result's own `close()`, and every one of the node's own `options.sources`
+(`Source.close()`), all in one call:
+
+```ts
 const cfg = create({ ticks: pollingDescriptor() }, { sources: [envSource()] });
 await cfg;
 // ... later

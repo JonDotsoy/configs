@@ -61,28 +61,33 @@ El punto de entrada público (`src/config-node.ts`, re-exportado desde
 
 `src/config-descriptor.ts` — el bloque de construcción de cada campo:
 
-- **`Descriptor<T, O>`** — la clase base. Expone `.key`, `.start(raw,
-  path?)` (síncrono: cae a `options.default` cuando no hay valor, o corre
-  el `start` propio del campo — `create()` lo llama **una sola vez**, para
-  sembrar el `Store` del campo antes de que `.reduce()` resuelva) y
-  `.reduce(rawStore, path?)`, que devuelve `Promise<Store<T>> | undefined`
-  y es **la única** fuente de actualización en vivo — sin un `reduce`
-  propio en el constructor, el campo se queda para siempre en el valor que
-  sembró `start()`, sin importar qué publique la fuente después; no hay
-  ningún comportamiento por defecto que lo haga reactivo. Todo builder
-  integrado (`string()`, `numeric()`, ...) usa `reduceFromStart(parse,
-  defaultValue)` (también exportada) para su propio `reduce` — reejecuta
-  `parse` (la misma función de `start`) en cada cambio de `rawStore`,
-  cayendo a `defaultValue` igual que `start`; cualquier `Descriptor` hecho
-  a mano puede reusarla para tener el mismo comportamiento "vivo". También
-  expone `.close()` (siempre presente, no-op si el constructor no dio
-  `close`) que `create()` llama una vez por campo desde el `.close()` del
-  nodo. Extensible a mano: `new Descriptor({ type, options, start, reduce?,
-  close? })`, o directamente un objeto plano con `.start()` y `.reduce()`
-  (`.close()` opcional) — `isConfigDescriptor()` reconoce cualquiera de
-  las dos formas estructuralmente, sin necesitar ningún símbolo/tag. Un
-  objeto que solo tenga `.start()` (sin `.reduce()`) no se reconoce como
-  descriptor — `create()` lo trataría como un grupo anidado más.
+- **`Descriptor<T, O>`** — la clase base, modelada igual que `Source`: un
+  único hook `.start(control)`, llamado **una sola vez** por `create()`,
+  que recibe el control total del campo. `control` expone `.rawStore`
+  (el valor crudo en vivo de ese campo, solo lectura: `.get()`/
+  `.subscribe()`/`.listen()`), `.path` (para mensajes de error) y
+  `.set(value)` — publica el siguiente valor del campo, ya sea de forma
+  síncrona dentro del propio `start` (**tick 0**, antes de que `create()`
+  siquiera retorne) y/o más adelante, cualquier cantidad de veces (desde
+  un `control.rawStore.listen()`, un `setTimeout`, un `fetch()` resuelto,
+  lo que `start` necesite). `start` es **la única** fuente de actualización
+  del campo — no hay ningún comportamiento por defecto que lo haga
+  reactivo: si nunca vuelve a llamar `control.set()` (ni escucha
+  `control.rawStore`), el campo queda fijo para siempre. Todo builder
+  integrado (`string()`, `numeric()`, ...) usa `startFromParser(parse,
+  defaultValue)` (también exportada) para su propio `start` — llama
+  `control.set()` una vez de forma síncrona (con `parse(control.rawStore
+  .get())`, cayendo a `defaultValue` si no hay valor) y de nuevo en cada
+  `control.rawStore.listen()`; cualquier `Descriptor` hecho a mano puede
+  reusarla para tener el mismo comportamiento "vivo". También expone
+  `.close()` (siempre presente, no-op si el constructor no dio `close`)
+  que `create()` llama una vez por campo desde el `.close()` del nodo.
+  Extensible a mano: `new Descriptor({ type, options, start, close? })`,
+  o directamente un objeto plano con `.start(control)` (`.close()`
+  opcional) — `isConfigDescriptor()` reconoce cualquiera de las dos
+  formas estructuralmente, solo por tener un `.start()` invocable, sin
+  necesitar ningún símbolo/tag. Un objeto sin `.start()` no se reconoce
+  como descriptor — `create()` lo trataría como un grupo anidado más.
 - **`string(options?)`** — coerción a `string`; `pattern` opcional
   (`RegExp`) para validar el valor.
 - **`numeric(options?)`** — coerciona un string numérico (o `number`

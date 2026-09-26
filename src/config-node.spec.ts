@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, spyOn, test } from "bun:test";
 import { create, isConfigsNode, type ConfigsNode, type ConfigsNodePending, type ConfigsShape, type Options } from "./config-node.ts";
-import { boolean, choice, Descriptor, isConfigDescriptor, numeric, shape, string, url } from "./config-descriptor.ts";
+import { boolean, choice, Descriptor, isConfigDescriptor, numeric, shape, string, url, type DescriptorControl } from "./config-descriptor.ts";
 import { ConfigError } from "./errors.ts";
 import { envSource } from "./sources/env.ts";
 import { Source } from "./sources/source.ts";
@@ -455,25 +455,79 @@ describe("create — live updates", () => {
   });
 });
 
-describe("create — a custom Descriptor's own reduce() timing vs. its source's", () => {
-  test("field starts at the descriptor's default, then the source's delayed value, then the descriptor's own later override", async () => {
-    const sourceDelayMs = 20;
-    const descriptorDelayMs = sourceDelayMs + 20; // n ms more than the source's own delay
+describe("create — start(control) is 100% in control of the field's value", () => {
+  test("a start that never calls control.set() leaves the field at null forever", async () => {
+    const inert = new Descriptor<unknown>({ type: "inert", options: {}, start: () => {} });
 
-    // Stays live off `rawStore` (so it still picks up the source's own update), but also
-    // schedules its own unrelated override further out — independent of anything the source does.
+    const { source, push } = liveTestSource({ value: "abc" });
+    const cfg = await create({ value: inert }, { sources: [source] });
+
+    expect(cfg.value.get()).toBeNull();
+
+    push({ value: "xyz" });
+
+    // start() only ever ran once, at build time, and never called control.set() — nothing else
+    // in this engine can set this field's value.
+    expect(cfg.value.get()).toBeNull();
+  });
+
+  test("a start that calls control.set() once and never listens to rawStore never updates again", async () => {
+    const fixed = new Descriptor<number>({
+      type: "fixed",
+      options: {},
+      start: (control) => control.set(3000),
+    });
+
+    const { source, push } = liveTestSource({ port: "8080" });
+    const cfg = await create({ port: fixed }, { sources: [source] });
+
+    // `await cfg` did wait for `source` to open — but `start()` never looked at
+    // `control.rawStore` at all, so the source's value never reaches the field.
+    expect(cfg.port.get()).toBe(3000);
+
+    push({ port: "9090" });
+
+    expect(cfg.port.get()).toBe(3000);
+  });
+
+  test("a start that listens to control.rawStore with its own transform fully drives every update", async () => {
+    const doubled = new Descriptor<number>({
+      type: "doubled",
+      options: {},
+      start(control) {
+        const parse = (raw: unknown): number => Number(raw ?? 0) * 2;
+        control.set(parse(control.rawStore.get()));
+        control.rawStore.listen((raw) => control.set(parse(raw)));
+      },
+    });
+
+    const { source, push } = liveTestSource({ value: "5" });
+    const cfg = await create({ value: doubled }, { sources: [source] });
+
+    expect(cfg.value.get()).toBe(10);
+
+    push({ value: "7" });
+
+    expect(cfg.value.get()).toBe(14);
+  });
+
+  test("field starts at a fixed seed (tick 0, via control.set), picks up the source's delayed value, then start()'s own later override", async () => {
+    const sourceDelayMs = 20;
+    const startDelayMs = sourceDelayMs + 20; // n ms more than the source's own delay
+
+    // Seeds synchronously via `control.set`, stays live off `control.rawStore` (so it still
+    // picks up the source's own update), and also schedules its own unrelated override further
+    // out — independent of anything the source does.
     function delayed(defaultValue: number, overrideAfterMs: number, overrideValue: number): Descriptor<number> {
       const parse = (raw: unknown): number => (raw === null || raw === undefined ? defaultValue : Number(raw));
 
       return new Descriptor<number>({
         type: "delayed",
-        options: { default: defaultValue },
-        start: parse,
-        async reduce(rawStore) {
-          const store = new Store<number>(parse(rawStore.get()));
-          rawStore.listen((raw) => store.set(parse(raw)));
-          setTimeout(() => store.set(overrideValue), overrideAfterMs);
-          return store;
+        options: {},
+        start(control) {
+          control.set(parse(control.rawStore.get()));
+          control.rawStore.listen((raw) => control.set(parse(raw)));
+          setTimeout(() => control.set(overrideValue), overrideAfterMs);
         },
       });
     }
@@ -484,106 +538,16 @@ describe("create — a custom Descriptor's own reduce() timing vs. its source's"
       },
     });
 
-    const cfg = create({ value: delayed(3000, descriptorDelayMs, 4000) }, { sources: [source] });
+    const cfg = create({ value: delayed(3000, startDelayMs, 4000) }, { sources: [source] });
 
-    // No source has opened yet at this synchronous point — the descriptor's own default wins.
+    // No source has opened yet at this synchronous point — start()'s own seed wins.
     expect(cfg.value.get()).toBe(3000);
 
     await new Promise((resolve) => setTimeout(resolve, sourceDelayMs + 10));
     expect(cfg.value.get()).toBe(2000);
 
-    await new Promise((resolve) => setTimeout(resolve, descriptorDelayMs - sourceDelayMs + 10));
+    await new Promise((resolve) => setTimeout(resolve, startDelayMs - sourceDelayMs + 10));
     expect(cfg.value.get()).toBe(4000);
-  });
-
-  test("a Descriptor built with only start() (no reduce in the constructor) never updates, even once its source opens", async () => {
-    // No `reduce` passed to the constructor at all — `reduce` is the only thing that keeps a
-    // field live (see `DescriptorUnderlying`'s own doc), so without one the field is stuck at
-    // whatever `start()` seeded it with, forever — not even the source's very first value reaches
-    // it, let alone a later update.
-    const port = new Descriptor<number>({
-      type: "number",
-      options: { default: 3000 },
-      start: (raw) => Number(raw),
-    });
-
-    const { source, push } = liveTestSource({ port: "8080" });
-    const cfg = await create({ port }, { sources: [source] });
-
-    // `await cfg` did wait for `source` to open — but with no `reduce`, that never reached the
-    // field, so it's still at `start()`'s own seed (`options.default`, since no source had opened
-    // yet at that synchronous point).
-    expect(cfg.port.get()).toBe(3000);
-
-    push({ port: "9090" });
-
-    expect(cfg.port.get()).toBe(3000);
-  });
-});
-
-describe("create — a Descriptor built without start()", () => {
-  // No `start` in any of these — the constructor falls back to the identity function
-  // (`raw => raw`), but that only matters for the synchronous seed at build time, and raw is
-  // `null` there (no source has opened yet) — so `options.default` (or `null`, without one) is
-  // always what a missing `start` actually produces in practice.
-
-  test("sin start, sin reduce, sin default: siempre null", async () => {
-    const bare = new Descriptor<unknown>({ type: "bare", options: {} });
-
-    const { source, push } = liveTestSource({ bare: "abc" });
-    const cfg = await create({ bare }, { sources: [source] });
-
-    expect(cfg.bare.get()).toBeNull();
-
-    push({ bare: "xyz" });
-
-    // No `reduce` — the source's value never reaches the field, so it's still null.
-    expect(cfg.bare.get()).toBeNull();
-  });
-
-  test("sin start, sin reduce, con default: siempre options.default", async () => {
-    const withDefault = new Descriptor<string>({ type: "bare", options: { default: "fallback" } });
-
-    const { source, push } = liveTestSource({ withDefault: "abc" });
-    const cfg = await create({ withDefault }, { sources: [source] });
-
-    expect(cfg.withDefault.get()).toBe("fallback");
-
-    push({ withDefault: "xyz" });
-
-    // Still unchanged — no `reduce` means the source's value never reaches the field, whatever
-    // `start` would have done with it (here, the identity function).
-    expect(cfg.withDefault.get()).toBe("fallback");
-  });
-
-  test("sin start, con reduce: options.default primero, luego lo que reduce() decida", async () => {
-    // `reduce`'s own Store doesn't have to (and here doesn't) match what the identity `start`
-    // would have produced — once it resolves, its own logic is all that matters.
-    const doubled = new Descriptor<number>({
-      type: "doubled",
-      options: { default: 0 },
-      async reduce(rawStore) {
-        const parse = (raw: unknown): number => Number(raw ?? 0) * 2;
-        const store = new Store<number>(parse(rawStore.get()));
-        rawStore.listen((raw) => store.set(parse(raw)));
-        return store;
-      },
-    });
-
-    const { source, push } = liveTestSource({ value: "5" });
-    const cfg = create({ value: doubled }, { sources: [source] });
-
-    // Synchronous seed: raw is null at this point, so options.default (0) wins.
-    expect(cfg.value.get()).toBe(0);
-
-    await cfg;
-
-    // reduce()'s own Store has taken over — its own doubling logic, not `start`'s identity.
-    expect(cfg.value.get()).toBe(10);
-
-    push({ value: "7" });
-
-    expect(cfg.value.get()).toBe(14);
   });
 });
 
@@ -612,7 +576,7 @@ describe("create — close()", () => {
       return new Descriptor<string>({
         type: "tracked",
         options: {},
-        start: (raw) => String(raw),
+        start: (control) => control.set(String(control.rawStore.get())),
         async close() {
           closedFields.push(name);
         },
@@ -754,24 +718,19 @@ describe("create — every field builder resolves its raw value at runtime", () 
   });
 });
 
-describe("create — a hand-written custom Descriptor (structural start()/reduce() contract)", () => {
+describe("create — a hand-written custom Descriptor (structural start() contract)", () => {
   // Cast to `Descriptor` since `ConfigsShape` is typed against the real class — the hand-written
-  // contract (key? + start() + reduce()) is a runtime-only extension point, recognized
-  // structurally by `isConfigDescriptor()` (no tag needed) but not by the shape's own static type.
-  // `reduce()` is what actually keeps the field live — `start()` alone only seeds its very first
-  // value, before any source has even opened.
+  // contract (key? + start()) is a runtime-only extension point, recognized structurally by
+  // `isConfigDescriptor()` (no tag needed) but not by the shape's own static type. `start(control)`
+  // is the only place this field's value ever comes from — same as `Source`'s own `start(control)`.
   function csv(options: { key?: string | string[] } = {}): Descriptor<string[], { key?: string | string[] }> {
     const parse = (raw: unknown) => (typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
 
     return {
       key: options.key,
-      start(raw: unknown) {
-        return parse(raw);
-      },
-      async reduce(rawStore: Store<unknown>) {
-        const store = new Store<string[]>(parse(rawStore.get()));
-        rawStore.listen((raw) => store.set(parse(raw)));
-        return store;
+      start(control: DescriptorControl<string[]>) {
+        control.set(parse(control.rawStore.get()));
+        control.rawStore.listen((raw) => control.set(parse(raw)));
       },
     } as unknown as Descriptor<string[], { key?: string | string[] }>;
   }
@@ -805,28 +764,23 @@ describe("create — a hand-written custom Descriptor (structural start()/reduce
     expect(cfg.allowedOrigins.get()).toEqual(["b.com", "c.com"]);
   });
 
-  test("an object with only start() (no reduce()) isn't a Descriptor at all — create() treats it as a nested group instead", () => {
-    const startOnly = { start: (raw: unknown) => String(raw) };
-
-    expect(isConfigDescriptor(startOnly)).toBe(false);
+  test("an object without a start() isn't a Descriptor at all — create() treats it as a nested group instead", () => {
+    expect(isConfigDescriptor({ key: "ALLOWED_ORIGINS" })).toBe(false);
   });
 
-  test("if reduce()'s own Store doesn't stay live off rawStore, the field is pinned at whatever it resolved with", async () => {
+  test("if start() only snapshots rawStore once and never listens, the field is pinned at whatever it saw", async () => {
     const pinned = {
-      start(raw: unknown) {
-        return typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : [];
-      },
-      async reduce(rawStore: Store<unknown>) {
+      start(control: DescriptorControl<string[]>) {
         // Snapshots once and never listens — deliberately not live, unlike `csv()` above.
-        const raw = rawStore.get();
-        return new Store<string[]>(typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
+        const raw = control.rawStore.get();
+        control.set(typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
       },
     } as unknown as Descriptor<string[], object>;
 
     const { source, push } = liveTestSource({ allowedOrigins: "a.com" });
     const cfg = await create({ allowedOrigins: pinned }, { sources: [source] });
 
-    // `reduce()` ran (and snapshotted `rawStore`) before `source` had even opened, so it's stuck
+    // `start()` ran (and snapshotted `rawStore`) before `source` had even opened, so it's stuck
     // with the empty snapshot it saw then — it never listened, so it never sees anything later.
     expect(cfg.allowedOrigins.get()).toEqual([]);
 

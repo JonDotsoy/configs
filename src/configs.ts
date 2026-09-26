@@ -5,6 +5,8 @@ export type { ConfigsNode, ConfigsNodePending, ConfigsShape, Options } from "./c
 export type {
   BooleanFieldOptions,
   ChoiceFieldOptions,
+  DescriptorControl,
+  DescriptorUnderlying,
   FieldType,
   NumberFieldOptions,
   Parseable,
@@ -30,7 +32,7 @@ export { fileSource } from "./sources/file.js";
 export { literalSource } from "./sources/literal.js";
 export { pullSource } from "./sources/pull.js";
 export { shellSource } from "./sources/shell.js";
-export { boolean, choice, Descriptor, numeric, reduceFromStart, shape, string, url, isConfigDescriptor } from "./config-descriptor.js";
+export { boolean, choice, Descriptor, numeric, startFromParser, shape, string, url, isConfigDescriptor } from "./config-descriptor.js";
 export { isConfigsNode } from "./config-node.js";
 export { Store } from "./utils/store.js";
 export { DataTypes } from "./utils/data-types.js";

@@ -19,53 +19,45 @@ function literal.
 
 Removed entirely (`src/utils/config-descriptor-tag.ts` is gone), along with the `[symbol]: true`
 hand-written contract it enabled. `isConfigDescriptor()` recognizes a `Descriptor` structurally now
-— any object with callable `.start()` and `.reduce()` (no tag, no `instanceof` check needed) — so
-every real `Descriptor` still gets recognized across separately-bundled entry points, and a
-hand-written descriptor no longer needs to import anything to be one. A hand-written object with
-only `.start()` (no `.reduce()`) is no longer recognized as a descriptor at all — `create()` treats
-it as a nested group instead. See the README's "Writing a custom `Descriptor`" section.
+— any object with a callable `.start()` (no tag, no `instanceof` check needed) — so every real
+`Descriptor` still gets recognized across separately-bundled entry points, and a hand-written
+descriptor no longer needs to import anything to be one. An object without a `.start()` at all is
+not recognized as a descriptor — `create()` treats it as a nested group instead. See the README's
+"Writing a custom `Descriptor`" section.
 
-### Added — `Descriptor`/`create()` cleanup via `close()`
-
-`new Descriptor({ ... })` accepts an optional `close(): Promise<void>` hook, for releasing whatever
-`start`/`reduce` set up (a connection, a timer, ...). The object `create()`/`load()` return is now
-itself `close()`-able, alongside `then()`: calling `cfg.close()` (on the original reference returned
-by `create()`, before `await`ing it away) runs every field descriptor's own `close`, every embedded
-`create()` result's own `close()`, and every one of the node's own `options.sources`
-(`Source.close()`) — all in one call. See the README's "Writing a custom `Descriptor`" section.
-
-### Changed — BREAKING: `ConfigDescriptor` renamed to `Descriptor`, constructor and extension contract changed
+### Changed — BREAKING: `ConfigDescriptor` renamed to `Descriptor`, rebuilt around a single `start(control)` hook modeled directly after `Source`
 
 `ConfigDescriptor` is now exported as `Descriptor`, and its constructor takes a single options
-object instead of positional arguments:
+object with one hook — `start(control)` — instead of the old positional `(type, parser, options)`,
+and instead of the intermediate `start`/`reduce` two-hook shape this same `[Unreleased]` section
+described in an earlier draft (never published):
 
 ```ts
 new Descriptor<T>({
   type: "csv",
   options: { key: "ALLOWED_ORIGINS" },
-  start(raw, path) { /* same role the old `parser` had */ },
-  // optional: for a value that can only be resolved asynchronously
-  async reduce(rawStore, path) { return someStore; },
+  start(control) {
+    // control.rawStore: this field's live raw value, merged across sources (read-only)
+    // control.path: for labeling an error message
+    // control.set(value): publish the field's next value — sync (tick 0) or any time later
+    control.set(parse(control.rawStore.get(), control.path));
+    control.rawStore.listen((raw) => control.set(parse(raw, control.path)));
+  },
+  close(): Promise<void> { /* optional: release whatever start() set up */ },
 })
 ```
 
-`start(raw, path): T` replaces the old `parser` — `create()`/`load()` now build and own each
-field's `Store` themselves, seeding it with one, one-time call to `.start()`. Every live update
-from then on comes exclusively from `.reduce(rawStore, path)`, which returns
-`Promise<Store<T>> | undefined`: its promise (when there is one) is folded into `create()`'s own
-readiness, and the `Store<T>` it resolves to becomes the field's live value going forward —
-`.start()` is never called again. **`reduce` is not optional in practice: omitting it doesn't fall
-back to anything, the field just never updates past its `start()`-seeded value** — `reduce` owns
-observing the raw value and deciding when/how to mutate the field, and that responsibility can't be
-implicit. Every built-in field type (`string()`/`numeric()`/...) supplies its own `reduce` via the
-newly-exported `reduceFromStart(parse, defaultValue)`, which re-runs `parse` (the same function
-given to `start`) on every raw change — so built-in fields stay reactive, and any hand-written
-`Descriptor` can opt into the same behavior by passing its own `start` function through it. The
-hand-written extension contract changes to match: a descriptor written by hand now needs callable
-`.start()` and `.reduce()` (structurally recognized — see the "Removed `CONFIG_DESCRIPTOR_TAG`"
-entry above) to be recognized by `isConfigDescriptor()`, and without its own `.reduce()`, it only
-ever gets that one `start()`-seeded value, never a live update. See the README's "Writing a custom
-`Descriptor`" section.
+Same shape as `Source`'s own `UnderlyingSource.start(control)`, and the same rule: `create()` calls
+`start(control)` exactly once, synchronously, when the field is built, and never awaits it — a
+field's value is 100% controlled by whatever `start` does with `control.set()`, whether that's once
+synchronously (before `create()` even returns) or any number of times later (a
+`control.rawStore.listen()` callback, a `setTimeout`, a resolved `fetch()`, ...). There's no
+implicit reactivity: a `start` that calls `control.set()` once and never listens to
+`control.rawStore` leaves the field at that value forever, even the source's very first update
+never reaches it. Every built-in field type (`string()`/`numeric()`/...) gets its own reactivity
+from the newly-exported `startFromParser(parse, defaultValue)`, which builds exactly that
+seed-once-then-listen `start` from a plain `(raw, path) => T` parser — any hand-written `Descriptor`
+can reuse it the same way. See the README's "Writing a custom `Descriptor`" section.
 
 ### Changed — BREAKING: new `create()`/`load()` engine, legacy engine removed
 
@@ -94,12 +86,9 @@ shape shorthand, `freeze`, or the root's `.get()`/`.subscribe()`/`.close()`.
   the moment `create()` is called; once that source's own `open()` resolves, its value (and every
   later update) forwards into the placeholder and ripples through only the fields whose path it
   can affect.
-- **`ConfigDescriptor.reduce(rawStore, path?)`**: what every field's live `Store` is now built
-  from. Takes a live `Store<unknown>` and returns a live `Store<T>` that recomputes on every
-  `rawStore` change — falling back to `options.default` when raw is missing, else running it
-  through the field's own `parser` — synchronously, with no `Promise` to await. Available on every
-  descriptor built by `string()`/`numeric()`/`boolean()`/`url()`/`shape()`/`choice()` (and
-  `file()`, from `./node.js`), since it lives on the shared `ConfigDescriptor` base class.
+- **`Descriptor.start(control)`**: what every field's live `Store` is now built from — see the
+  "`ConfigDescriptor` renamed to `Descriptor`" entry above for the current shape of this contract
+  (it changed more than once within this same `[Unreleased]` section before settling).
 
 ### Removed
 
@@ -116,8 +105,8 @@ shape shorthand, `freeze`, or the root's `.get()`/`.subscribe()`/`.close()`.
   read a snapshot of the whole tree, walk it yourself; to close a `Source`, call `.close()` on the
   `Source` instance itself (`create()` never retains it for that).
 - **`ConfigDescriptor.parse()` is gone** — it was a `Promise`-wrapping shim kept only for the now-
-  deleted legacy engine. Call `.reduce()` directly instead (see above) — same behavior,
-  synchronous, no `Promise` to await.
+  deleted legacy engine. See the "`ConfigDescriptor` renamed to `Descriptor`" entry above for
+  today's replacement (`start(control)`).
 - `freeze` is still a recognized field option (kept for now, to limit the size of this change) but
   has no effect: no remaining engine acts on it.
 

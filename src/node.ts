@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Descriptor, reduceFromStart, shapeFailure } from "./config-descriptor.js";
+import { Descriptor, startFromParser, shapeFailure } from "./config-descriptor.js";
 import { ConfigError } from "./errors.js";
 import { tSync } from "./utils/t.js";
 
@@ -283,11 +283,9 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): FileFi
   const resolvedDefault = resolveDefault(opts.default, opts.format);
   if (resolvedDefault !== undefined) runtimeOptions.default = resolvedDefault;
 
-  const parse = fileStart(runtimeOptions);
   return new Descriptor({
     type: "file",
     options: runtimeOptions,
-    start: parse,
-    reduce: reduceFromStart(parse, runtimeOptions.default),
+    start: startFromParser(fileStart(runtimeOptions), runtimeOptions.default),
   }) as unknown as FileFieldReturn<O>;
 }

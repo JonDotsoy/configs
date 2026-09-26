@@ -1,4 +1,4 @@
-import { Store } from "./utils/store.js";
+import { Store, type ReadOnlyStore } from "./utils/store.js";
 import { tSync } from "./utils/t.js";
 import { ConfigError } from "./errors.js";
 
@@ -55,31 +55,40 @@ export interface ChoiceFieldOptions<T extends string = string> extends BaseField
 }
 
 /**
+ * What `start(control)` gets, modeled directly after `Source`'s own `SourceControl` — same shape,
+ * same rules: `control.set(value)` publishes this field's next value, callable synchronously
+ * inside `start` itself (tick 0 — the field already has that value by the time `create()` returns,
+ * no `await` needed) or any time later (a `rawStore.listen()` callback, a `setTimeout`, a resolved
+ * `fetch()`, ...). The field's `Store` is 100% owned by whatever `start` does with `control.set` —
+ * nothing else can update it. `rawStore` is this field's own live raw value, merged across sources
+ * (read-only: `.get()`/`.subscribe()`/`.listen()`, no `.set()` — writing raw values isn't this
+ * hook's job). `path` is only ever used to label an error message.
+ */
+export interface DescriptorControl<T> {
+  rawStore: ReadOnlyStore<unknown>;
+  path: string[];
+  set(value: T): void;
+}
+
+/**
  * What `new Descriptor(...)` takes: `type`/`options` are purely descriptive (read by `.key`,
- * `.freeze`, `.options.default`, ...); `start` is this field's synchronous parser, run **once**
- * against the raw value already present when the field is built, to seed its `Store` before
- * anything asynchronous has had a chance to run — it is never called again after that. `reduce`
- * is what actually keeps the field live: given the field's live raw `Store`, it resolves to the
- * `Store<T>` that becomes (and stays) this field's value — its promise is folded into `create()`'s
- * own readiness, same as a source's `open()`. **`reduce` owns updating the value; without one, the
- * field never changes again after its `start()`-seeded value** — every built-in field type
- * (`string()`/`numeric()`/...) supplies its own via `reduceFromStart()` below, precisely so it
- * stays reactive; nothing here does that for you implicitly. `close`, when given, releases
- * whatever `start`/`reduce` set up (a connection, a timer, ...) — `create()`'s own `close()`
- * (`./config-node.js`) calls every field's `close` once, same as `Source.close()` does for its own
- * `underlying.close`.
+ * `.freeze`, `.options.default`, ...). `start(control)` runs exactly once, synchronously, when the
+ * field is built — same contract as `Source`'s own `start(control)` (see `sources/source.ts`,
+ * `UnderlyingSource.start`), down to the return type: `void` covers the common synchronous case,
+ * `Promise<void>` lets `start` use `async`/`await` internally, but nothing in `create()` ever
+ * awaits it — a field is never blocked on its own `start` finishing. `start(control)` is the
+ * **only** place this field's value ever comes from: nothing updates it on its behalf. A `start`
+ * that never calls `control.set()` again after its first call (or never sets up a
+ * `control.rawStore.listen()`) leaves the field static forever; every built-in field type
+ * (`string()`/`numeric()`/...) builds its own `start` with `startFromParser()` below, precisely so
+ * it stays live. `close`, when given, releases whatever `start` set up (a connection, a timer,
+ * ...) — `create()`'s own `close()` (`./config-node.js`) calls every field's `close` once, same as
+ * `Source.close()` does for its own `underlying.close`.
  */
 export interface DescriptorUnderlying<T, O extends object = object> {
   type: FieldType;
   options: O;
-  /**
-   * Coerces/validates one already-resolved raw value into `T`, throwing/logging per whatever
-   * rules this field's own `options` call for (a `required` shape throws on failure instead of
-   * logging, a `string` checks its own `pattern`, ...). `path` is only ever used to label an
-   * error message — it carries no information back into `start`.
-   */
-  start?(raw: unknown, path: string[]): T;
-  reduce?(rawStore: Store<unknown>, path: string[]): Promise<Store<T>>;
+  start(control: DescriptorControl<T>): void | Promise<void>;
   close?(): Promise<void>;
 }
 
@@ -87,15 +96,13 @@ export interface DescriptorUnderlying<T, O extends object = object> {
 export class Descriptor<T, O extends object = object> {
   readonly type: FieldType;
   readonly options: O;
-  private readonly startFn: (raw: unknown, path: string[]) => T;
-  private readonly reduceFn?: (rawStore: Store<unknown>, path: string[]) => Promise<Store<T>>;
+  private readonly startFn: (control: DescriptorControl<T>) => void | Promise<void>;
   private readonly closeFn?: () => Promise<void>;
 
   constructor(underlying: DescriptorUnderlying<T, O>) {
     this.type = underlying.type;
     this.options = underlying.options;
-    this.startFn = underlying.start ?? ((raw) => raw as T);
-    this.reduceFn = underlying.reduce;
+    this.startFn = underlying.start;
     this.closeFn = underlying.close;
   }
 
@@ -117,28 +124,18 @@ export class Descriptor<T, O extends object = object> {
   }
 
   /**
-   * Computes this field's value off one already-resolved raw value: falls back to `options.default`
-   * when raw is missing, else runs it through this field's own `start`. Synchronous — `create()`
-   * calls this exactly once, to seed the field's `Store` before `.reduce()`'s promise has settled.
+   * Runs the constructor's own `start` against `control` — `create()` (`./config-node.js`) calls
+   * this exactly once per field, right when it builds the field's `Store`, and never again. Every
+   * update the field will ever see comes from what `start` itself does with `control` — see
+   * `DescriptorUnderlying`'s own doc. Whatever `start` returns (`void` or a `Promise<void>`) is
+   * discarded here — same as `Source`'s own `start`, nothing awaits it.
    */
-  start(raw: unknown, path: string[] = []): T {
-    const defaultValue = (this.options as { default?: T }).default;
-    return raw === undefined || raw === null ? (defaultValue !== undefined ? defaultValue : (null as T)) : this.startFn(raw, path);
+  start(control: DescriptorControl<T>): void {
+    void this.startFn(control);
   }
 
   /**
-   * The optional async hook passed as `reduce` to the constructor — `undefined` when this
-   * descriptor doesn't have one, in which case the field never updates past its `start()`-seeded
-   * value (see `DescriptorUnderlying`'s own doc). This is the only place a live update for this
-   * field can come from — `create()` (`./config-node.js`) itself calls `.start()` exactly once, to
-   * seed the field before this resolves, and never again after.
-   */
-  reduce(rawStore: Store<unknown>, path: string[] = []): Promise<Store<T>> | undefined {
-    return this.reduceFn?.(rawStore, path);
-  }
-
-  /**
-   * Releases whatever `start`/`reduce` set up, via the constructor's own `close`, if any — a no-op
+   * Releases whatever `start` set up, via the constructor's own `close`, if any — a no-op
    * otherwise. `create()`'s own `close()` (`./config-node.js`) calls this once per field.
    */
   close(): Promise<void> {
@@ -147,57 +144,48 @@ export class Descriptor<T, O extends object = object> {
 }
 
 /**
- * Builds a `reduce` that keeps a field live purely by re-running `parse` on every `rawStore`
- * change — falling back to `defaultValue` the same way `Descriptor.start()` does when raw is
- * missing or `null`. Every built-in field builder (`string()`/`numeric()`/`boolean()`/`url()`/
- * `choice()`/`shape()`, and `file()` from `./node.js`) passes its own `parse` (the same function
- * it hands to `start`) through this — `reduce` is what actually keeps a field live (see
- * `DescriptorUnderlying`'s own doc); nothing makes that happen implicitly just from giving a
- * `start`.
+ * Builds a `start(control)` that keeps a field live purely by re-running `parse` on every
+ * `rawStore` change — falling back to `defaultValue` when raw is missing or `null`. Every built-in
+ * field builder (`string()`/`numeric()`/`boolean()`/`url()`/`choice()`/`shape()`, and `file()` from
+ * `./node.js`) passes its own `parse` through this instead of writing the `control.set()`/
+ * `control.rawStore.listen()` wiring by hand — a hand-written `Descriptor` can reuse it the exact
+ * same way to get the same "live from the moment its source opens" behavior.
  */
-export function reduceFromStart<T>(
+export function startFromParser<T>(
   parse: (raw: unknown, path: string[]) => T,
   defaultValue: T | undefined,
-): (rawStore: Store<unknown>, path: string[]) => Promise<Store<T>> {
+): (control: DescriptorControl<T>) => void {
   const compute = (raw: unknown, path: string[]): T =>
     raw === undefined || raw === null ? (defaultValue !== undefined ? defaultValue : (null as T)) : parse(raw, path);
 
-  return async (rawStore, path) => {
-    const store = new Store<T>(compute(rawStore.get(), path));
-    rawStore.listen((raw) => {
-      const next = compute(raw, path);
-      if (next !== store.get()) store.set(next);
-    });
-    return store;
+  return (control) => {
+    control.set(compute(control.rawStore.get(), control.path));
+    control.rawStore.listen((raw) => control.set(compute(raw, control.path)));
   };
 }
 
 /** Builds a `"string"` field descriptor, returned as a `Descriptor<string, O>`. */
 export function string<const O extends StringFieldOptions = {}>(options?: O): Descriptor<string, O> {
   const opts = (options ?? {}) as O;
-  const parse = stringParser(opts);
-  return new Descriptor({ type: "string", options: opts, start: parse, reduce: reduceFromStart(parse, opts.default) });
+  return new Descriptor({ type: "string", options: opts, start: startFromParser(stringParser(opts), opts.default) });
 }
 
 /** Builds a `"number"` field descriptor, returned as a `Descriptor<number, O>`. */
 export function numeric<const O extends NumberFieldOptions = {}>(options?: O): Descriptor<number, O> {
   const opts = (options ?? {}) as O;
-  const parse = numberParser(opts);
-  return new Descriptor({ type: "number", options: opts, start: parse, reduce: reduceFromStart(parse, opts.default) });
+  return new Descriptor({ type: "number", options: opts, start: startFromParser(numberParser(opts), opts.default) });
 }
 
 /** Builds a `"boolean"` field descriptor, returned as a `Descriptor<boolean, O>`. */
 export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): Descriptor<boolean, O> {
   const opts = (options ?? {}) as O;
-  const parse = booleanParser(opts);
-  return new Descriptor({ type: "boolean", options: opts, start: parse, reduce: reduceFromStart(parse, opts.default) });
+  return new Descriptor({ type: "boolean", options: opts, start: startFromParser(booleanParser(opts), opts.default) });
 }
 
 /** Builds a `"url"` field descriptor, returned as a `Descriptor<URL, O>`. Parses (and validates) a string value into a `URL` instance. */
 export function url<const O extends UrlFieldOptions = {}>(options?: O): Descriptor<URL, O> {
   const opts = (options ?? {}) as O;
-  const parse = urlParser(opts);
-  return new Descriptor({ type: "url", options: opts, start: parse, reduce: reduceFromStart(parse, opts.default) });
+  return new Descriptor({ type: "url", options: opts, start: startFromParser(urlParser(opts), opts.default) });
 }
 
 /**
@@ -220,8 +208,7 @@ export function shape<const O extends ShapeFieldOptions = {}>(
   return new Descriptor({
     type: "shape",
     options: opts,
-    start: parse,
-    reduce: reduceFromStart(parse, (opts as { default?: InferShapeOptionValue<O> }).default),
+    start: startFromParser(parse, (opts as { default?: InferShapeOptionValue<O> }).default),
   });
 }
 
@@ -235,8 +222,7 @@ export function shape<const O extends ShapeFieldOptions = {}>(
 export function choice<const O extends ChoiceFieldOptions<string>>(
   options: O,
 ): Descriptor<O["options"][number], O> {
-  const parse = choiceParser(options);
-  return new Descriptor({ type: "choice", options, start: parse, reduce: reduceFromStart(parse, options.default) });
+  return new Descriptor({ type: "choice", options, start: startFromParser(choiceParser(options), options.default) });
 }
 
 /**
@@ -244,16 +230,15 @@ export function choice<const O extends ChoiceFieldOptions<string>>(
  * `./node`, ...) independently, so a `Descriptor` built by one entry point's own bundled copy of
  * this module (e.g. `file()` from `./node`) would fail an `instanceof` check against another entry
  * point's separately-bundled copy of the same class (e.g. `configs.ts`'s own
- * `isConfigDescriptor`). Checking for the two methods every real `Descriptor` always has —
- * `.start()` and `.reduce()` — survives that duplication, the same way the deprecated, now-removed
+ * `isConfigDescriptor`). Checking for the one method every real `Descriptor` always has —
+ * `.start()` — survives that duplication, the same way the deprecated, now-removed
  * `CONFIG_DESCRIPTOR_TAG` registry symbol used to. `.close()` is deliberately not required here:
  * it's optional even on a hand-written descriptor (`create()`'s own `close()`, in
  * `./config-node.js`, only calls it when present).
  */
 export function isConfigDescriptor(node: unknown): node is Descriptor<unknown, object> {
   if (typeof node !== "object" || node === null) return false;
-  const candidate = node as { start?: unknown; reduce?: unknown };
-  return typeof candidate.start === "function" && typeof candidate.reduce === "function";
+  return typeof (node as { start?: unknown }).start === "function";
 }
 
 function typeMismatch(type: FieldType, value: unknown, path: string[]): never {
@@ -274,7 +259,7 @@ export function shapeFailure(required: boolean | undefined, error: ConfigError):
   return null;
 }
 
-/** `string()`'s own `start` — the coercion/validation rules a `"string"` field applies, including its own `pattern`. */
+/** `string()`'s own parser — the coercion/validation rules a `"string"` field applies, including its own `pattern`. */
 export function stringParser(options: StringFieldOptions): (raw: unknown, path: string[]) => string {
   return (raw, path) => {
     if (typeof raw !== "string") typeMismatch("string", raw, path);
@@ -285,7 +270,7 @@ export function stringParser(options: StringFieldOptions): (raw: unknown, path: 
   };
 }
 
-/** `numeric()`'s own `start` — a numeric-looking string is coerced, anything else is rejected. */
+/** `numeric()`'s own parser — a numeric-looking string is coerced, anything else is rejected. */
 export function numberParser(_options: NumberFieldOptions): (raw: unknown, path: string[]) => number {
   return (raw, path) => {
     if (typeof raw === "number") return raw;
@@ -295,7 +280,7 @@ export function numberParser(_options: NumberFieldOptions): (raw: unknown, path:
   };
 }
 
-/** `boolean()`'s own `start` — `"true"`/`"1"` and `"false"`/`"0"` are coerced, anything else is rejected. */
+/** `boolean()`'s own parser — `"true"`/`"1"` and `"false"`/`"0"` are coerced, anything else is rejected. */
 export function booleanParser(_options: BooleanFieldOptions): (raw: unknown, path: string[]) => boolean {
   return (raw, path) => {
     if (typeof raw === "boolean") return raw;
@@ -305,7 +290,7 @@ export function booleanParser(_options: BooleanFieldOptions): (raw: unknown, pat
   };
 }
 
-/** `url()`'s own `start` — a string is parsed (and validated) into a `URL` instance; an already-`URL` value passes through as-is. */
+/** `url()`'s own parser — a string is parsed (and validated) into a `URL` instance; an already-`URL` value passes through as-is. */
 export function urlParser(_options: UrlFieldOptions): (raw: unknown, path: string[]) => URL {
   return (raw, path) => {
     if (raw instanceof URL) return raw;
@@ -318,7 +303,7 @@ export function urlParser(_options: UrlFieldOptions): (raw: unknown, path: strin
   };
 }
 
-/** `choice()`'s own `start` — rejects anything not present in `options.options`. */
+/** `choice()`'s own parser — rejects anything not present in `options.options`. */
 export function choiceParser<T extends string>(options: { options: readonly T[] }): (raw: unknown, path: string[]) => T {
   return (raw, path) => {
     if (typeof raw !== "string" || !options.options.includes(raw as T)) {
@@ -331,7 +316,7 @@ export function choiceParser<T extends string>(options: { options: readonly T[] 
 }
 
 /**
- * `shape()`'s (and `file()`'s, from `./node.js`) own `start` — hands the raw value to
+ * `shape()`'s (and `file()`'s, from `./node.js`) own parser — hands the raw value to
  * `options.schema.parse` when one is given, otherwise passes any object value through as-is;
  * either way, a failure resolves to `null` (logged) or throws, per `options.required` (see
  * `shapeFailure`). `typeLabel` is only used to name the field's own type in an error message —
