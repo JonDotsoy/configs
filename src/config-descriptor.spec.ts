@@ -2,29 +2,41 @@ import { describe, expect, test } from "bun:test";
 import {
   boolean,
   choice,
-  CONFIG_DESCRIPTOR_TAG,
-  ConfigDescriptor,
+  Descriptor,
   isConfigDescriptor,
   numeric,
   shape,
   string,
   url,
+  type DescriptorControl,
   type FieldType,
 } from "./config-descriptor.js";
 import { ConfigError } from "./errors.js";
 import { Store } from "./utils/store.js";
 import { z } from "zod";
 
-/** A `ConfigDescriptor` carries its own `parser` closure (e.g. `stringParser()`), never equal by reference across two calls — assert `.type`/`.options`/`.parser` shape instead of a full `toEqual` against a hand-built instance. */
+/** A `Descriptor` carries its own `start` closure, never equal by reference across two calls — assert `.type`/`.options` shape instead of a full `toEqual` against a hand-built instance. */
 function expectDescriptor(descriptor: unknown, type: FieldType, options: object): void {
-  expect(descriptor).toBeInstanceOf(ConfigDescriptor);
-  expect((descriptor as ConfigDescriptor<unknown>).type).toBe(type);
-  expect((descriptor as ConfigDescriptor<unknown>).options).toEqual(options);
-  expect(typeof (descriptor as ConfigDescriptor<unknown>).parser).toBe("function");
+  expect(descriptor).toBeInstanceOf(Descriptor);
+  expect((descriptor as Descriptor<unknown, any>).type).toBe(type);
+  expect((descriptor as Descriptor<unknown, any>).options).toEqual(options);
+  expect(typeof (descriptor as Descriptor<unknown, any>).start).toBe("function");
+}
+
+/**
+ * Runs `descriptor.start(control)` against a fresh `rawStore` seeded with `initialRaw`, recording
+ * every `control.set(...)` call in order — the same way `config-node.ts`'s `buildField()` drives a
+ * real field, minus the `Store` it would otherwise write into.
+ */
+function runStart<T>(descriptor: Descriptor<T, any>, initialRaw: unknown, path: string[] = []) {
+  const rawStore = new Store<unknown>(initialRaw);
+  const values: T[] = [];
+  descriptor.start({ rawStore, path, set: (value) => values.push(value) });
+  return { rawStore, values, last: () => values[values.length - 1] };
 }
 
 describe("string/numeric/boolean field builders", () => {
-  test('string() builds a ConfigDescriptor<string> carrying a { type: "string" } schema', () => {
+  test('string() builds a Descriptor<string> carrying a { type: "string" } schema', () => {
     expectDescriptor(string(), "string", {});
     expectDescriptor(string({ summary: "bind host", default: "localhost" }), "string", {
       summary: "bind host",
@@ -32,7 +44,7 @@ describe("string/numeric/boolean field builders", () => {
     });
   });
 
-  test('numeric() builds a ConfigDescriptor<number> carrying a { type: "number" } schema', () => {
+  test('numeric() builds a Descriptor<number> carrying a { type: "number" } schema', () => {
     expectDescriptor(numeric(), "number", {});
     expectDescriptor(numeric({ summary: "HTTP port", default: 3000 }), "number", {
       summary: "HTTP port",
@@ -40,7 +52,7 @@ describe("string/numeric/boolean field builders", () => {
     });
   });
 
-  test('boolean() builds a ConfigDescriptor<boolean> carrying a { type: "boolean" } schema', () => {
+  test('boolean() builds a Descriptor<boolean> carrying a { type: "boolean" } schema', () => {
     expectDescriptor(boolean(), "boolean", {});
     expectDescriptor(boolean({ summary: "enable the promo service", default: false }), "boolean", {
       summary: "enable the promo service",
@@ -55,25 +67,25 @@ describe("string/numeric/boolean field builders", () => {
 });
 
 describe("url() field builder", () => {
-  test('url() builds a ConfigDescriptor<URL> carrying a { type: "url" } schema', () => {
+  test('url() builds a Descriptor<URL> carrying a { type: "url" } schema', () => {
     expectDescriptor(url(), "url", {});
     expectDescriptor(url({ key: "DATABASE_URL" }), "url", { key: "DATABASE_URL" });
   });
 
   test("parses a valid URL string into a URL instance", () => {
-    const parsed = url().parser("postgres://user:pass@localhost:5432/app", ["uri"]);
+    const parsed = runStart(url(), "postgres://user:pass@localhost:5432/app", ["uri"]).last();
     expect(parsed).toBeInstanceOf(URL);
-    expect(parsed.hostname).toBe("localhost");
-    expect(parsed.pathname).toBe("/app");
+    expect(parsed?.hostname).toBe("localhost");
+    expect(parsed?.pathname).toBe("/app");
   });
 
   test("rejects a value that isn't a valid URL", () => {
-    expect(() => url().parser("not a url", ["uri"])).toThrow(ConfigError);
+    expect(() => runStart(url(), "not a url", ["uri"])).toThrow(ConfigError);
   });
 });
 
 describe("choice() field builder", () => {
-  test('choice() builds a ConfigDescriptor carrying a { type: "choice" } schema', () => {
+  test('choice() builds a Descriptor carrying a { type: "choice" } schema', () => {
     expectDescriptor(choice({ options: ["a", "b"] }), "choice", { options: ["a", "b"] });
     expectDescriptor(choice({ options: ["a", "b"], default: "a" }), "choice", {
       options: ["a", "b"],
@@ -81,66 +93,136 @@ describe("choice() field builder", () => {
     });
   });
 
-  test("parser accepts only one of the listed options", () => {
+  test("start accepts only one of the listed options", () => {
     const descriptor = choice({ options: ["debug", "info", "warn", "error"] });
-    expect(descriptor.parser("warn", ["logLevel"])).toBe("warn");
-    expect(() => descriptor.parser("verbose", ["logLevel"])).toThrow(ConfigError);
+    expect(runStart(descriptor, "warn", ["logLevel"]).last()).toBe("warn");
+    expect(() => runStart(descriptor, "verbose", ["logLevel"])).toThrow(ConfigError);
   });
 });
 
 describe("shape() field builder", () => {
-  test('shape() builds a ConfigDescriptor carrying a { type: "shape" } schema', () => {
+  test('shape() builds a Descriptor carrying a { type: "shape" } schema', () => {
     const schema = z.object({ issuer: z.string() });
     expectDescriptor(shape({ schema, required: true }), "shape", { schema, required: true });
   });
 
   test("parses a valid value via schema.parse, inferring the field's type from it", () => {
     const descriptor = shape({ schema: z.object({ issuer: z.string(), ttl: z.number() }) });
-    expect(descriptor.parser({ issuer: "auth0", ttl: 3600 }, ["jwt"])).toEqual({ issuer: "auth0", ttl: 3600 });
+    expect(runStart(descriptor, { issuer: "auth0", ttl: 3600 }, ["jwt"]).last()).toEqual({ issuer: "auth0", ttl: 3600 });
   });
 
   test("without schema, passes any object value through untyped", () => {
-    const descriptor = shape();
-    expect(descriptor.parser({ any: "thing" }, ["metadata"])).toEqual({ any: "thing" });
+    expect(runStart(shape(), { any: "thing" }, ["metadata"]).last()).toEqual({ any: "thing" });
   });
 
   test("required: true escalates an invalid value into a thrown ConfigError instead of logging", () => {
     const descriptor = shape({ schema: z.object({ issuer: z.string() }), required: true });
-    expect(() => descriptor.parser({ issuer: 42 }, ["jwt"])).toThrow(ConfigError);
+    expect(() => runStart(descriptor, { issuer: 42 }, ["jwt"])).toThrow(ConfigError);
   });
 });
 
-describe("ConfigDescriptor.reduce()", () => {
+describe("every built-in field builder's own start(): default fallback and liveness (numeric() as a representative)", () => {
   test("falls back to options.default when raw is undefined/null, without running the parser", () => {
-    expect(numeric({ default: 3000 }).reduce(new Store<unknown>(undefined)).get()).toBe(3000);
-    expect(numeric({ default: 3000 }).reduce(new Store<unknown>(null)).get()).toBe(3000);
+    expect(runStart(numeric({ default: 3000 }), undefined).last()).toBe(3000);
+    expect(runStart(numeric({ default: 3000 }), null).last()).toBe(3000);
   });
 
   test("resolves to null when raw is missing and there is no default", () => {
-    expect(numeric().reduce(new Store<unknown>(undefined)).get()).toBeNull();
+    expect(runStart(numeric(), undefined).last()).toBeNull();
   });
 
-  test("runs raw through the field's own parser when present", () => {
-    expect(numeric().reduce(new Store<unknown>("8080")).get()).toBe(8080);
-    expect(string({ pattern: /^\w+$/ }).reduce(new Store<unknown>("abc")).get()).toBe("abc");
-    expect(() => string({ pattern: /^\w+$/ }).reduce(new Store<unknown>("not valid"))).toThrow(ConfigError);
+  test("runs raw through the field's own parser synchronously, right when start() is called", () => {
+    expect(runStart(numeric(), "8080").last()).toBe(8080);
+    expect(runStart(string({ pattern: /^\w+$/ }), "abc").last()).toBe("abc");
+    expect(() => runStart(string({ pattern: /^\w+$/ }), "not valid")).toThrow(ConfigError);
   });
 
-  test("stays live: recomputes whenever rawStore changes", () => {
-    const rawStore = new Store<unknown>("8080");
-    const reduced = numeric().reduce(rawStore);
-    expect(reduced.get()).toBe(8080);
+  test("stays live: re-runs the parser (calling control.set again) on every rawStore change", () => {
+    const { rawStore, values } = runStart(numeric(), "8080");
+    expect(values).toEqual([8080]);
 
     rawStore.set("9090");
-    expect(reduced.get()).toBe(9090);
+    expect(values).toEqual([8080, 9090]);
 
     rawStore.set(undefined);
-    expect(reduced.get()).toBeNull();
+    expect(values as (number | null)[]).toEqual([8080, 9090, null]);
+  });
+});
+
+describe("Descriptor.start()", () => {
+  test("runs the constructor's own start against the given control", () => {
+    const descriptor = new Descriptor<string>({
+      type: "csv",
+      options: {},
+      start: (control) => control.set(String(control.rawStore.get())),
+    });
+
+    expect(runStart(descriptor, "abc").values).toEqual(["abc"]);
+  });
+
+  test("start can call control.set() more than once synchronously, at tick 0", () => {
+    const descriptor = new Descriptor<number>({
+      type: "counter",
+      options: {},
+      start: (control) => {
+        control.set(1);
+        control.set(2);
+      },
+    });
+
+    expect(runStart(descriptor, null).values).toEqual([1, 2]);
+  });
+
+  test("start can call control.set() later, from a resolved promise, without create() waiting on it", async () => {
+    let resolveWork!: () => void;
+    const work = new Promise<void>((resolve) => {
+      resolveWork = resolve;
+    });
+
+    const descriptor = new Descriptor<string>({
+      type: "async",
+      options: {},
+      async start(control) {
+        control.set("seed");
+        await work;
+        control.set("resolved");
+      },
+    });
+
+    const { values } = runStart(descriptor, null);
+    expect(values).toEqual(["seed"]);
+
+    resolveWork();
+    await work;
+    // Give the microtask queue a turn for start()'s own continuation to run.
+    await Promise.resolve();
+    expect(values).toEqual(["seed", "resolved"]);
+  });
+});
+
+describe("Descriptor.close()", () => {
+  test("resolves to undefined when the constructor wasn't given a close hook", async () => {
+    await expect(numeric().close()).resolves.toBeUndefined();
+  });
+
+  test("runs the constructor's own close hook", async () => {
+    let closed = false;
+    const descriptor = new Descriptor<string>({
+      type: "csv",
+      options: {},
+      start: (control) => control.set(String(control.rawStore.get())),
+      async close() {
+        closed = true;
+      },
+    });
+
+    await descriptor.close();
+    expect(closed).toBe(true);
   });
 });
 
 describe("isConfigDescriptor()", () => {
-  test("recognizes a real ConfigDescriptor built by every field builder", () => {
+  test("recognizes a real Descriptor built by every field builder", () => {
     expect(isConfigDescriptor(string())).toBe(true);
     expect(isConfigDescriptor(numeric())).toBe(true);
     expect(isConfigDescriptor(boolean())).toBe(true);
@@ -149,20 +231,24 @@ describe("isConfigDescriptor()", () => {
     expect(isConfigDescriptor(shape())).toBe(true);
   });
 
-  test("recognizes a directly-constructed ConfigDescriptor instance", () => {
-    expect(isConfigDescriptor(new ConfigDescriptor("csv", (raw) => String(raw).split(","), {}))).toBe(true);
+  test("recognizes a directly-constructed Descriptor instance", () => {
+    const descriptor = new Descriptor({
+      type: "csv",
+      options: {},
+      start: (control: DescriptorControl<string[]>) => control.set(String(control.rawStore.get()).split(",")),
+    });
+    expect(isConfigDescriptor(descriptor)).toBe(true);
   });
 
-  test("recognizes a hand-written object carrying the tag plus a callable reduce()", () => {
-    const handWritten = {
-      [CONFIG_DESCRIPTOR_TAG]: true as const,
-      reduce: (rawStore: Store<unknown>) => new Store(String(rawStore.get())),
-    };
+  test("recognizes a hand-written object exposing a callable start() — no tag needed, close() is optional", () => {
+    const handWritten = { start: (control: DescriptorControl<string>) => control.set(String(control.rawStore.get())) };
     expect(isConfigDescriptor(handWritten)).toBe(true);
+    expect(isConfigDescriptor({ ...handWritten, close: async () => {} })).toBe(true);
   });
 
-  test("rejects an object carrying the tag but no reduce()", () => {
-    expect(isConfigDescriptor({ [CONFIG_DESCRIPTOR_TAG]: true })).toBe(false);
+  test("rejects an object without a start()", () => {
+    expect(isConfigDescriptor({})).toBe(false);
+    expect(isConfigDescriptor({ close: async () => {} })).toBe(false);
   });
 
   test("rejects a plain shape entry (nested group, or an unrelated object)", () => {
@@ -178,18 +264,15 @@ describe("isConfigDescriptor()", () => {
   });
 });
 
-describe("writing a custom ConfigDescriptor by hand (CONFIG_DESCRIPTOR_TAG contract)", () => {
-  test("a hand-written descriptor (tag + key + reduce()) behaves like a real one", () => {
+describe("writing a custom Descriptor by hand (structural start() contract)", () => {
+  test("a hand-written descriptor (key + start()) behaves like a real one", () => {
     function csv(options: { key?: string | string[] } = {}) {
-      const parse = (raw: unknown) => (typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
+      const parse = (raw: unknown): string[] => (typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
 
       return {
-        [CONFIG_DESCRIPTOR_TAG]: true as const,
         key: options.key,
-        reduce(rawStore: Store<unknown>) {
-          const store = new Store<string[]>(parse(rawStore.get()));
-          rawStore.listen((raw) => store.set(parse(raw)));
-          return store;
+        start(control: DescriptorControl<string[]>) {
+          control.rawStore.subscribe((raw) => control.set(parse(raw)));
         },
       };
     }
@@ -199,10 +282,12 @@ describe("writing a custom ConfigDescriptor by hand (CONFIG_DESCRIPTOR_TAG contr
     expect(descriptor.key).toBe("ALLOWED_ORIGINS");
 
     const rawStore = new Store<unknown>("a.com, b.com, c.com");
-    const reduced = descriptor.reduce(rawStore);
-    expect(reduced.get()).toEqual(["a.com", "b.com", "c.com"]);
+    const values: string[][] = [];
+    descriptor.start({ rawStore, path: [], set: (v) => values.push(v) });
+
+    expect(values[0]).toEqual(["a.com", "b.com", "c.com"]);
 
     rawStore.set("d.com");
-    expect(reduced.get()).toEqual(["d.com"]);
+    expect(values[1]).toEqual(["d.com"]);
   });
 });

@@ -1,11 +1,12 @@
-import { isConfigDescriptor, type ConfigDescriptor } from "./config-descriptor.js";
+import { isConfigDescriptor, type Descriptor, type DescriptorControl } from "./config-descriptor.js";
 import type { Source } from "./sources/source.js";
 import { Store } from "./utils/store.js";
 
 /**
- * `Symbol.for` (not a plain `Symbol()`) for the same reason `CONFIG_DESCRIPTOR_TAG` uses it (see
- * `./utils/config-descriptor-tag.ts`): `bun build` bundles each public entry point independently,
- * so a node built by one bundled copy of this module must still be recognized by another's.
+ * `Symbol.for` (not a plain `Symbol()`): `bun build` bundles each public entry point
+ * independently, so a node built by one bundled copy of this module must still be recognized by
+ * another's — a registry symbol survives that duplication (same reason `isConfigDescriptor()`, in
+ * `./config-descriptor.js`, checks structurally instead of `instanceof Descriptor`).
  */
 const CONFIGS_NODE_TAG = Symbol.for("@jondotsoy/configs/ConfigsNode");
 
@@ -23,7 +24,7 @@ interface ConfigsNodeMarker {
 
 /** A shape entry is a leaf field descriptor, a nested group of more shape entries, or an embedded `create()` result. */
 export interface ConfigsShape {
-  [key: string]: ConfigDescriptor<any, any> | ConfigsNodeMarker | ConfigsShape;
+  [key: string]: Descriptor<any, any> | ConfigsNodeMarker | ConfigsShape;
 }
 
 export interface Options {
@@ -35,10 +36,11 @@ export function isConfigsNode(value: unknown): value is ConfigsNodePending<Confi
   return typeof value === "object" && value !== null && (value as Record<symbol, unknown>)[CONFIGS_NODE_TAG] === true;
 }
 
-type InferValue<D> = D extends ConfigDescriptor<infer V, infer O> ? (O extends { default: any } ? V : V | null) : never;
+/** A field's exposed type is already encoded in `Descriptor`'s own first type parameter — see `WithDefault` in `./config-descriptor.js`. */
+type InferValue<D> = D extends Descriptor<infer A, any> ? A : never;
 
 type InferConfigsNode<T extends ConfigsShape> = {
-  [K in keyof T]: T[K] extends ConfigDescriptor<any, any>
+  [K in keyof T]: T[K] extends Descriptor<any, any>
     ? Store<InferValue<T[K]>>
     : T[K] extends ConfigsNodePending<infer S>
       ? ConfigsNode<S>
@@ -55,6 +57,13 @@ export type ConfigsNodePending<T extends ConfigsShape> = ConfigsNode<T> &
       onfulfilled?: ((value: ConfigsNode<T>) => TResult1 | PromiseLike<TResult1>) | undefined | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | undefined | null,
     ): PromiseLike<TResult1 | TResult2>;
+    /**
+     * Releases everything this node opened: every own `options.sources` entry (`Source.close()`),
+     * every field descriptor's own `close` (`Descriptor.close()`), and every embedded `create()`
+     * result's own `close()` in turn. Safe to call whether or not the node has finished opening
+     * yet, and any number of times.
+     */
+    close(): Promise<void>;
   };
 
 /** Walks `path` into `snapshot`, one key at a time; `undefined` if any segment is missing or not an object. */
@@ -92,19 +101,39 @@ function keyStore(rawSources: Store<unknown>[], path: string[]): Store<unknown> 
 }
 
 /** A field's explicit `key` override (if set) is an absolute path, taken as-is instead of `entryPath`. */
-function resolveFieldPath(descriptor: ConfigDescriptor<unknown, object>, entryPath: string[]): string[] {
+function resolveFieldPath(descriptor: Descriptor<unknown, unknown>, entryPath: string[]): string[] {
   const explicitKey = descriptor.key;
   if (explicitKey === undefined) return entryPath;
   return Array.isArray(explicitKey) ? explicitKey : [explicitKey];
 }
 
 /**
+ * Builds one field's own live `Store<T>` and hands control of it entirely to
+ * `descriptor.start(control)` — same shape as `Source`'s own `start(control)` contract. The
+ * descriptor itself holds no `Store`; this is the only place one gets created for it, and
+ * `start()` is called exactly once, synchronously, right here. Whatever `start` does with
+ * `control.set(...)` — once synchronously (tick 0, before this function even returns), later via
+ * `control.rawStore.listen(...)`, after an `await`, from a timer, ... — is the field's entire
+ * lifetime; nothing else in this engine ever calls `.set()` on this `Store`.
+ */
+function buildField(descriptor: Descriptor<unknown, unknown>, rawStore: Store<unknown>, path: string[]): Store<unknown> {
+  const fieldStore = new Store<unknown>(null);
+  const control: DescriptorControl<unknown> = {
+    rawStore,
+    path,
+    set: (value) => fieldStore.set(value),
+  };
+  descriptor.start(control);
+  return fieldStore;
+}
+
+/**
  * Recursively builds `shape` into a plain tree of `Store`s (leaves) and nested plain objects
  * (groups) — each leaf wired as its own independent `Source → KeyStore → FieldStore` chain:
  * `keyStore()` merges `rawSources` at that leaf's path (its own `key` override, if set, else its
- * position in the shape tree — see `resolveFieldPath()`), and `descriptor.reduce()` turns that
- * into the field's own live, parsed `Store`. A leaf only recomputes when a source at its own path
- * changes — there's no whole-tree recompute sweep.
+ * position in the shape tree — see `resolveFieldPath()`), and `buildField()` turns that into the
+ * field's own live, parsed `Store`. A leaf only recomputes when a source at its own path changes
+ * — there's no whole-tree recompute sweep.
  *
  * An embedded `create()` result (`isConfigsNode(entry)`) is adopted as-is instead: it already
  * resolves independently, from its own `sources` — nothing here rewires it against `rawSources`
@@ -116,6 +145,7 @@ function buildNode(
   path: string[],
   rawSources: Store<unknown>[],
   embeddedReady: PromiseLike<unknown>[],
+  closers: (() => Promise<void>)[],
 ): Record<string, unknown> {
   const node: Record<string, unknown> = {};
   for (const key of Object.keys(shape)) {
@@ -123,12 +153,14 @@ function buildNode(
     const entryPath = [...path, key];
     if (isConfigDescriptor(entry)) {
       const fieldPath = resolveFieldPath(entry, entryPath);
-      node[key] = entry.reduce(keyStore(rawSources, fieldPath), fieldPath);
+      node[key] = buildField(entry, keyStore(rawSources, fieldPath), fieldPath);
+      closers.push(() => (typeof entry.close === "function" ? entry.close() : Promise.resolve()));
     } else if (isConfigsNode(entry)) {
       embeddedReady.push(entry);
+      closers.push(() => entry.close());
       node[key] = entry;
     } else {
-      node[key] = buildNode(entry as ConfigsShape, entryPath, rawSources, embeddedReady);
+      node[key] = buildNode(entry as ConfigsShape, entryPath, rawSources, embeddedReady, closers);
     }
   }
   return node;
@@ -141,14 +173,17 @@ function buildNode(
  * from the very start: once that source's own `open()` resolves, its value — and every later
  * update — forwards into the placeholder, which ripples reactively through to just the fields
  * whose path it can resolve. The returned object is also `then`able: it resolves once every
- * source here, and every embedded node's own sources, have published their first snapshot.
+ * source here, and every embedded node's own sources, have published their first snapshot. It's
+ * also `close`able: releases every own source, every field descriptor's own `close`, and every
+ * embedded node's own `close`, in one call.
  */
 export function create<T extends ConfigsShape>(configShape: T, options: Options = {}): ConfigsNodePending<T> {
   const sources = options.sources ?? [];
   const rawSources = sources.map(() => new Store<unknown>(null));
   const embeddedReady: PromiseLike<unknown>[] = [];
+  const closers: (() => Promise<void>)[] = [];
 
-  const node = buildNode(configShape, [], rawSources, embeddedReady) as ConfigsNode<T>;
+  const node = buildNode(configShape, [], rawSources, embeddedReady, closers) as ConfigsNode<T>;
   (node as Record<symbol, unknown>)[CONFIGS_NODE_TAG] = true;
 
   const ownReady = Promise.all(
@@ -169,6 +204,9 @@ export function create<T extends ConfigsShape>(configShape: T, options: Options 
       // `node` (not `this`) is what resolves: `this` also carries `then`, so resolving to it would
       // make the Promise machinery treat it as thenable again and re-invoke `then` recursively.
       return ready.then(() => node).then(onfulfilled, onrejected as any);
+    },
+    close(): Promise<void> {
+      return Promise.all([...closers.map((close) => close()), ...sources.map((source) => source.close())]).then(() => undefined);
     },
   }) as ConfigsNodePending<T>;
 }

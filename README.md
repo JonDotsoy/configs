@@ -105,24 +105,26 @@ console.log(await cfg.server.tls.cert.get()?.text());
 
 - [Install](#install)
 - [Guide](#guide)
-  - [Field types](#field-types)
-  - [Writing a custom `ConfigDescriptor`](#writing-a-custom-configdescriptor)
   - [Nested groups](#nested-groups)
-  - [`key` — reading a field from an explicit path](#key--reading-a-field-from-an-explicit-path)
-  - [`load` — `create()` that defaults to `envSource()`](#load--create-that-defaults-to-envsource)
-  - [TypeScript inference](#typescript-inference)
-    - [Shape fields](#shape-fields)
-  - [`Source` — building a custom source](#source--building-a-custom-source)
-  - [`envSource` — environment variables](#envsource--environment-variables)
-  - [`fetchSource` — a JSON endpoint over HTTP](#fetchsource--a-json-endpoint-over-http)
-  - [`sseSource` — live updates over Server-Sent Events](#ssesource--live-updates-over-server-sent-events)
-  - [`fileSource` — a local `.json` or `.env` file](#filesource--a-local-json-or-env-file)
-  - [`pullSource` — calling a function on an interval](#pullsource--calling-a-function-on-an-interval)
-  - [`shellSource` — running a command](#shellsource--running-a-command)
-  - [`literalSource` — a static value](#literalsource--a-static-value)
+  - [Descriptors](#descriptors)
+    - [Field types](#field-types)
+    - [Writing a custom `Descriptor`](#writing-a-custom-descriptor)
+    - [`key` — reading a field from an explicit path](#key--reading-a-field-from-an-explicit-path)
+    - [TypeScript inference](#typescript-inference)
+      - [Shape fields](#shape-fields)
+  - [Sources](#sources)
+    - [`Source` — building a custom source](#source--building-a-custom-source)
+    - [`envSource` — environment variables](#envsource--environment-variables)
+    - [`fetchSource` — a JSON endpoint over HTTP](#fetchsource--a-json-endpoint-over-http)
+    - [`sseSource` — live updates over Server-Sent Events](#ssesource--live-updates-over-server-sent-events)
+    - [`fileSource` — a local `.json` or `.env` file](#filesource--a-local-json-or-env-file)
+    - [`pullSource` — calling a function on an interval](#pullsource--calling-a-function-on-an-interval)
+    - [`shellSource` — running a command](#shellsource--running-a-command)
+    - [`literalSource` — a static value](#literalsource--a-static-value)
+    - [`load` — `create()` that defaults to `envSource()`](#load--create-that-defaults-to-envsource)
+    - [Closing a live source](#closing-a-live-source)
   - [Reacting to changes — restarting a periodic task](#reacting-to-changes--restarting-a-periodic-task)
   - [`useConfig` — reading a field in React](#useconfig--reading-a-field-in-react)
-  - [Closing a live source](#closing-a-live-source)
 - [Documentation](#documentation)
 
 ## Install
@@ -132,147 +134,6 @@ npm install @jondotsoy/configs
 ```
 
 ## Guide
-
-### Field types
-
-A shape entry is a `ConfigDescriptor` built by one of six field builders: `string()`, `numeric()`,
-`boolean()`, `url()`, `choice()`, or `shape()`. The first three coerce and validate primitives
-(numeric/boolean-ish strings, an optional `pattern` for strings). `url()` parses a string into a
-`URL` instance, throwing a `ConfigError` if it isn't a valid one. `choice()` accepts only one of a
-fixed list of strings, rejecting anything else. `shape()` hands the raw value to a `schema` you
-provide — anything with a `parse(value: unknown): T` method, which is exactly the shape `zod`,
-`valibot`, and most other validation libraries already export — so there's no dependency on any
-specific one:
-
-```ts
-import { create, boolean, choice, numeric, shape, string, url } from "@jondotsoy/configs";
-import { z } from "zod";
-
-const cfg = await create(
-  {
-    port: numeric({ summary: "HTTP port", default: 3000 }),
-    host: string({ summary: "bind host", pattern: /^[\w.-]+$/, default: "localhost" }),
-    debug: boolean({ summary: "enable verbose logging", default: false }),
-    databaseUrl: url({ summary: "database connection string" }),
-    logLevel: choice({ summary: "log verbosity", options: ["debug", "info", "warn", "error"], default: "info" }),
-    jwt: shape({ schema: z.object({ issuer: z.string(), ttl: z.number() }) }),
-  },
-  { sources: [/* ... */] },
-);
-
-// cfg.databaseUrl.get() is typed as URL | null — a valid URL string is parsed into an instance,
-// an invalid one throws a ConfigError.
-// cfg.logLevel.get() is typed as "debug" | "info" | "warn" | "error" — narrowed by the `default`,
-// and rejecting (via ConfigError) any value outside `options`.
-// cfg.jwt.get() is typed as { issuer: string; ttl: number } | null — inferred from `schema.parse`'s
-// return type.
-```
-
-Each builder returns a `ConfigDescriptor` instance (also exported, for anyone writing a
-`numeric(...): ConfigDescriptor<number>` helper of their own), and accepts the same common
-options: `summary`, `required`, `key` (see below), and `default` — plus `pattern` for `string()`,
-`options` for `choice()`, and `schema` for `shape()`.
-
-A value that fails to parse doesn't take down the whole config tree by default — data comes from
-sources outside this package's control, so a `schema.parse` failure (or, with no `schema`, any
-non-object value) is logged via `console.error` and the field resolves to `null`, same as a source
-that simply doesn't have it. Set `required: true` to escalate that failure into a thrown
-`ConfigError` instead:
-
-```ts
-const cfg = await create(
-  { jwt: shape({ schema: z.object({ issuer: z.string() }), required: true }) },
-  { sources: [/* a source publishing an invalid jwt throws instead of logging */] },
-);
-```
-
-`schema` itself is optional — `shape()` alone just passes the raw value through
-as-is, rejecting (per the same log-or-throw rule above) anything that isn't an object:
-
-```ts
-const cfg = await create({ metadata: shape() }, { sources: [/* ... */] });
-// cfg.metadata.get() is typed as unknown
-```
-
-### Writing a custom `ConfigDescriptor`
-
-`string()`, `numeric()`, `boolean()`, `url()`, `choice()`, and `shape()` all build the same kind of
-object — a `ConfigDescriptor` — and that's the whole extension point: any shape entry that's a
-`ConfigDescriptor` gets the same treatment from `create()`/`load()`, whether it came from one of
-these builders or you built it yourself.
-
-**The role `create()` plays**, for every `ConfigDescriptor`-backed field, regardless of who built
-it: it works out the field's path (its own nesting in the shape tree, or `.key` when set — see
-[`key`](#key--reading-a-field-from-an-explicit-path) above), builds one live `Store` that always
-holds whatever raw value the sources currently publish there (merged across sources, re-resolved
-live as they change), and hands that `Store` to the descriptor's `reduce(rawStore, path)`.
-`create()` never inspects the raw value itself past that merge — coercing it into whatever the
-field's `.get()` should return is entirely the descriptor's job. What `reduce()` returns (a live
-`Store<T>`) becomes the field: `.get()`/`.subscribe()`/`.listen()` all read from it directly.
-
-The simplest way to build one is `new ConfigDescriptor(type, parser, options)` directly — `type`
-is just a label (any string; only the built-ins' own labels are special), `parser` is a
-`(raw: unknown, path: string[]) => T` function doing the actual coercion/validation (throw a
-`ConfigError` to reject a value), and `options` is a plain object that can carry a `key` (same
-`string | string[]` explicit-path override every built-in field type accepts) plus a `default`
-used whenever no source has the field. This already gets you everything `numeric()`/`string()`/etc.
-get for free — including a field that's correct the moment it's first read, no different from a
-built-in one:
-
-```ts
-import { ConfigDescriptor, create, type Parser } from "@jondotsoy/configs";
-import { envSource } from "@jondotsoy/configs/sources/env";
-
-function csv(options: { key?: string | string[]; default?: string[] } = {}) {
-  const parseCsv: Parser<string[]> = (raw, path) => {
-    if (typeof raw !== "string") throw new Error(`Expected a comma-separated string at "${path.join(".")}"`);
-    return raw.split(",").map((s) => s.trim());
-  };
-  return new ConfigDescriptor("csv", parseCsv, options);
-}
-
-// ALLOWED_ORIGINS=a.com, b.com, c.com
-const cfg = await create(
-  { allowedOrigins: csv({ key: "ALLOWED_ORIGINS", default: [] }) },
-  { sources: [envSource()] },
-);
-
-cfg.allowedOrigins.get();
-// ["a.com", "b.com", "c.com"]
-```
-
-You don't need to extend the class or reach for `CONFIG_DESCRIPTOR_TAG` for this — `new
-ConfigDescriptor(...)` already carries the internal tag `create()` uses to recognize it, same as
-every built-in field type.
-
-The tag itself (`CONFIG_DESCRIPTOR_TAG`, also exported) is only there for the rarer case of
-writing the whole thing by hand instead of constructing the class — say, to avoid importing it
-across an unusual bundling setup. The contract is the same three things: the tag symbol set to
-`true`, a `key` if you need one, and a `reduce(rawStore, path?)` method returning a live `Store<T>`
-yourself:
-
-```ts
-import { CONFIG_DESCRIPTOR_TAG, Store, create } from "@jondotsoy/configs";
-import { envSource } from "@jondotsoy/configs/sources/env";
-
-function csv(options: { key?: string | string[] } = {}) {
-  const parse = (raw: unknown) => (typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
-
-  return {
-    [CONFIG_DESCRIPTOR_TAG]: true as const,
-    key: options.key,
-    reduce(rawStore: Store<unknown>) {
-      const store = new Store<string[]>(parse(rawStore.get()));
-      rawStore.listen((raw) => store.set(parse(raw)));
-      return store;
-    },
-  };
-}
-```
-
-Unlike `new ConfigDescriptor(...)` above, `create()` calls this `reduce()` directly rather than
-routing through a `parser`, so there's no functional difference between the two forms — both
-produce a field that's correct the moment it's first read, live-updating from then on.
 
 ### Nested groups
 
@@ -327,7 +188,229 @@ cfg.database.host.get();
 publish their first snapshot, same as its own. `isConfigsNode(value)` tells an embedded `create()`
 result apart from a plain nested object, if you ever need to check which one a shape entry is.
 
-### `key` — reading a field from an explicit path
+### Descriptors
+
+A shape entry is a `Descriptor` — the unit that decides how one field's value is computed from
+the raw config tree. This section covers the six built-in field builders and how to write your
+own `Descriptor` from scratch.
+
+#### Field types
+
+A shape entry is a `Descriptor` built by one of six field builders: `string()`, `numeric()`,
+`boolean()`, `url()`, `choice()`, or `shape()`. The first three coerce and validate primitives
+(numeric/boolean-ish strings, an optional `pattern` for strings). `url()` parses a string into a
+`URL` instance, throwing a `ConfigError` if it isn't a valid one. `choice()` accepts only one of a
+fixed list of strings, rejecting anything else. `shape()` hands the raw value to a `schema` you
+provide — anything with a `parse(value: unknown): T` method, which is exactly the shape `zod`,
+`valibot`, and most other validation libraries already export — so there's no dependency on any
+specific one:
+
+```ts
+import { create, boolean, choice, numeric, shape, string, url } from "@jondotsoy/configs";
+import { z } from "zod";
+
+const cfg = await create(
+  {
+    port: numeric({ summary: "HTTP port", default: 3000 }),
+    host: string({ summary: "bind host", pattern: /^[\w.-]+$/, default: "localhost" }),
+    debug: boolean({ summary: "enable verbose logging", default: false }),
+    databaseUrl: url({ summary: "database connection string" }),
+    logLevel: choice({ summary: "log verbosity", options: ["debug", "info", "warn", "error"], default: "info" }),
+    jwt: shape({ schema: z.object({ issuer: z.string(), ttl: z.number() }) }),
+  },
+  { sources: [/* ... */] },
+);
+
+// cfg.databaseUrl.get() is typed as URL | null — a valid URL string is parsed into an instance,
+// an invalid one throws a ConfigError.
+// cfg.logLevel.get() is typed as "debug" | "info" | "warn" | "error" — narrowed by the `default`,
+// and rejecting (via ConfigError) any value outside `options`.
+// cfg.jwt.get() is typed as { issuer: string; ttl: number } | null — inferred from `schema.parse`'s
+// return type.
+```
+
+Each builder returns a `Descriptor` instance (also exported, for anyone writing a
+`numeric(...): Descriptor<number>` helper of their own), and accepts the same common
+options: `summary`, `required`, `key` (see below), and `default` — plus `pattern` for `string()`,
+`options` for `choice()`, and `schema` for `shape()`.
+
+A value that fails to parse doesn't take down the whole config tree by default — data comes from
+sources outside this package's control, so a `schema.parse` failure (or, with no `schema`, any
+non-object value) is logged via `console.error` and the field resolves to `null`, same as a source
+that simply doesn't have it. Set `required: true` to escalate that failure into a thrown
+`ConfigError` instead:
+
+```ts
+const cfg = await create(
+  { jwt: shape({ schema: z.object({ issuer: z.string() }), required: true }) },
+  { sources: [/* a source publishing an invalid jwt throws instead of logging */] },
+);
+```
+
+`schema` itself is optional — `shape()` alone just passes the raw value through
+as-is, rejecting (per the same log-or-throw rule above) anything that isn't an object:
+
+```ts
+const cfg = await create({ metadata: shape() }, { sources: [/* ... */] });
+// cfg.metadata.get() is typed as unknown
+```
+
+#### Writing a custom `Descriptor`
+
+`string()`, `numeric()`, `boolean()`, `url()`, `choice()`, and `shape()` all build the same kind of
+object — a `Descriptor` — and that's the whole extension point: any shape entry that's a
+`Descriptor` gets the same treatment from `create()`/`load()`, whether it came from one of these
+builders or you built it yourself.
+
+**`Descriptor` is modeled directly after `Source`** (see [building a custom
+source](#source--building-a-custom-source) below):
+one `start(control)` hook, called exactly once, that gets 100% control of the field's value through
+`control`. `create()`'s role, for every `Descriptor`-backed field, regardless of who built it: work
+out the field's path (its own nesting in the shape tree, or `.key` when set — see
+[`key`](#key--reading-a-field-from-an-explicit-path) below), build the field's own live `Store`,
+and call `start(control)` on it exactly once — nothing else in `create()` ever writes to that
+`Store` again. `control` gives `start` everything it needs:
+
+- `control.rawStore` — this field's live raw value, merged across sources (read-only:
+  `.get()`/`.subscribe()`/`.listen()`).
+- `control.path` — this field's path, for labeling an error message.
+- `control.set(value)` — publishes the field's next value. Callable synchronously, right inside
+  `start` (**tick 0** — the field already has that value by the time `create()` returns, no `await`
+  needed anywhere), and/or any number of times later — from a `control.rawStore.subscribe()`
+  callback, a `setTimeout`, a resolved `fetch()`, whatever `start` wants.
+
+The simplest way to build one is `new Descriptor({ type, options, start })` directly — `type` is
+just a label (any string; only the built-ins' own labels are special), and `options` is a plain
+object that can carry a `key` (same `string | string[]` explicit-path override every built-in field
+type accepts) plus whatever else `start` wants to read (a `default`, ...).
+
+**`start` is the only place a field's value ever comes from — there's no default reactivity to fall
+back on.** A `start` that never subscribes to `control.rawStore` at all leaves the field static
+forever, even the source's very first update never reaches it (see [Fase 1 en
+`docs/develop/lifecycle.md`](./docs/develop/lifecycle.md) for exactly why). There's no shared
+helper for this — every built-in field type (`string()`/`numeric()`/...) writes its own `start` as
+a single `control.rawStore.subscribe(...)` call: `subscribe` fires immediately with the current raw
+value (**tick 0**, before `create()` even returns) and again on every later change, so running the
+field's own parser inside that one callback (falling back to a default when raw is missing) is
+enough to seed the field *and* keep it live — no separate `control.rawStore.get()` call needed.
+Write the same shape yourself to get the same "live from the moment the source opens" behavior:
+
+A basic custom descriptor is just that shape, filled in — `parse` and `defaultValue` as local
+`const`s, referenced once from inside the single `control.rawStore.subscribe(...)` callback, exactly
+like `string()`/`numeric()` do it internally:
+
+```ts
+import { Descriptor, create, type WithDefault } from "@jondotsoy/configs";
+import { envSource } from "@jondotsoy/configs/sources/env";
+
+function port<const O extends { key?: string | string[]; default?: number } = {}>(
+  options?: O,
+): Descriptor<WithDefault<O, number>, number> {
+  const opts = (options ?? {}) as O;
+  const parse = (raw: unknown, path: string[]): number => {
+    const num = Number(raw);
+    if (typeof raw !== "string" || raw.trim() === "" || Number.isNaN(num) || num <= 0) {
+      throw new Error(`Expected a positive port number at "${path.join(".")}"`);
+    }
+    return num;
+  };
+  const defaultValue = opts.default !== undefined ? opts.default : (null as unknown as number);
+
+  return new Descriptor<number, number>({
+    type: "port",
+    options: opts,
+    start(control) {
+      control.rawStore.subscribe((raw) => {
+        control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
+      });
+    },
+  }) as Descriptor<WithDefault<O, number>, number>;
+}
+
+// PORT=3000
+const cfg = await create({ port: port({ key: "PORT", default: 8080 }) }, { sources: [envSource()] });
+
+cfg.port.get();
+// 3000
+// ^? Descriptor<WithDefault<O, number>, number> resolves cfg.port to Store<number> here (a
+// default was given) — omit it and cfg.port.get() would be typed number | null instead.
+```
+
+`WithDefault<O, T>` (also exported from the package root) is the same helper every built-in
+builder uses to compute its own first type parameter: `T` when `O` has a `default`, `T | null`
+otherwise. A hand-written `Descriptor` doesn't have to use it — a fixed `Descriptor<number,
+number>` (no `WithDefault`) works too, it just always types `.get()` as `number`, never `number |
+null`, regardless of whether `options.default` was actually given.
+
+The same shape scales to a descriptor whose value isn't a single scalar — `csv()` below parses its
+raw string into a `string[]` instead of a `number`, but the `parse`/`defaultValue`/`start` pattern
+is identical:
+
+```ts
+function csv(options: { key?: string | string[]; default?: string[] } = {}) {
+  const parse = (raw: unknown, path: string[]): string[] => {
+    if (typeof raw !== "string") throw new Error(`Expected a comma-separated string at "${path.join(".")}"`);
+    return raw.split(",").map((s) => s.trim());
+  };
+  const defaultValue = options.default ?? [];
+
+  return new Descriptor({
+    type: "csv",
+    options,
+    start(control) {
+      control.rawStore.subscribe((raw) => {
+        control.set(raw == null ? defaultValue : parse(raw, control.path));
+      });
+    },
+  });
+}
+
+// ALLOWED_ORIGINS=a.com, b.com, c.com
+const cfg = await create(
+  { allowedOrigins: csv({ key: "ALLOWED_ORIGINS", default: [] }) },
+  { sources: [envSource()] },
+);
+
+cfg.allowedOrigins.get();
+// ["a.com", "b.com", "c.com"]
+```
+
+For anything this shape doesn't cover — an async lookup, a value derived from more than the raw
+snapshot, its own timer independent of the source — write `start(control)` however it needs.
+Nothing in `create()` waits for it: `control.set()` can run synchronously (tick 0) and/or from an
+`async` continuation later, entirely on `start`'s own schedule:
+
+```ts
+function pollingDescriptor() {
+  let timer: ReturnType<typeof setInterval> | undefined;
+  return new Descriptor<number>({
+    type: "poll",
+    options: {},
+    start(control) {
+      control.rawStore.subscribe((raw) => control.set(Number(raw ?? 0))); // fires at tick 0 too
+      timer = setInterval(() => control.set(Math.random()), 1000);
+    },
+    async close() {
+      clearInterval(timer);
+    },
+  });
+}
+```
+
+If `start` opens something that needs releasing (a connection, a timer, ...), give the constructor
+a `close(): Promise<void>` hook too, same as above — `create()`'s own returned node is itself
+`close()`able (alongside `then()`): calling `cfg.close()` runs every field's own `close`, every
+embedded `create()` result's own `close()`, and every one of the node's own `options.sources`
+(`Source.close()`), all in one call:
+
+```ts
+const cfg = create({ ticks: pollingDescriptor() }, { sources: [envSource()] });
+await cfg;
+// ... later
+await cfg.close();
+```
+
+#### `key` — reading a field from an explicit path
 
 By default a field reads from its own position in the shape tree — `server.port`'s path is
 `["server", "port"]`. Set `key` (a string, or a `string[]` for a multi-segment path) to read from an
@@ -375,41 +458,7 @@ cfg.datasource.uri.get()?.hostname;
 // "localhost"
 ```
 
-### `load` — `create()` that defaults to `envSource()`
-
-`load(shape, options?)` is identical to `create(shape, options?)`, except its `options.sources`
-defaults to `[envSource()]` instead of `[]`. Reaching for env vars is common enough that
-`load(shape)` alone — no `options` at all — reads straight from `process.env`:
-
-```ts
-import { load, numeric } from "@jondotsoy/configs";
-
-// PORT=8080
-const cfg = await load({
-  server: {
-    port: numeric({ key: "PORT" }),
-  },
-});
-
-cfg.server.port.get();
-// 8080
-```
-
-Passing an explicit `sources` array overrides the `envSource()` default entirely — it isn't merged
-with it — so `load()` then behaves exactly like `create()`:
-
-```ts
-import { load, numeric } from "@jondotsoy/configs";
-import { fetchSource } from "@jondotsoy/configs/sources/fetch";
-
-const cfg = await load(
-  { promoService: numeric({ default: 0 }) },
-  { sources: [fetchSource({ url: "https://example.com/features" })] },
-);
-// same as create({ promoService: numeric({ default: 0 }) }, { sources: [fetchSource(...)] })
-```
-
-### TypeScript inference
+#### TypeScript inference
 
 Every field's type is derived from its descriptor literal — `numeric()` gives you a `number`,
 `shape({ schema: z.object(...) })` gives you whatever `schema.parse` returns — with no manual
@@ -425,6 +474,22 @@ const cfg2 = await create({ port: numeric({ default: 3000 }) }, { sources: [/* .
 const port2 = cfg2.port.get();
 //    ^? const port2: number
 ```
+
+This isn't something `create()` computes after the fact — `Descriptor` itself is generic over two
+type parameters, `Descriptor<A, B>`: `A` is what the field's `.get()` actually returns (`T | null`
+without a `default`, `T` with one), and `B` is its *resolved* type once it has a value — always
+`T`, regardless of `default`. `numeric()` returns `Descriptor<number | null, number>` on its own,
+or `Descriptor<number, number>` with a `default`:
+
+```ts
+import { numeric, type Descriptor } from "@jondotsoy/configs";
+
+const withoutDefault: Descriptor<number | null, number> = numeric();
+const withDefault: Descriptor<number, number> = numeric({ default: 3000 });
+```
+
+A hand-written `Descriptor` computes its own `A` the same way, via the exported `WithDefault<O, T>`
+helper — see [Writing a custom `Descriptor`](#writing-a-custom-descriptor) above.
 
 `required: true` does **not** narrow the type — it only escalates a runtime failure (a value that
 fails validation) into a thrown `ConfigError`. Data comes from sources this package doesn't
@@ -468,7 +533,7 @@ A nested group (whether a plain object, or a separate `create()` call embedded i
 shape) infers the same way, recursively — `cfg.server.port.get()` is `number | null` unless
 `server`'s `port` has a `default`.
 
-#### Shape fields
+##### Shape fields
 
 A `shape()` field's type isn't declared anywhere — it's extracted from whatever `schema` you pass,
 by inferring `schema.parse`'s return type. The same `default`-drives-`null` rule from above still
@@ -522,7 +587,12 @@ const metadata = cfg.metadata.get();
 //    ^? const metadata: unknown
 ```
 
-### `Source` — building a custom source
+### Sources
+
+A `Source` is where the raw config tree itself comes from — `create()`/`load()`'s `options.sources`
+array. This section covers every built-in `Source` and how to write your own from scratch.
+
+#### `Source` — building a custom source
 
 The building block behind `envSource`, `fetchSource`, `sseSource`, `fileSource`, `pullSource`,
 `shellSource`, and `literalSource`. It takes an
@@ -569,7 +639,7 @@ const source = new Source<{ port?: number; host?: string }>({
 // published: { port: 3000, host: "x" }
 ```
 
-### `envSource` — environment variables
+#### `envSource` — environment variables
 
 Reads `process.env` (or any object you pass as `env`) into the config tree. `mapKey` decides how
 each key maps to a path; the default is the identity mapping, `"FOO_TAR" => ["FOO_TAR"]`.
@@ -627,7 +697,7 @@ const source = envSource({
 });
 ```
 
-### `fetchSource` — a JSON endpoint over HTTP
+#### `fetchSource` — a JSON endpoint over HTTP
 
 Fetches a JSON snapshot from `url` (with `method` and `headers`, if needed). Only JSON is
 supported — a non-JSON `Content-Type` still gets a fallback parse attempt. `attempts` retries the
@@ -726,7 +796,7 @@ const source = fetchSource<{ port: number }>({
 });
 ```
 
-### `sseSource` — live updates over Server-Sent Events
+#### `sseSource` — live updates over Server-Sent Events
 
 Connects to an SSE endpoint (`url`, `method`, `headers`). Every message tries to parse as JSON and,
 if it's a plain object, is applied as a **patch** on top of what was already received — fields add
@@ -795,7 +865,7 @@ Opening the source waits for the first message (so the `Store` you get back alre
 not `null`), then keeps the connection alive in the background, applying further messages as
 patches until the resource closes the stream.
 
-### `fileSource` — a local `.json` or `.env` file
+#### `fileSource` — a local `.json` or `.env` file
 
 Reads a config tree from `path`, parsed by its extension: `.json` or `.env` (matched by extension,
 or by the bare `.env` filename itself — a `.env` file always parses to a flat string map, one
@@ -882,7 +952,7 @@ const source = fileSource<Record<string, unknown>>("./config.json", {
 });
 ```
 
-### `pullSource` — calling a function on an interval
+#### `pullSource` — calling a function on an interval
 
 Calls `pull` and publishes whatever it returns as the next snapshot — once immediately, then again
 every `interval` milliseconds until the `Source` is closed. `pull` can be sync or async, so it's a
@@ -909,7 +979,7 @@ const source = pullSource<{ port: number }>({
 });
 ```
 
-### `shellSource` — running a command
+#### `shellSource` — running a command
 
 Runs `args` as a child process (via `node:child_process`'s `spawn`) and publishes its parsed stdout as the next
 snapshot — handy for pulling config out of a CLI you already trust, like `gh auth token` or a
@@ -964,7 +1034,7 @@ const source = shellSource<string>(["git", "rev-parse", "HEAD"], {
 });
 ```
 
-### `literalSource` — a static value
+#### `literalSource` — a static value
 
 Publishes a plain, already-in-hand value as a snapshot immediately, then closes. No I/O, no
 options — just wraps `value` in a `Source` so it can sit in a `sources` array alongside the rest.
@@ -990,6 +1060,67 @@ const cfg = await create(
     ],
   },
 );
+```
+
+#### `load` — `create()` that defaults to `envSource()`
+
+`load(shape, options?)` is identical to `create(shape, options?)`, except its `options.sources`
+defaults to `[envSource()]` instead of `[]`. Reaching for env vars is common enough that
+`load(shape)` alone — no `options` at all — reads straight from `process.env`:
+
+```ts
+import { load, numeric } from "@jondotsoy/configs";
+
+// PORT=8080
+const cfg = await load({
+  server: {
+    port: numeric({ key: "PORT" }),
+  },
+});
+
+cfg.server.port.get();
+// 8080
+```
+
+Passing an explicit `sources` array overrides the `envSource()` default entirely — it isn't merged
+with it — so `load()` then behaves exactly like `create()`:
+
+```ts
+import { load, numeric } from "@jondotsoy/configs";
+import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+
+const cfg = await load(
+  { promoService: numeric({ default: 0 }) },
+  { sources: [fetchSource({ url: "https://example.com/features" })] },
+);
+// same as create({ promoService: numeric({ default: 0 }) }, { sources: [fetchSource(...)] })
+```
+
+#### Closing a live source
+
+`create(...)`'s return value has no `close()` of its own — it doesn't retain the `Source`
+instances you pass in beyond opening them and feeding their values into the tree. Keep a
+reference to a `Source` you'll need to close later (e.g. `sseSource`, to abort its live
+connection instead of leaving it open in the background) and call its own `.close()` directly:
+
+```ts
+import { create, numeric } from "@jondotsoy/configs";
+import { sseSource } from "@jondotsoy/configs/sources/sse";
+
+const source = sseSource({ url: "https://config-service.internal/app/events" });
+const serverConfigs = await create({ port: numeric() }, { sources: [source] });
+
+// ... later, e.g. on shutdown
+await source.close();
+```
+
+With several sources, close each one you opened — `Promise.all` if they can close concurrently:
+
+```ts
+const sources = [envSource(), sseSource({ url: "https://config-service.internal/app/events" })];
+const cfg = await create({ port: numeric() }, { sources });
+
+await Promise.all(sources.map((source) => source.close()));
 ```
 
 ### Reacting to changes — restarting a periodic task
@@ -1031,7 +1162,7 @@ new one, so there's never more than one timer running for this field. The callba
 cleanup only fires once, when `unsubscribe()` itself is called, so it's the right place to stop the
 last timer for good — it's not a substitute for the `clearInterval` at the top of the callback.
 
-### ⚛️ `useConfig` — reading a field in React
+### `useConfig` — reading a field in React
 
 `@jondotsoy/configs/react` exports a `useConfig(store)` hook that subscribes a component to any
 field (or nested group) and re-renders it on every update. React is a peer dependency — the hook
@@ -1051,33 +1182,6 @@ function App() {
 }
 ```
 
-### Closing a live source
-
-`create(...)`'s return value has no `close()` of its own — it doesn't retain the `Source`
-instances you pass in beyond opening them and feeding their values into the tree. Keep a
-reference to a `Source` you'll need to close later (e.g. `sseSource`, to abort its live
-connection instead of leaving it open in the background) and call its own `.close()` directly:
-
-```ts
-import { create, numeric } from "@jondotsoy/configs";
-import { sseSource } from "@jondotsoy/configs/sources/sse";
-
-const source = sseSource({ url: "https://config-service.internal/app/events" });
-const serverConfigs = await create({ port: numeric() }, { sources: [source] });
-
-// ... later, e.g. on shutdown
-await source.close();
-```
-
-With several sources, close each one you opened — `Promise.all` if they can close concurrently:
-
-```ts
-const sources = [envSource(), sseSource({ url: "https://config-service.internal/app/events" })];
-const cfg = await create({ port: numeric() }, { sources });
-
-await Promise.all(sources.map((source) => source.close()));
-```
-
 ## Documentation
 
 Further guides live under [`docs/`](./docs):
@@ -1094,3 +1198,13 @@ Further guides live under [`docs/`](./docs):
 - [`docs/develop/check-package.md`](./docs/develop/check-package.md) —
   validating the published package against real Node, Bun, and Deno
   processes.
+- [`docs/develop/lifecycle.md`](./docs/develop/lifecycle.md) — internal
+  reference (in Spanish) for `create()`/`load()`'s own lifecycle: building
+  the node synchronously, opening sources, resolving each field's `reduce()`,
+  staying live, and `close()` — for anyone touching `config-node.ts`/
+  `config-descriptor.ts`, or writing a `Descriptor` by hand.
+- [`docs/develop/custom-source-and-descriptor.md`](./docs/develop/custom-source-and-descriptor.md)
+  — internal reference (in Spanish) for writing a custom `Source` and
+  `Descriptor`: the full `start`/`close`/`reduce` contract of each, real
+  patterns (polling, cleanup on `close()`, partial-patch `reduce`, a
+  non-scalar field, `WithDefault<O, T>`), and common mistakes.

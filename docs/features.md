@@ -7,7 +7,7 @@ cada pieza, el código fuente en `src/` está fuertemente comentado.
 ## Table of contents
 
 - [`create()` / `load()`](#create--load)
-- [Descriptores de campo (`ConfigDescriptor`)](#descriptores-de-campo-configdescriptor)
+- [Descriptores de campo (`Descriptor`)](#descriptores-de-campo-descriptor)
 - [Sources](#sources)
 - [`file()` — campo respaldado por disco](#file--campo-respaldado-por-disco)
 - [React](#react)
@@ -28,9 +28,14 @@ El punto de entrada público (`src/config-node.ts`, re-exportado desde
   shape.
 - **`then`-able** — el objeto que devuelve `create()` puede `await`earse:
   resuelve una vez que cada `Source` en `options.sources` publicó su
-  primer snapshot, a un objeto plano equivalente (ya sin `then`). Los
-  campos son legibles de forma síncrona incluso antes de ese `await`
+  primer snapshot, a un objeto plano equivalente (ya sin `then`/`close`).
+  Los campos son legibles de forma síncrona incluso antes de ese `await`
   (parten en su `default`, o en `null`).
+- **`close`-able** — el objeto que devuelve `create()` (la referencia
+  original, antes de `await`earla) expone `.close(): Promise<void>`:
+  cierra cada `Source` propio (`Source.close()`), el `.close()` propio de
+  cada descriptor de campo (`Descriptor.close()`) y el `.close()` de cada
+  nodo `create()` embebido, todo en una sola llamada.
 - **Grupos anidados** — un valor del shape puede ser:
   - un **objeto plano** (`{ server: { port: numeric() } }`), que comparte
     las `sources` del `create()` que lo contiene; o
@@ -52,16 +57,48 @@ El punto de entrada público (`src/config-node.ts`, re-exportado desde
   `number | null` sin `default`, o `number` con uno — sin anotación
   manual, ni para grupos anidados ni para campos embebidos.
 
-## Descriptores de campo (`ConfigDescriptor`)
+## Descriptores de campo (`Descriptor`)
 
 `src/config-descriptor.ts` — el bloque de construcción de cada campo:
 
-- **`ConfigDescriptor<T, O>`** — la clase base. Expone `.key`,
-  `.parser`, y `.reduce(rawStore, path?)`: toma un `Store<unknown>` en
-  vivo y devuelve un `Store<T>` reactivo — cae a `options.default` cuando
-  no hay valor, o corre el `parser` propio del campo. Extensible a mano
-  (`new ConfigDescriptor(type, parser, options)`, o el contrato completo
-  vía `CONFIG_DESCRIPTOR_TAG` + `.reduce()`).
+- **`Descriptor<A, B>`** — la clase base, modelada igual que `Source`:
+  `A` es lo que `.get()` realmente devuelve (`T | null` sin `default`, o
+  `T` con uno) y `B` es el tipo ya resuelto del campo, siempre `T` sin
+  importar el `default` — `numeric()` devuelve `Descriptor<number | null,
+  number>` sola, o `Descriptor<number, number>` con `default`. Esa
+  distinción, antes calculada por `create()` fuera de la clase, ahora
+  vive directamente en el propio `Descriptor`, vía el helper exportado
+  `WithDefault<O, T>` (`T` cuando `O` trae `default`, `T | null` si no) —
+  cada builder integrado lo usa para su propio primer parámetro. Un
+  único hook `.start(control)`, llamado **una sola vez** por `create()`,
+  que recibe el control total del campo. `control` expone `.rawStore`
+  (el valor crudo en vivo de ese campo, solo lectura: `.get()`/
+  `.subscribe()`/`.listen()`), `.path` (para mensajes de error) y
+  `.set(value)` — publica el siguiente valor del campo, ya sea de forma
+  síncrona dentro del propio `start` (**tick 0**, antes de que `create()`
+  siquiera retorne) y/o más adelante, cualquier cantidad de veces (desde
+  un `control.rawStore.subscribe()`, un `setTimeout`, un `fetch()`
+  resuelto, lo que `start` necesite). `start` es **la única** fuente de
+  actualización del campo — no hay ningún comportamiento por defecto que
+  lo haga reactivo: si nunca se suscribe a `control.rawStore`, el campo
+  queda fijo para siempre. No hay ningún helper compartido para esto —
+  cada builder integrado (`string()`, `numeric()`, `boolean()`, `url()`,
+  `choice()`, `shape()`, y `file()` en `node.ts`) escribe su propio
+  `start` como una única llamada a `control.rawStore.subscribe(...)`:
+  dispara de inmediato con el valor actual (tick 0) y de nuevo en cada
+  cambio posterior, corriendo su propio parser contra ese valor (cayendo
+  a `options.default` si no hay valor) en ambos casos; cualquier
+  `Descriptor` hecho a mano puede escribir la misma forma para tener el
+  mismo comportamiento "vivo".
+  También expone
+  `.close()` (siempre presente, no-op si el constructor no dio `close`)
+  que `create()` llama una vez por campo desde el `.close()` del nodo.
+  Extensible a mano: `new Descriptor({ type, options, start, close? })`,
+  o directamente un objeto plano con `.start(control)` (`.close()`
+  opcional) — `isConfigDescriptor()` reconoce cualquiera de las dos
+  formas estructuralmente, solo por tener un `.start()` invocable, sin
+  necesitar ningún símbolo/tag. Un objeto sin `.start()` no se reconoce
+  como descriptor — `create()` lo trataría como un grupo anidado más.
 - **`string(options?)`** — coerción a `string`; `pattern` opcional
   (`RegExp`) para validar el valor.
 - **`numeric(options?)`** — coerciona un string numérico (o `number`

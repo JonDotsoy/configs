@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, spyOn, test } from "bun:test";
 import { create, isConfigsNode, type ConfigsNode, type ConfigsNodePending, type ConfigsShape, type Options } from "./config-node.ts";
-import { boolean, choice, CONFIG_DESCRIPTOR_TAG, ConfigDescriptor, numeric, shape, string, url } from "./config-descriptor.ts";
+import { boolean, choice, Descriptor, isConfigDescriptor, numeric, shape, string, url, type DescriptorControl } from "./config-descriptor.ts";
 import { ConfigError } from "./errors.ts";
 import { envSource } from "./sources/env.ts";
 import { Source } from "./sources/source.ts";
@@ -409,6 +409,23 @@ describe("create — live updates", () => {
     expect(cfg.port.get()).toBe(4000);
   });
 
+  test("a numeric field's Store reflects the value its source publishes a few ms after opening", async () => {
+    const source = new Source<{ port?: string }>({
+      start(control) {
+        control.set({ port: "3000" });
+        setTimeout(() => control.set({ port: "5000" }), 20);
+      },
+    });
+
+    const cfg = await create({ port: numeric() }, { sources: [source] });
+
+    expect(cfg.port.get()).toBe(3000);
+
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    expect(cfg.port.get()).toBe(5000);
+  });
+
   test("a live update to a nested leaf updates that leaf's Store, without disturbing its siblings", async () => {
     const { source, push } = liveTestSource({ server: { port: "3000", host: "a.example.com" } });
     const cfg = await create({ server: { port: numeric(), host: string() } }, { sources: [source] });
@@ -435,6 +452,179 @@ describe("create — live updates", () => {
 
     // testSource's snapshot never changes — it still wins, since it comes first.
     expect(cfg.port.get()).toBe(1111);
+  });
+});
+
+describe("create — start(control) is 100% in control of the field's value", () => {
+  test("a start that never calls control.set() leaves the field at null forever", async () => {
+    const inert = new Descriptor<unknown>({ type: "inert", options: {}, start: () => {} });
+
+    const { source, push } = liveTestSource({ value: "abc" });
+    const cfg = await create({ value: inert }, { sources: [source] });
+
+    expect(cfg.value.get()).toBeNull();
+
+    push({ value: "xyz" });
+
+    // start() only ever ran once, at build time, and never called control.set() — nothing else
+    // in this engine can set this field's value.
+    expect(cfg.value.get()).toBeNull();
+  });
+
+  test("a start that calls control.set() once and never listens to rawStore never updates again", async () => {
+    const fixed = new Descriptor<number>({
+      type: "fixed",
+      options: {},
+      start: (control) => control.set(3000),
+    });
+
+    const { source, push } = liveTestSource({ port: "8080" });
+    const cfg = await create({ port: fixed }, { sources: [source] });
+
+    // `await cfg` did wait for `source` to open — but `start()` never looked at
+    // `control.rawStore` at all, so the source's value never reaches the field.
+    expect(cfg.port.get()).toBe(3000);
+
+    push({ port: "9090" });
+
+    expect(cfg.port.get()).toBe(3000);
+  });
+
+  test("a start that listens to control.rawStore with its own transform fully drives every update", async () => {
+    const doubled = new Descriptor<number>({
+      type: "doubled",
+      options: {},
+      start(control) {
+        const parse = (raw: unknown): number => Number(raw ?? 0) * 2;
+        control.rawStore.subscribe((raw) => control.set(parse(raw)));
+      },
+    });
+
+    const { source, push } = liveTestSource({ value: "5" });
+    const cfg = await create({ value: doubled }, { sources: [source] });
+
+    expect(cfg.value.get()).toBe(10);
+
+    push({ value: "7" });
+
+    expect(cfg.value.get()).toBe(14);
+  });
+
+  test("field starts at a fixed seed (tick 0, via control.set), picks up the source's delayed value, then start()'s own later override", async () => {
+    const sourceDelayMs = 20;
+    const startDelayMs = sourceDelayMs + 20; // n ms more than the source's own delay
+
+    // Seeds synchronously via `control.set`, stays live off `control.rawStore` (so it still
+    // picks up the source's own update), and also schedules its own unrelated override further
+    // out — independent of anything the source does.
+    function delayed(defaultValue: number, overrideAfterMs: number, overrideValue: number): Descriptor<number> {
+      const parse = (raw: unknown): number => (raw === null || raw === undefined ? defaultValue : Number(raw));
+
+      return new Descriptor<number>({
+        type: "delayed",
+        options: {},
+        start(control) {
+          control.rawStore.subscribe((raw) => control.set(parse(raw)));
+          setTimeout(() => control.set(overrideValue), overrideAfterMs);
+        },
+      });
+    }
+
+    const source = new Source<{ value?: string }>({
+      start(control) {
+        setTimeout(() => control.set({ value: "2000" }), sourceDelayMs);
+      },
+    });
+
+    const cfg = create({ value: delayed(3000, startDelayMs, 4000) }, { sources: [source] });
+
+    // No source has opened yet at this synchronous point — start()'s own seed wins.
+    expect(cfg.value.get()).toBe(3000);
+
+    await new Promise((resolve) => setTimeout(resolve, sourceDelayMs + 10));
+    expect(cfg.value.get()).toBe(2000);
+
+    await new Promise((resolve) => setTimeout(resolve, startDelayMs - sourceDelayMs + 10));
+    expect(cfg.value.get()).toBe(4000);
+  });
+});
+
+describe("create — close()", () => {
+  test("closes every own source", async () => {
+    let closed = false;
+    const source = new Source<{ port?: string }>({
+      async start(control) {
+        control.set({ port: "3000" });
+      },
+      async close() {
+        closed = true;
+      },
+    });
+    const cfg = create({ port: numeric() }, { sources: [source] });
+    await cfg;
+
+    await cfg.close();
+
+    expect(closed).toBe(true);
+  });
+
+  test("closes every field descriptor's own close hook, at every nesting depth", async () => {
+    const closedFields: string[] = [];
+    function tracked(name: string) {
+      return new Descriptor<string>({
+        type: "tracked",
+        options: {},
+        start: (control) => control.set(String(control.rawStore.get())),
+        async close() {
+          closedFields.push(name);
+        },
+      });
+    }
+
+    const cfg = create(
+      { port: tracked("port"), server: { host: tracked("host") } },
+      { sources: [testSource({ port: "3000", server: { host: "example.com" } })] },
+    );
+    await cfg;
+
+    await cfg.close();
+
+    expect(closedFields.sort()).toEqual(["host", "port"]);
+  });
+
+  test("closes an embedded create() result's own close(), cascading into its own sources", async () => {
+    let embeddedClosed = false;
+    const embeddedSource = new Source<{ cert?: string }>({
+      async start(control) {
+        control.set({ cert: "cert.pem" });
+      },
+      async close() {
+        embeddedClosed = true;
+      },
+    });
+
+    const cfg = create({
+      server: { tls: create({ cert: string() }, { sources: [embeddedSource] }) },
+    });
+    await cfg;
+
+    await cfg.close();
+
+    expect(embeddedClosed).toBe(true);
+  });
+
+  test("a hand-written descriptor with no close() doesn't break close()", async () => {
+    const handWritten = {
+      start: (raw: unknown) => String(raw),
+      async reduce(rawStore: Store<unknown>) {
+        return new Store(String(rawStore.get()));
+      },
+    };
+
+    const cfg = create({ field: handWritten as any }, { sources: [testSource({ field: "abc" })] });
+    await cfg;
+
+    await expect(cfg.close()).resolves.toBeUndefined();
   });
 });
 
@@ -526,22 +716,20 @@ describe("create — every field builder resolves its raw value at runtime", () 
   });
 });
 
-describe("create — a hand-written custom ConfigDescriptor (CONFIG_DESCRIPTOR_TAG contract)", () => {
-  // Cast to `ConfigDescriptor` since `ConfigsShape` is typed against the real class — the
-  // hand-written contract (tag + key? + reduce()) is a runtime-only extension point, recognized
-  // structurally by `isConfigDescriptor()` but not by the shape's own static type.
-  function csv(options: { key?: string | string[] } = {}): ConfigDescriptor<string[], { key?: string | string[] }> {
+describe("create — a hand-written custom Descriptor (structural start() contract)", () => {
+  // Cast to `Descriptor` since `ConfigsShape` is typed against the real class — the hand-written
+  // contract (key? + start()) is a runtime-only extension point, recognized structurally by
+  // `isConfigDescriptor()` (no tag needed) but not by the shape's own static type. `start(control)`
+  // is the only place this field's value ever comes from — same as `Source`'s own `start(control)`.
+  function csv(options: { key?: string | string[] } = {}): Descriptor<string[]> {
     const parse = (raw: unknown) => (typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
 
     return {
-      [CONFIG_DESCRIPTOR_TAG]: true as const,
       key: options.key,
-      reduce(rawStore: Store<unknown>) {
-        const store = new Store<string[]>(parse(rawStore.get()));
-        rawStore.listen((raw) => store.set(parse(raw)));
-        return store;
+      start(control: DescriptorControl<string[]>) {
+        control.rawStore.subscribe((raw) => control.set(parse(raw)));
       },
-    } as unknown as ConfigDescriptor<string[], { key?: string | string[] }>;
+    } as unknown as Descriptor<string[]>;
   }
 
   test("create() resolves a field backed by a hand-written descriptor, same as a built-in one", async () => {
@@ -571,5 +759,30 @@ describe("create — a hand-written custom ConfigDescriptor (CONFIG_DESCRIPTOR_T
     push({ allowedOrigins: "b.com, c.com" });
 
     expect(cfg.allowedOrigins.get()).toEqual(["b.com", "c.com"]);
+  });
+
+  test("an object without a start() isn't a Descriptor at all — create() treats it as a nested group instead", () => {
+    expect(isConfigDescriptor({ key: "ALLOWED_ORIGINS" })).toBe(false);
+  });
+
+  test("if start() only snapshots rawStore once and never listens, the field is pinned at whatever it saw", async () => {
+    const pinned = {
+      start(control: DescriptorControl<string[]>) {
+        // Snapshots once and never listens — deliberately not live, unlike `csv()` above.
+        const raw = control.rawStore.get();
+        control.set(typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
+      },
+    } as unknown as Descriptor<string[]>;
+
+    const { source, push } = liveTestSource({ allowedOrigins: "a.com" });
+    const cfg = await create({ allowedOrigins: pinned }, { sources: [source] });
+
+    // `start()` ran (and snapshotted `rawStore`) before `source` had even opened, so it's stuck
+    // with the empty snapshot it saw then — it never listened, so it never sees anything later.
+    expect(cfg.allowedOrigins.get()).toEqual([]);
+
+    push({ allowedOrigins: "b.com, c.com" });
+
+    expect(cfg.allowedOrigins.get()).toEqual([]);
   });
 });

@@ -7,6 +7,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — every built-in `Descriptor`'s own `start` is now a single `control.rawStore.subscribe(...)` call
+
+Previously each built-in field builder (`string()`/`numeric()`/`boolean()`/`url()`/`shape()`/
+`choice()`, and `file()` from `./node.js`) wrote its own `start` as two steps: an initial
+`control.set(...)` seeded from `control.rawStore.get()`, then a `control.rawStore.listen((raw) =>
+control.set(...))` to stay live — the same parse-or-default expression duplicated at both call
+sites. `ReadOnlyStore.subscribe()` already fires immediately with the current value and again on
+every later change, so a single `control.rawStore.subscribe((raw) => control.set(...))` call does
+both jobs at once. No behavior change — `subscribe`'s immediate call happens synchronously inside
+`start`, same tick-0 timing as the old `get()` + `set()` pair. A hand-written `Descriptor` gets the
+same simplification for free — see the README's "Writing a custom `Descriptor`" section.
+
+### Changed — `Descriptor<T, O>` is now `Descriptor<A, B>`
+
+`Descriptor`'s type parameters now directly encode a field's two type-level states instead of
+carrying the plain value type plus its raw `options`: `A` is what `.get()` actually returns right
+now (`T | null` without a `default`, `T` with one), `B` is the field's *resolved* type once it has
+a value (always `T`, regardless of `default`). `numeric()` returns `Descriptor<number | null,
+number>` on its own, or `Descriptor<number, number>` with a `default` — previously this was always
+`Descriptor<number, O>`, with the `T | null` vs. `T` distinction computed separately, downstream,
+by `create()`'s own type inference (`O extends { default: any } ? T : T | null`). That computation
+now lives on `Descriptor` itself, via a new exported `WithDefault<O, T>` type (`T` when `O` has a
+`default`, `T | null` otherwise) that every built-in builder plugs into its own `A`. `create()`'s
+inference simplifies to reading `A` straight off the field's own `Descriptor`. `Descriptor`'s
+constructor and `.start(control)` shape are unaffected — this is a type-only change; the second
+type argument, when given explicitly (e.g. a hand-written `Descriptor<T, O>` from before this
+change), now means something different (`B` instead of `O`), so update any such usage to
+`Descriptor<T>` (`B` defaults to `A`) unless it specifically needs `B`. See the README's
+"TypeScript inference" and "Writing a custom `Descriptor`" sections.
+
+### Removed — the `Parser<T>` type
+
+No longer exported from the package root or `config-descriptor.ts`. `DescriptorUnderlying.start`
+(and every built-in `*Parser()` helper's return type) is now written inline as
+`(raw: unknown, path: string[]) => T` instead of naming a dedicated type — nothing outside this
+package ever needed to reference `Parser<T>` by name, since `start` is always written as a plain
+function literal.
+
+### Removed — `CONFIG_DESCRIPTOR_TAG`
+
+Removed entirely (`src/utils/config-descriptor-tag.ts` is gone), along with the `[symbol]: true`
+hand-written contract it enabled. `isConfigDescriptor()` recognizes a `Descriptor` structurally now
+— any object with a callable `.start()` (no tag, no `instanceof` check needed) — so every real
+`Descriptor` still gets recognized across separately-bundled entry points, and a hand-written
+descriptor no longer needs to import anything to be one. An object without a `.start()` at all is
+not recognized as a descriptor — `create()` treats it as a nested group instead. See the README's
+"Writing a custom `Descriptor`" section.
+
+### Changed — BREAKING: `ConfigDescriptor` renamed to `Descriptor`, rebuilt around a single `start(control)` hook modeled directly after `Source`
+
+`ConfigDescriptor` is now exported as `Descriptor`, and its constructor takes a single options
+object with one hook — `start(control)` — instead of the old positional `(type, parser, options)`,
+and instead of the intermediate `start`/`reduce` two-hook shape this same `[Unreleased]` section
+described in an earlier draft (never published):
+
+```ts
+new Descriptor<T>({
+  type: "csv",
+  options: { key: "ALLOWED_ORIGINS" },
+  start(control) {
+    // control.rawStore: this field's live raw value, merged across sources (read-only)
+    // control.path: for labeling an error message
+    // control.set(value): publish the field's next value — sync (tick 0) or any time later
+    control.set(parse(control.rawStore.get(), control.path));
+    control.rawStore.listen((raw) => control.set(parse(raw, control.path)));
+  },
+  close(): Promise<void> { /* optional: release whatever start() set up */ },
+})
+```
+
+Same shape as `Source`'s own `UnderlyingSource.start(control)`, and the same rule: `create()` calls
+`start(control)` exactly once, synchronously, when the field is built, and never awaits it — a
+field's value is 100% controlled by whatever `start` does with `control.set()`, whether that's once
+synchronously (before `create()` even returns) or any number of times later (a
+`control.rawStore.listen()` callback, a `setTimeout`, a resolved `fetch()`, ...). There's no
+implicit reactivity: a `start` that calls `control.set()` once and never listens to
+`control.rawStore` leaves the field at that value forever, even the source's very first update
+never reaches it. There's no shared helper for this — every built-in field type
+(`string()`/`numeric()`/`boolean()`/`url()`/`choice()`/`shape()`, and `file()` from `./node.js`)
+writes its own `start`, seeding `control.set()` once synchronously against its own parser (falling
+back to `options.default` when raw is missing) and again on every `control.rawStore.listen()`
+update — a hand-written `Descriptor` can write the same shape to get the same "live from the moment
+the source opens" behavior. See the README's "Writing a custom `Descriptor`" section.
+
 ### Changed — BREAKING: new `create()`/`load()` engine, legacy engine removed
 
 `src/config-node.ts`'s `create()` is now what `create`/`load` (from the package root) build on —
@@ -34,12 +118,9 @@ shape shorthand, `freeze`, or the root's `.get()`/`.subscribe()`/`.close()`.
   the moment `create()` is called; once that source's own `open()` resolves, its value (and every
   later update) forwards into the placeholder and ripples through only the fields whose path it
   can affect.
-- **`ConfigDescriptor.reduce(rawStore, path?)`**: what every field's live `Store` is now built
-  from. Takes a live `Store<unknown>` and returns a live `Store<T>` that recomputes on every
-  `rawStore` change — falling back to `options.default` when raw is missing, else running it
-  through the field's own `parser` — synchronously, with no `Promise` to await. Available on every
-  descriptor built by `string()`/`numeric()`/`boolean()`/`url()`/`shape()`/`choice()` (and
-  `file()`, from `./node.js`), since it lives on the shared `ConfigDescriptor` base class.
+- **`Descriptor.start(control)`**: what every field's live `Store` is now built from — see the
+  "`ConfigDescriptor` renamed to `Descriptor`" entry above for the current shape of this contract
+  (it changed more than once within this same `[Unreleased]` section before settling).
 
 ### Removed
 
@@ -56,8 +137,8 @@ shape shorthand, `freeze`, or the root's `.get()`/`.subscribe()`/`.close()`.
   read a snapshot of the whole tree, walk it yourself; to close a `Source`, call `.close()` on the
   `Source` instance itself (`create()` never retains it for that).
 - **`ConfigDescriptor.parse()` is gone** — it was a `Promise`-wrapping shim kept only for the now-
-  deleted legacy engine. Call `.reduce()` directly instead (see above) — same behavior,
-  synchronous, no `Promise` to await.
+  deleted legacy engine. See the "`ConfigDescriptor` renamed to `Descriptor`" entry above for
+  today's replacement (`start(control)`).
 - `freeze` is still a recognized field option (kept for now, to limit the size of this change) but
   has no effect: no remaining engine acts on it.
 

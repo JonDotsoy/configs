@@ -5,13 +5,15 @@ export type { ConfigsNode, ConfigsNodePending, ConfigsShape, Options } from "./c
 export type {
   BooleanFieldOptions,
   ChoiceFieldOptions,
+  DescriptorControl,
+  DescriptorUnderlying,
   FieldType,
   NumberFieldOptions,
   Parseable,
-  Parser,
   ShapeFieldOptions,
   StringFieldOptions,
   UrlFieldOptions,
+  WithDefault,
 } from "./config-descriptor.js";
 export type { SourceControl, UnderlyingSource } from "./types/index.js";
 export type { ReadOnlyStore } from "./utils/store.js";
@@ -31,7 +33,7 @@ export { fileSource } from "./sources/file.js";
 export { literalSource } from "./sources/literal.js";
 export { pullSource } from "./sources/pull.js";
 export { shellSource } from "./sources/shell.js";
-export { boolean, choice, CONFIG_DESCRIPTOR_TAG, ConfigDescriptor, numeric, shape, string, url, isConfigDescriptor } from "./config-descriptor.js";
+export { boolean, choice, Descriptor, numeric, shape, string, url, isConfigDescriptor } from "./config-descriptor.js";
 export { isConfigsNode } from "./config-node.js";
 export { Store } from "./utils/store.js";
 export { DataTypes } from "./utils/data-types.js";

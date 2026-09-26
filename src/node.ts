@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigDescriptor, shapeFailure, type Parser } from "./config-descriptor.js";
+import { Descriptor, shapeFailure, type WithDefault } from "./config-descriptor.js";
 import { ConfigError } from "./errors.js";
 import { tSync } from "./utils/t.js";
 
@@ -220,27 +220,25 @@ function resolveDefault(defaultValue: string | URL | undefined, format: FileValu
 }
 
 /**
- * `file()`'s return type: same as `ConfigDescriptor<FileBlob, O>`, except `required: true` also
- * narrows `.get()` to `FileBlob` (never `null`) — same effect a real `default` has elsewhere,
- * applied here from `required` instead since a `file()` field almost always wants "always
- * present" enforced by `required`, not by a fallback value. Same caveat as `default` everywhere
- * else in this package: this is a type-level promise, not a runtime guarantee — a `required`
- * field with nothing from any source still resolves to `null` at runtime, it just isn't supposed
- * to happen.
+ * `file()`'s own not-yet-resolved type: same as `WithDefault<O, FileBlob>`, except `required:
+ * true` also narrows it to `FileBlob` (never `null`) — same effect a real `default` has
+ * elsewhere, applied here from `required` instead since a `file()` field almost always wants
+ * "always present" enforced by `required`, not by a fallback value. Same caveat as `default`
+ * everywhere else in this package: this is a type-level promise, not a runtime guarantee — a
+ * `required` field with nothing from any source still resolves to `null` at runtime, it just
+ * isn't supposed to happen.
  */
-type FileFieldReturn<O extends FileFieldOptions> = O extends { required: true }
-  ? ConfigDescriptor<FileBlob, O & { default: FileBlob }>
-  : ConfigDescriptor<FileBlob, O>;
+type FileFieldValue<O extends FileFieldOptions> = O extends { required: true } ? FileBlob : WithDefault<O, FileBlob>;
 
 /**
- * `file()`'s own `Parser<FileBlob>` — decodes a raw string value (as base64 or text, per `format`
- * or inferred — see `FileFieldOptions.format`) into a `FileBlob`; an already-`FileBlob` value (its
+ * `file()`'s own `start` — decodes a raw string value (as base64 or text, per `format` or
+ * inferred — see `FileFieldOptions.format`) into a `FileBlob`; an already-`FileBlob` value (its
  * own resolved `default`) passes through as-is. A decoding failure — a non-string/non-`FileBlob`
  * raw value, or `atob()` rejecting invalid base64 — is logged and resolves to `null` unless
  * `required` escalates it into a thrown `ConfigError`, same "log unless required" rule every
  * schema-based field (`shape()`, `file()`) follows (see `shapeFailure`).
  */
-function fileParser(options: Pick<FileFieldOptions, "required" | "format">): Parser<FileBlob> {
+function fileStart(options: Pick<FileFieldOptions, "required" | "format">): (raw: unknown, path: string[]) => FileBlob {
   return (raw, path) => {
     if (raw instanceof FileBlob) return raw;
     if (typeof raw !== "string") {
@@ -269,7 +267,7 @@ function fileParser(options: Pick<FileFieldOptions, "required" | "format">): Par
  * source's raw value, or a string `default`) is written out to a fresh temp file whose `file:`
  * `URL` becomes `.location`.
  */
-export function file<const O extends FileFieldOptions = {}>(options?: O): FileFieldReturn<O> {
+export function file<const O extends FileFieldOptions = {}>(options?: O): Descriptor<FileFieldValue<O>, FileBlob> {
   const opts = options ?? ({} as O);
 
   const runtimeOptions: Omit<FileFieldOptions, "default"> & { default?: FileBlob } = {
@@ -283,5 +281,16 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): FileFi
   const resolvedDefault = resolveDefault(opts.default, opts.format);
   if (resolvedDefault !== undefined) runtimeOptions.default = resolvedDefault;
 
-  return new ConfigDescriptor("file", fileParser(runtimeOptions), runtimeOptions) as unknown as FileFieldReturn<O>;
+  const parse = fileStart(runtimeOptions);
+  const defaultValue = runtimeOptions.default !== undefined ? runtimeOptions.default : (null as unknown as FileBlob);
+
+  return new Descriptor<FileBlob, FileBlob>({
+    type: "file",
+    options: runtimeOptions,
+    start(control) {
+      control.rawStore.subscribe((raw) => {
+        control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
+      });
+    },
+  }) as Descriptor<FileFieldValue<O>, FileBlob>;
 }
