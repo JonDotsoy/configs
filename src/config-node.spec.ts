@@ -519,35 +519,46 @@ describe("create — a custom Descriptor's own reduce() timing vs. its source's"
 
     expect(cfg.port.get()).toBe(3000);
   });
+});
 
-  test("a Descriptor built with neither start() nor reduce() is always null (or options.default, if given)", async () => {
-    // Neither hook at all: `start` falls back to the identity function (`raw => raw`), and
-    // `.start()` itself still only runs against `rawStore.get()` at build time — before any
-    // source has opened, so raw is `null` there and `options.default` (or `null`, without one)
-    // wins. With no `reduce` either, that's the field's value forever.
+describe("create — a Descriptor built without start()", () => {
+  // No `start` in any of these — the constructor falls back to the identity function
+  // (`raw => raw`), but that only matters for the synchronous seed at build time, and raw is
+  // `null` there (no source has opened yet) — so `options.default` (or `null`, without one) is
+  // always what a missing `start` actually produces in practice.
+
+  test("sin start, sin reduce, sin default: siempre null", async () => {
     const bare = new Descriptor<unknown>({ type: "bare", options: {} });
-    const withDefault = new Descriptor<string>({ type: "bare", options: { default: "fallback" } });
 
-    const { source, push } = liveTestSource({ bare: "abc", withDefault: "abc" });
-    const cfg = await create({ bare, withDefault }, { sources: [source] });
+    const { source, push } = liveTestSource({ bare: "abc" });
+    const cfg = await create({ bare }, { sources: [source] });
 
     expect(cfg.bare.get()).toBeNull();
+
+    push({ bare: "xyz" });
+
+    // No `reduce` — the source's value never reaches the field, so it's still null.
+    expect(cfg.bare.get()).toBeNull();
+  });
+
+  test("sin start, sin reduce, con default: siempre options.default", async () => {
+    const withDefault = new Descriptor<string>({ type: "bare", options: { default: "fallback" } });
+
+    const { source, push } = liveTestSource({ withDefault: "abc" });
+    const cfg = await create({ withDefault }, { sources: [source] });
+
     expect(cfg.withDefault.get()).toBe("fallback");
 
-    push({ bare: "xyz", withDefault: "xyz" });
+    push({ withDefault: "xyz" });
 
     // Still unchanged — no `reduce` means the source's value never reaches the field, whatever
     // `start` would have done with it (here, the identity function).
-    expect(cfg.bare.get()).toBeNull();
     expect(cfg.withDefault.get()).toBe("fallback");
   });
 
-  test("a Descriptor built with only reduce() (no start) is options.default first, then fully driven by reduce's own logic", async () => {
-    // No `start` given at all — `.start()` falls back to the identity function, but that only
-    // matters for the synchronous seed at build time, and raw is `null` there (no source has
-    // opened yet), so `options.default` wins regardless. Once `reduce`'s own Store takes over, its
-    // logic is all that matters — it doesn't have to (and here doesn't) match what the identity
-    // `start` would have produced.
+  test("sin start, con reduce: options.default primero, luego lo que reduce() decida", async () => {
+    // `reduce`'s own Store doesn't have to (and here doesn't) match what the identity `start`
+    // would have produced — once it resolves, its own logic is all that matters.
     const doubled = new Descriptor<number>({
       type: "doubled",
       options: { default: 0 },
