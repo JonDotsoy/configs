@@ -1203,3 +1203,8 @@ Further guides live under [`docs/`](./docs):
   the node synchronously, opening sources, resolving each field's `reduce()`,
   staying live, and `close()` — for anyone touching `config-node.ts`/
   `config-descriptor.ts`, or writing a `Descriptor` by hand.
+- [`docs/develop/custom-source-and-descriptor.md`](./docs/develop/custom-source-and-descriptor.md)
+  — internal reference (in Spanish) for writing a custom `Source` and
+  `Descriptor`: the full `start`/`close`/`reduce` contract of each, real
+  patterns (polling, cleanup on `close()`, partial-patch `reduce`, a
+  non-scalar field, `WithDefault<O, T>`), and common mistakes.
