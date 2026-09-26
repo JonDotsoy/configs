@@ -287,7 +287,7 @@ type accepts) plus whatever else `start` wants to read (a `default`, ...).
 **`start` is the only place a field's value ever comes from — there's no default reactivity to fall
 back on.** A `start` that never subscribes to `control.rawStore` at all leaves the field static
 forever, even the source's very first update never reaches it (see [Fase 1 en
-`docs/develop/live-cicle.md`](./docs/develop/live-cicle.md) for exactly why). There's no shared
+`docs/develop/lifecycle.md`](./docs/develop/lifecycle.md) for exactly why). There's no shared
 helper for this — every built-in field type (`string()`/`numeric()`/...) writes its own `start` as
 a single `control.rawStore.subscribe(...)` call: `subscribe` fires immediately with the current raw
 value (**tick 0**, before `create()` even returns) and again on every later change, so running the
@@ -1198,7 +1198,7 @@ Further guides live under [`docs/`](./docs):
 - [`docs/develop/check-package.md`](./docs/develop/check-package.md) —
   validating the published package against real Node, Bun, and Deno
   processes.
-- [`docs/develop/live-cicle.md`](./docs/develop/live-cicle.md) — internal
+- [`docs/develop/lifecycle.md`](./docs/develop/lifecycle.md) — internal
   reference (in Spanish) for `create()`/`load()`'s own lifecycle: building
   the node synchronously, opening sources, resolving each field's `reduce()`,
   staying live, and `close()` — for anyone touching `config-node.ts`/
