@@ -1103,3 +1103,8 @@ Further guides live under [`docs/`](./docs):
 - [`docs/develop/check-package.md`](./docs/develop/check-package.md) —
   validating the published package against real Node, Bun, and Deno
   processes.
+- [`docs/develop/live-cicle.md`](./docs/develop/live-cicle.md) — internal
+  reference (in Spanish) for `create()`/`load()`'s own lifecycle: building
+  the node synchronously, opening sources, resolving each field's `reduce()`,
+  staying live, and `close()` — for anyone touching `config-node.ts`/
+  `config-descriptor.ts`, or writing a `Descriptor` by hand.
