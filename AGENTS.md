@@ -35,14 +35,14 @@ src/
     data-types.ts             # field type/coercion helpers
 
 scripts/
-  build.sh                  # bun build (entry points read from package.json "exports")
+  build.ts                  # bun build + minify + dist/package.json (entry points read from package.json "exports")
 
 dist/                      # build output, gitignored, published via "files"/"exports"
 ```
 
 Public entry points live in `package.json`'s `exports` map (`.` and
 `./sources/{env,fetch,sse}`); each condition carries an `_entryPoint`
-pointing at its `src/*.ts` source, which `scripts/build.sh` reads to drive
+pointing at its `src/*.ts` source, which `scripts/build.ts` reads to drive
 `bun build`. Add a new public module by adding both its `src/` file and its
 `exports` entry (with `_entryPoint`), not just one.
 

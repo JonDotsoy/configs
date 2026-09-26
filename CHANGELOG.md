@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Replaced `scripts/build.sh` with `scripts/build.ts`: the build now runs as a
+  typed Bun script instead of Bash, minifies the bundled output
+  (`bun build --minify`), and writes a trimmed, self-contained
+  `dist/package.json` (dev-only fields dropped, `exports` paths relative to
+  `dist/` itself) alongside the compiled `.js`/`.d.ts` files.
+
 ## [1.2.12] - 2026-09-26
 
 ### Changed — every built-in `Descriptor`'s own `start` is now a single `control.rawStore.subscribe(...)` call
