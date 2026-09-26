@@ -40,7 +40,8 @@ consumidor tenga que esperar nada para empezar a leer `.get()`.
 | `Source<T>` | `src/sources/source.ts` | Abre una vez (`start(control)`), publica snapshots (`control.set()`) en su propio `Store` interno, cierra con `close()`. |
 | `rawSources[i]` | `create()` | Un `Store<unknown>` placeholder por cada `options.sources[i]` — arranca en `null`, se conecta al `Store` real de esa fuente recién cuando `source.open()` resuelve. |
 | `keyStore(rawSources, path)` | `config-node.ts` | Por cada campo: mira `path` en cada `rawSources[i]` **en orden de prioridad** (el primero que tenga el valor gana) y expone eso como un `Store<unknown>` — el "raw" del campo. |
-| `Descriptor<T>` | `config-descriptor.ts` | `start(raw, path): T` (síncrono, una vez) + `reduce(rawStore, path): Promise<Store<T>>` (define toda la reactividad futura) + `close(): Promise<void>` opcional. |
+| `Descriptor<T>` | `config-descriptor.ts` | `start(raw, path): T` (síncrono, una vez) + `reduce(rawStore, path): Promise<Store<T>> \| undefined` (la **única** fuente de reactividad — sin uno, el campo nunca se actualiza) + `close(): Promise<void>` opcional. |
+| `reduceFromStart(parse, defaultValue)` | `config-descriptor.ts` (exportado) | El `reduce` que usan todos los builders integrados: re-ejecuta `parse` en cada cambio de `rawStore`. Cualquier `Descriptor` hecho a mano puede reusarlo para tener el mismo comportamiento "vivo" sin escribirlo a mano. |
 | `FieldStore` | `config-node.ts` (`buildField`) | El `Store<T>` que el consumidor lee vía `cfg.campo.get()`. Lo crea y posee `buildField()` — el `Descriptor` nunca guarda un `Store` propio. |
 | `ConfigsNodePending<T>` | `config-node.ts` | Lo que `create()` devuelve: el nodo ya usable + `.then()` + `.close()`. |
 
@@ -66,8 +67,12 @@ publicado nada todavía:
         `rawStore.get()` casi siempre `null` en este punto (ninguna fuente
         ha abierto todavía), así que lo normal es que el valor inicial sea
         `options.default` (o `null` sin uno).
-      - Llama `descriptor.reduce(rawStore, path)` — también una sola vez —
-        y encola su promesa en `embeddedReady` (ver Fase 3).
+      - Llama `descriptor.reduce(rawStore, path)` — también una sola vez.
+        Si devuelve una `Promise` (el `Descriptor` tenía su propio `reduce`,
+        o uno construido con `reduceFromStart`), esa promesa se encola en
+        `embeddedReady` (ver Fase 3). **Si devuelve `undefined` (no se pasó
+        ningún `reduce` al constructor), no se encola nada — ese campo
+        queda fijo para siempre en el valor que `start()` acaba de sembrar.**
    d. Registra un "closer" para este campo (`entry.close()`, si existe) en
       `closers` (ver Fase 5).
 3. Un valor del shape que no es un descriptor ni un nodo `create()` embebido
@@ -104,36 +109,41 @@ tenga el `path` del campo) — y si cambió, dispara sus propios `listen()`.
 
 ## Fase 3 — Resolución de `reduce()` (`embeddedReady`)
 
-`descriptor.reduce(rawStore, path)` se llamó ya en la Fase 1, pero es
-`async`: su promesa resuelve en un microtask (o más tarde, si el propio
-`reduce` hace algo asíncrono real). `buildField()` la encadena así:
+`descriptor.reduce(rawStore, path)` se llamó ya en la Fase 1. Su resultado
+decide todo lo que sigue:
 
-```ts
-reducePromise.then((resultStore) => {
-  fieldStore.set(resultStore.get());
-  resultStore.listen((value) => fieldStore.set(value));
-});
-```
+- **Si devuelve una `Promise<Store<T>>`** (el `Descriptor` le dio un
+  `reduce` propio al constructor — a mano, o vía `reduceFromStart`),
+  `buildField()` la encadena así:
 
-En cuanto resuelve:
+  ```ts
+  reducePromise.then((resultStore) => {
+    fieldStore.set(resultStore.get());
+    resultStore.listen((value) => fieldStore.set(value));
+  });
+  ```
 
-1. El `FieldStore` adopta **de una** el valor que `resultStore` tenga en ese
-   instante (que puede ya reflejar una fuente que abrió rapidísimo).
-2. A partir de ahí, `fieldStore` queda escuchando `resultStore` — cualquier
-   `resultStore.set(...)` futuro (típicamente porque `resultStore` está
-   escuchando el mismo `rawStore`, como hace el `reduce` por defecto) se
-   refleja en el `FieldStore` que el consumidor lee.
+  En cuanto resuelve: el `FieldStore` adopta **de una** el valor que
+  `resultStore` tenga en ese instante (que puede ya reflejar una fuente que
+  abrió rapidísimo), y desde ahí queda escuchando `resultStore` — cualquier
+  `resultStore.set(...)` futuro se refleja en el `FieldStore` que el
+  consumidor lee. Todo builder integrado (`string()`, `numeric()`, ...) usa
+  `reduceFromStart(parse, defaultValue)` para este `reduce`: construye un
+  `Store` con `parse(rawStore.get())` y lo mantiene vivo re-ejecutando
+  `parse` en cada `rawStore.listen()` — la misma función que `start` usa,
+  reutilizada como su propio "recompute".
 
-Si un `Descriptor` no da su propio `reduce`, `Descriptor.reduce()` sintetiza
-uno (`liveStoreFromStart`, en `config-descriptor.ts`) que hace exactamente
-eso: crea un `Store` con `start(rawStore.get())` y lo mantiene vivo
-re-ejecutando `start()` en cada `rawStore.listen()` — por eso los builders
-integrados (`string()`, `numeric()`, ...) son reactivos sin escribir ningún
-`reduce` a mano.
+- **Si devuelve `undefined`** (no se pasó ningún `reduce`), no hay nada que
+  encadenar — **el campo se queda para siempre en el valor que `start()`**
+  sembró en la Fase 1, sin importar qué publique la fuente después. `reduce`
+  es lo único que puede actualizar un campo; omitirlo no cae a ningún
+  comportamiento por defecto.
 
-**La promesa de `reduce()` de cada campo se encola en `embeddedReady`** —
-es la pieza que hace que `await cfg` no resuelva hasta que todo campo (no
-solo las fuentes) esté listo.
+**La promesa de `reduce()` de cada campo (cuando la hay) se encola en
+`embeddedReady`** — es la pieza que hace que `await cfg` no resuelva hasta
+que todo campo con `reduce` (no solo las fuentes) esté listo. Un campo sin
+`reduce` no aporta nada a `embeddedReady` — no retrasa ni afecta el `then()`
+del nodo.
 
 ## Fase 4 — Vida en vivo
 
@@ -146,9 +156,14 @@ un `reduce` a medida) dispara la misma cadena:
 Source.control.set(value)
   → rawSources[i].set(value)
     → keyStore recalcula (si el path cambió)
-      → resultStore.set(next)   (dentro del reduce, propio o por defecto)
+      → resultStore.set(next)   (dentro del reduce que el Descriptor haya dado)
         → fieldStore.set(next)  (vía el listen() que Fase 3 dejó armado)
 ```
+
+Esta cadena **solo existe si el campo tiene un `reduce`** — es lo que
+`resultStore` es. Sin `reduce`, no hay `resultStore`, no hay `listen()`
+armado en la Fase 3, y por lo tanto nada de esto ocurre nunca: el `Source`
+puede seguir publicando indefinidamente sin que ese campo se entere.
 
 Nada de esto vuelve a llamar `start()` — **`start()` corre exactamente una
 vez por campo, siempre**. Toda actualización posterior sale del `Store` que
@@ -204,15 +219,21 @@ ejecutarlos.
 | Método | Cuántas veces | Cuándo |
 |---|---|---|
 | `descriptor.start(raw, path)` | **Exactamente 1**, por campo | Síncronamente, en `buildField()`, durante la Fase 1 — antes de que cualquier fuente haya abierto. |
-| `descriptor.reduce(rawStore, path)` | **Exactamente 1**, por campo | Inmediatamente después de `start()`, también en la Fase 1 — pero es `async`, así que su cuerpo puede tardar lo que quiera. |
-| El `Store` que `reduce()` resuelve | Tantas veces como haga `.set()` | Cualquier momento posterior — típicamente porque escucha `rawStore` (reactividad "normal"), pero puede ser cualquier otra fuente de cambio (un timer propio, otra suscripción). |
+| `descriptor.reduce(rawStore, path)` | **Exactamente 1**, por campo | Inmediatamente después de `start()`, también en la Fase 1. Si el `Descriptor` no recibió un `reduce` en su constructor, esta llamada devuelve `undefined` **síncronamente** (no una `Promise`) — no hay nada más que llamar. |
+| El `Store` que `reduce()` resuelve (si lo hay) | Tantas veces como haga `.set()` | Cualquier momento posterior — típicamente porque escucha `rawStore` (reactividad "normal", vía `reduceFromStart`), pero puede ser cualquier otra fuente de cambio (un timer propio, otra suscripción). |
 
 `start` nunca se re-invoca — toda la reactividad "de ahí en más" vive dentro
-del `Store` que `reduce` produjo una única vez. Ver
-[`src/config-node.spec.ts`](../../src/config-node.spec.ts) para un ejemplo
-que combina ambos: un `Descriptor` cuyo `reduce` sigue en vivo al
-`rawStore` (recibe la actualización de la fuente) **y además** programa su
-propia actualización posterior, independiente de la fuente.
+del `Store` que `reduce` produjo, si es que produjo alguno. **Sin `reduce`,
+no hay ninguna otra actualización**: el campo se queda para siempre en lo
+que `start()` sembró — no es un caso raro que "cae a algo", es literalmente
+la única opción cuando no hay `reduce`. Ver
+[`src/config-node.spec.ts`](../../src/config-node.spec.ts), describe `create
+— a custom Descriptor's own reduce() timing vs. its source's`, test *"a
+Descriptor built with only start() (no reduce in the constructor) never
+updates, even once its source opens"*, y el test que sí combina ambos: un
+`Descriptor` cuyo `reduce` sigue en vivo al `rawStore` (recibe la
+actualización de la fuente) **y además** programa su propia actualización
+posterior, independiente de la fuente.
 
 ## Grupos anidados y nodos `create()` embebidos
 
@@ -289,10 +310,11 @@ t=40ms   el setTimeout propio de reduce() dispara → store.set(4000) → value 
   casi siempre es `null` (ninguna fuente abrió aún), en la práctica esto solo
   se dispara cuando el valor inválido viene del propio `options.default`.
   El caso típico — una fuente que publica un valor inválido — pasa por el
-  `reduce` por defecto (`liveStoreFromStart`), y ahí una excepción se
-  propaga como el *rechazo* de la promesa de `reduce()`, que a su vez hace
-  fallar `ready` (y por lo tanto el `await cfg`) con ese error — ver
-  "`create()` — parser failures" en `config-node.spec.ts`.
+  `reduce` que el builder armó con `reduceFromStart` (que internamente vuelve
+  a llamar el mismo `parse` que `start` usa), y ahí una excepción se propaga
+  como el *rechazo* de la promesa de `reduce()`, que a su vez hace fallar
+  `ready` (y por lo tanto el `await cfg`) con ese error — ver "`create()` —
+  parser failures" en `config-node.spec.ts`.
 - Un `Store` que sí llegó a resolver (`.get()` ya devuelve el valor
   esperado) sigue siendo legible aunque `await cfg` termine rechazando: el
   rechazo afecta al `then()` del nodo completo, no a los `Store`s

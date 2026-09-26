@@ -58,15 +58,16 @@ export interface ChoiceFieldOptions<T extends string = string> extends BaseField
  * What `new Descriptor(...)` takes: `type`/`options` are purely descriptive (read by `.key`,
  * `.freeze`, `.options.default`, ...); `start` is this field's synchronous parser, run **once**
  * against the raw value already present when the field is built, to seed its `Store` before
- * anything asynchronous has had a chance to run — it is never called again after that. Every live
- * update from then on comes exclusively from `reduce`: given the field's live raw `Store`, it
- * resolves to the `Store<T>` that becomes (and stays) this field's value — its promise is folded
- * into `create()`'s own readiness, same as a source's `open()`. Omitting `reduce` gets a default
- * one for free, built from `start` itself (re-running it on every raw change, same as `start`
- * alone used to before this became a two-step contract) — so most callers never need to write
- * their own `reduce`. `close`, when given, releases whatever `start`/`reduce` set up (a connection,
- * a timer, ...) — `create()`'s own `close()` (`./config-node.js`) calls every field's `close` once,
- * same as `Source.close()` does for its own `underlying.close`.
+ * anything asynchronous has had a chance to run — it is never called again after that. `reduce`
+ * is what actually keeps the field live: given the field's live raw `Store`, it resolves to the
+ * `Store<T>` that becomes (and stays) this field's value — its promise is folded into `create()`'s
+ * own readiness, same as a source's `open()`. **`reduce` owns updating the value; without one, the
+ * field never changes again after its `start()`-seeded value** — every built-in field type
+ * (`string()`/`numeric()`/...) supplies its own via `reduceFromStart()` below, precisely so it
+ * stays reactive; nothing here does that for you implicitly. `close`, when given, releases
+ * whatever `start`/`reduce` set up (a connection, a timer, ...) — `create()`'s own `close()`
+ * (`./config-node.js`) calls every field's `close` once, same as `Source.close()` does for its own
+ * `underlying.close`.
  */
 export interface DescriptorUnderlying<T, O extends object = object> {
   type: FieldType;
@@ -126,25 +127,14 @@ export class Descriptor<T, O extends object = object> {
   }
 
   /**
-   * The live `Store<T>` this field settles into: the constructor's own `reduce`, if given, or —
-   * when it wasn't — a default (`liveStoreFromStart`) that reuses `start` itself as its own
-   * recompute function, re-run on every `rawStore` change. Either way, this is the only place a
-   * live update for this field can come from — `create()` (`./config-node.js`) itself calls
-   * `.start()` exactly once, to seed the field before this resolves, and never again after.
+   * The optional async hook passed as `reduce` to the constructor — `undefined` when this
+   * descriptor doesn't have one, in which case the field never updates past its `start()`-seeded
+   * value (see `DescriptorUnderlying`'s own doc). This is the only place a live update for this
+   * field can come from — `create()` (`./config-node.js`) itself calls `.start()` exactly once, to
+   * seed the field before this resolves, and never again after.
    */
-  reduce(rawStore: Store<unknown>, path: string[] = []): Promise<Store<T>> {
-    if (this.reduceFn) return this.reduceFn(rawStore, path);
-    return Promise.resolve(this.liveStoreFromStart(rawStore, path));
-  }
-
-  /** The default `reduce`: a `Store<T>` that stays live by re-running `.start()` on every `rawStore` change. */
-  private liveStoreFromStart(rawStore: Store<unknown>, path: string[]): Store<T> {
-    const store = new Store<T>(this.start(rawStore.get(), path));
-    rawStore.listen((raw) => {
-      const next = this.start(raw, path);
-      if (next !== store.get()) store.set(next);
-    });
-    return store;
+  reduce(rawStore: Store<unknown>, path: string[] = []): Promise<Store<T>> | undefined {
+    return this.reduceFn?.(rawStore, path);
   }
 
   /**
@@ -156,28 +146,58 @@ export class Descriptor<T, O extends object = object> {
   }
 }
 
+/**
+ * Builds a `reduce` that keeps a field live purely by re-running `parse` on every `rawStore`
+ * change — falling back to `defaultValue` the same way `Descriptor.start()` does when raw is
+ * missing or `null`. Every built-in field builder (`string()`/`numeric()`/`boolean()`/`url()`/
+ * `choice()`/`shape()`, and `file()` from `./node.js`) passes its own `parse` (the same function
+ * it hands to `start`) through this — `reduce` is what actually keeps a field live (see
+ * `DescriptorUnderlying`'s own doc); nothing makes that happen implicitly just from giving a
+ * `start`.
+ */
+export function reduceFromStart<T>(
+  parse: (raw: unknown, path: string[]) => T,
+  defaultValue: T | undefined,
+): (rawStore: Store<unknown>, path: string[]) => Promise<Store<T>> {
+  const compute = (raw: unknown, path: string[]): T =>
+    raw === undefined || raw === null ? (defaultValue !== undefined ? defaultValue : (null as T)) : parse(raw, path);
+
+  return async (rawStore, path) => {
+    const store = new Store<T>(compute(rawStore.get(), path));
+    rawStore.listen((raw) => {
+      const next = compute(raw, path);
+      if (next !== store.get()) store.set(next);
+    });
+    return store;
+  };
+}
+
 /** Builds a `"string"` field descriptor, returned as a `Descriptor<string, O>`. */
 export function string<const O extends StringFieldOptions = {}>(options?: O): Descriptor<string, O> {
   const opts = (options ?? {}) as O;
-  return new Descriptor({ type: "string", options: opts, start: stringParser(opts) });
+  const parse = stringParser(opts);
+  return new Descriptor({ type: "string", options: opts, start: parse, reduce: reduceFromStart(parse, opts.default) });
 }
 
 /** Builds a `"number"` field descriptor, returned as a `Descriptor<number, O>`. */
 export function numeric<const O extends NumberFieldOptions = {}>(options?: O): Descriptor<number, O> {
   const opts = (options ?? {}) as O;
-  return new Descriptor({ type: "number", options: opts, start: numberParser(opts) });
+  const parse = numberParser(opts);
+  return new Descriptor({ type: "number", options: opts, start: parse, reduce: reduceFromStart(parse, opts.default) });
 }
 
 /** Builds a `"boolean"` field descriptor, returned as a `Descriptor<boolean, O>`. */
 export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): Descriptor<boolean, O> {
   const opts = (options ?? {}) as O;
-  return new Descriptor({ type: "boolean", options: opts, start: booleanParser(opts) });
+  const parse = booleanParser(opts);
+  return new Descriptor({ type: "boolean", options: opts, start: parse, reduce: reduceFromStart(parse, opts.default) });
 }
 
 /** Builds a `"url"` field descriptor, returned as a `Descriptor<URL, O>`. Parses (and validates) a string value into a `URL` instance. */
 export function url<const O extends UrlFieldOptions = {}>(options?: O): Descriptor<URL, O> {
   const opts = (options ?? {}) as O;
-  return new Descriptor({ type: "url", options: opts, start: urlParser(opts) });
+  const parse = urlParser(opts);
+  return new Descriptor({ type: "url", options: opts, start: parse, reduce: reduceFromStart(parse, opts.default) });
 }
 
 /**
@@ -196,10 +216,12 @@ export function shape<const O extends ShapeFieldOptions = {}>(
   options?: O,
 ): Descriptor<InferShapeOptionValue<O>, O> {
   const opts = (options ?? {}) as O;
+  const parse = shapeParser<InferShapeOptionValue<O>>(opts as { schema?: Parseable<InferShapeOptionValue<O>>; required?: boolean }, "shape");
   return new Descriptor({
     type: "shape",
     options: opts,
-    start: shapeParser<InferShapeOptionValue<O>>(opts as { schema?: Parseable<InferShapeOptionValue<O>>; required?: boolean }, "shape"),
+    start: parse,
+    reduce: reduceFromStart(parse, (opts as { default?: InferShapeOptionValue<O> }).default),
   });
 }
 
@@ -213,7 +235,8 @@ export function shape<const O extends ShapeFieldOptions = {}>(
 export function choice<const O extends ChoiceFieldOptions<string>>(
   options: O,
 ): Descriptor<O["options"][number], O> {
-  return new Descriptor({ type: "choice", options, start: choiceParser(options) });
+  const parse = choiceParser(options);
+  return new Descriptor({ type: "choice", options, start: parse, reduce: reduceFromStart(parse, options.default) });
 }
 
 /**

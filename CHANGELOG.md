@@ -51,16 +51,21 @@ new Descriptor<T>({
 
 `start(raw, path): T` replaces the old `parser` — `create()`/`load()` now build and own each
 field's `Store` themselves, seeding it with one, one-time call to `.start()`. Every live update
-from then on comes exclusively from `.reduce(rawStore, path)`, which returns `Promise<Store<T>>`:
-its promise is folded into `create()`'s own readiness, and the `Store<T>` it resolves to becomes
-the field's live value going forward — `.start()` is never called again. Omitting `reduce` gets a
-default one for free, built from `start` itself (re-run on every raw change), so built-in fields
-stay reactive with no extra code. The hand-written extension contract changes to match: a
-descriptor written by hand now needs callable `.start()` and `.reduce()` (structurally recognized
-— see the "Removed `CONFIG_DESCRIPTOR_TAG`" entry above) to be recognized by
-`isConfigDescriptor()`, and without its own `.reduce()`, it only ever gets that one
-`start()`-seeded value, never a live update. See the README's "Writing a custom `Descriptor`"
-section.
+from then on comes exclusively from `.reduce(rawStore, path)`, which returns
+`Promise<Store<T>> | undefined`: its promise (when there is one) is folded into `create()`'s own
+readiness, and the `Store<T>` it resolves to becomes the field's live value going forward —
+`.start()` is never called again. **`reduce` is not optional in practice: omitting it doesn't fall
+back to anything, the field just never updates past its `start()`-seeded value** — `reduce` owns
+observing the raw value and deciding when/how to mutate the field, and that responsibility can't be
+implicit. Every built-in field type (`string()`/`numeric()`/...) supplies its own `reduce` via the
+newly-exported `reduceFromStart(parse, defaultValue)`, which re-runs `parse` (the same function
+given to `start`) on every raw change — so built-in fields stay reactive, and any hand-written
+`Descriptor` can opt into the same behavior by passing its own `start` function through it. The
+hand-written extension contract changes to match: a descriptor written by hand now needs callable
+`.start()` and `.reduce()` (structurally recognized — see the "Removed `CONFIG_DESCRIPTOR_TAG`"
+entry above) to be recognized by `isConfigDescriptor()`, and without its own `.reduce()`, it only
+ever gets that one `start()`-seeded value, never a live update. See the README's "Writing a custom
+`Descriptor`" section.
 
 ### Changed — BREAKING: new `create()`/`load()` engine, legacy engine removed
 

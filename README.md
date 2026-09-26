@@ -211,29 +211,32 @@ resolves to, never from `start` again. `create()` never inspects the raw value i
 merge — coercing it into whatever the field's `.get()` should return is entirely the descriptor's
 job.
 
-The simplest way to build one is `new Descriptor({ type, options, start })` directly — `type` is
-just a label (any string; only the built-ins' own labels are special), `start` is a
+The simplest way to build one is `new Descriptor({ type, options, start, reduce })` directly —
+`type` is just a label (any string; only the built-ins' own labels are special), `start` is a
 `(raw: unknown, path: string[]) => T` function doing the actual coercion/validation (throw a
 `ConfigError` to reject a value), and `options` is a plain object that can carry a `key` (same
-`string | string[]` explicit-path override every built-in field type accepts) plus a `default`
-used whenever no source has the field. Leaving out `reduce` gets you a default one for free, built
-from `start` itself (re-run on every raw change) — so this already gets you everything
-`numeric()`/`string()`/etc. get for free, including a field that's live from the moment its source
-opens, no different from a built-in one:
+`string | string[]` explicit-path override every built-in field type accepts) plus a `default` used
+whenever no source has the field.
+
+**`reduce` is what makes a field live — it isn't optional in practice.** Omitting it doesn't fall
+back to anything: the field is stuck at its `start()`-seeded value forever, even the source's very
+first one never reaches it (see [Fase 1 en
+`docs/develop/live-cicle.md`](./docs/develop/live-cicle.md) for exactly why). Every built-in field
+type gets its reactivity from `reduceFromStart(parse, defaultValue)` (also exported) — it builds a
+`reduce` that re-runs `parse` (the same function given to `start`) on every raw change, falling
+back to `defaultValue` the same way `start` does. Pass your own `start`'s function straight through
+it and you get the same "live from the moment the source opens" behavior every built-in field has:
 
 ```ts
-import { Descriptor, create } from "@jondotsoy/configs";
+import { Descriptor, reduceFromStart, create } from "@jondotsoy/configs";
 import { envSource } from "@jondotsoy/configs/sources/env";
 
 function csv(options: { key?: string | string[]; default?: string[] } = {}) {
-  return new Descriptor({
-    type: "csv",
-    options,
-    start(raw, path) {
-      if (typeof raw !== "string") throw new Error(`Expected a comma-separated string at "${path.join(".")}"`);
-      return raw.split(",").map((s) => s.trim());
-    },
-  });
+  const parse = (raw: unknown, path: string[]): string[] => {
+    if (typeof raw !== "string") throw new Error(`Expected a comma-separated string at "${path.join(".")}"`);
+    return raw.split(",").map((s) => s.trim());
+  };
+  return new Descriptor({ type: "csv", options, start: parse, reduce: reduceFromStart(parse, options.default) });
 }
 
 // ALLOWED_ORIGINS=a.com, b.com, c.com
@@ -248,12 +251,12 @@ cfg.allowedOrigins.get();
 
 For a field whose value can only be produced (or recomputed live) in some other way than "re-run
 `start` on every raw change" — an async lookup, a value derived from more than the raw snapshot —
-give the constructor its own `reduce(rawStore, path)` hook returning `Promise<Store<T>>` instead.
-`create()` folds that promise into its own readiness (same as a source's `open()`) and adopts the
-`Store<T>` it resolves to as the field's live value; `start` still seeds the field synchronously in
-the meantime, so it's never left without a value. **A field with a custom `reduce` never falls back
-to re-running `start`** — if `reduce`'s own `Store<T>` doesn't stay live off `rawStore` itself (by
-`.listen()`ing to it, the same way the default `reduce` does), the field won't update again either.
+write `reduce(rawStore, path)` by hand instead of using `reduceFromStart`. `create()` folds its
+promise into its own readiness (same as a source's `open()`) and adopts the `Store<T>` it resolves
+to as the field's live value; `start` still seeds the field synchronously in the meantime, so it's
+never left without a value. Whatever `reduce` you give it owns every update from then on — if its
+own `Store<T>` doesn't stay live off `rawStore` itself (by `.listen()`ing to it, the same way
+`reduceFromStart` does), the field simply never updates again, no matter what the source publishes.
 
 If `start`/`reduce` open something that needs releasing (a connection, a timer, ...), give the
 constructor a `close(): Promise<void>` hook too — `create()`'s own returned node is itself

@@ -5,6 +5,7 @@ import {
   Descriptor,
   isConfigDescriptor,
   numeric,
+  reduceFromStart,
   shape,
   string,
   url,
@@ -127,9 +128,16 @@ describe("Descriptor.start()", () => {
 });
 
 describe("Descriptor.reduce()", () => {
-  test("without a reduce hook, resolves to a Store built from start, live off rawStore changes", async () => {
+  test("is undefined when the constructor wasn't given a reduce hook — reduce is what keeps a field live, not start", () => {
+    const descriptor = new Descriptor<string>({ type: "csv", options: {}, start: (raw) => String(raw) });
+
+    expect(descriptor.reduce(new Store<unknown>("8080"))).toBeUndefined();
+  });
+
+  test("numeric()'s own built-in reduce (built via reduceFromStart) keeps it live off rawStore changes", async () => {
     const rawStore = new Store<unknown>("8080");
     const reduced = await numeric().reduce(rawStore);
+    if (!reduced) throw new Error("expected numeric() to have its own reduce");
 
     expect(reduced.get()).toBe(8080);
 
@@ -148,7 +156,53 @@ describe("Descriptor.reduce()", () => {
     });
 
     const resultStore = await descriptor.reduce(new Store<unknown>("abc"));
-    expect(resultStore.get()).toBe("reduced:abc");
+    expect(resultStore?.get()).toBe("reduced:abc");
+  });
+});
+
+describe("reduceFromStart()", () => {
+  test("builds a reduce that stays live off rawStore, re-running parse on every change", async () => {
+    const parse = (raw: unknown): number => Number(raw);
+    const reduce = reduceFromStart(parse, undefined);
+    const rawStore = new Store<unknown>("8080");
+
+    const store = await reduce(rawStore, []);
+    expect(store.get()).toBe(8080);
+
+    rawStore.set("9090");
+    expect(store.get()).toBe(9090);
+  });
+
+  test("falls back to the given default when raw is undefined/null, without running parse", async () => {
+    const parse = (raw: unknown): number => Number(raw);
+    const reduce = reduceFromStart(parse, 3000);
+
+    expect((await reduce(new Store<unknown>(undefined), [])).get()).toBe(3000);
+    expect((await reduce(new Store<unknown>(null), [])).get()).toBe(3000);
+  });
+
+  test("resolves to null when raw is missing and no default was given", async () => {
+    const parse = (raw: unknown): number => Number(raw);
+    const reduce = reduceFromStart(parse, undefined);
+
+    expect((await reduce(new Store<unknown>(undefined), [])).get()).toBeNull();
+  });
+
+  test("lets a Descriptor built by hand opt into the same live behavior every built-in field type uses", async () => {
+    const parse = (raw: unknown): string[] => (typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
+    const descriptor = new Descriptor<string[]>({
+      type: "csv",
+      options: {},
+      start: parse,
+      reduce: reduceFromStart(parse, []),
+    });
+
+    const rawStore = new Store<unknown>("a.com, b.com");
+    const store = await descriptor.reduce(rawStore);
+    expect(store?.get()).toEqual(["a.com", "b.com"]);
+
+    rawStore.set("c.com");
+    expect(store?.get()).toEqual(["c.com"]);
   });
 });
 

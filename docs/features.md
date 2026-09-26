@@ -65,14 +65,19 @@ El punto de entrada público (`src/config-node.ts`, re-exportado desde
   path?)` (síncrono: cae a `options.default` cuando no hay valor, o corre
   el `start` propio del campo — `create()` lo llama **una sola vez**, para
   sembrar el `Store` del campo antes de que `.reduce()` resuelva) y
-  `.reduce(rawStore, path?)`, que devuelve `Promise<Store<T>>` y es de
-  donde viene **toda** actualización en vivo de ahí en adelante — si el
-  constructor no da un `reduce` propio, se usa uno por defecto construido
-  a partir de `start` (reejecutándolo en cada cambio de `rawStore`), así
-  que casi nadie necesita escribir el suyo. También expone `.close()`
-  (siempre presente, no-op si el constructor no dio `close`) que
-  `create()` llama una vez por campo desde el `.close()` del nodo.
-  Extensible a mano: `new Descriptor({ type, options, start, reduce?,
+  `.reduce(rawStore, path?)`, que devuelve `Promise<Store<T>> | undefined`
+  y es **la única** fuente de actualización en vivo — sin un `reduce`
+  propio en el constructor, el campo se queda para siempre en el valor que
+  sembró `start()`, sin importar qué publique la fuente después; no hay
+  ningún comportamiento por defecto que lo haga reactivo. Todo builder
+  integrado (`string()`, `numeric()`, ...) usa `reduceFromStart(parse,
+  defaultValue)` (también exportada) para su propio `reduce` — reejecuta
+  `parse` (la misma función de `start`) en cada cambio de `rawStore`,
+  cayendo a `defaultValue` igual que `start`; cualquier `Descriptor` hecho
+  a mano puede reusarla para tener el mismo comportamiento "vivo". También
+  expone `.close()` (siempre presente, no-op si el constructor no dio
+  `close`) que `create()` llama una vez por campo desde el `.close()` del
+  nodo. Extensible a mano: `new Descriptor({ type, options, start, reduce?,
   close? })`, o directamente un objeto plano con `.start()` y `.reduce()`
   (`.close()` opcional) — `isConfigDescriptor()` reconoce cualquiera de
   las dos formas estructuralmente, sin necesitar ningún símbolo/tag. Un

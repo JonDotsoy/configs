@@ -496,9 +496,11 @@ describe("create — a custom Descriptor's own reduce() timing vs. its source's"
     expect(cfg.value.get()).toBe(4000);
   });
 
-  test("a Descriptor built with only start() (no reduce in the constructor) still updates when its source changes", async () => {
-    // No `reduce` passed to the constructor at all — `Descriptor.reduce()` synthesizes a default
-    // one from `start` itself (see `liveStoreFromStart`), so the field stays live regardless.
+  test("a Descriptor built with only start() (no reduce in the constructor) never updates, even once its source opens", async () => {
+    // No `reduce` passed to the constructor at all — `reduce` is the only thing that keeps a
+    // field live (see `DescriptorUnderlying`'s own doc), so without one the field is stuck at
+    // whatever `start()` seeded it with, forever — not even the source's very first value reaches
+    // it, let alone a later update.
     const port = new Descriptor<number>({
       type: "number",
       options: { default: 3000 },
@@ -508,11 +510,14 @@ describe("create — a custom Descriptor's own reduce() timing vs. its source's"
     const { source, push } = liveTestSource({ port: "8080" });
     const cfg = await create({ port }, { sources: [source] });
 
-    expect(cfg.port.get()).toBe(8080);
+    // `await cfg` did wait for `source` to open — but with no `reduce`, that never reached the
+    // field, so it's still at `start()`'s own seed (`options.default`, since no source had opened
+    // yet at that synchronous point).
+    expect(cfg.port.get()).toBe(3000);
 
     push({ port: "9090" });
 
-    expect(cfg.port.get()).toBe(9090);
+    expect(cfg.port.get()).toBe(3000);
   });
 });
 
