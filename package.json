@@ -18,6 +18,7 @@
   ],
   "module": "src/configs.ts",
   "type": "module",
+  "private": true,
   "sideEffects": false,
   "license": "MIT",
   "author": {
@@ -33,69 +34,18 @@
   "bugs": {
     "url": "https://github.com/JonDotsoy/configs/issues"
   },
-  "publishConfig": {
-    "access": "public"
-  },
-  "files": [
-    "dist",
-    "docs"
-  ],
-  "exports": {
-    ".": {
-      "_entryPoint": "./src/configs.ts",
-      "types": "./dist/configs.d.ts",
-      "import": "./dist/configs.js"
-    },
-    "./sources/env": {
-      "_entryPoint": "./src/sources/env.ts",
-      "types": "./dist/sources/env.d.ts",
-      "import": "./dist/sources/env.js"
-    },
-    "./sources/fetch": {
-      "_entryPoint": "./src/sources/fetch.ts",
-      "types": "./dist/sources/fetch.d.ts",
-      "import": "./dist/sources/fetch.js"
-    },
-    "./sources/sse": {
-      "_entryPoint": "./src/sources/sse.ts",
-      "types": "./dist/sources/sse.d.ts",
-      "import": "./dist/sources/sse.js"
-    },
-    "./sources/file": {
-      "_entryPoint": "./src/sources/file.ts",
-      "types": "./dist/sources/file.d.ts",
-      "import": "./dist/sources/file.js"
-    },
-    "./sources/literal": {
-      "_entryPoint": "./src/sources/literal.ts",
-      "types": "./dist/sources/literal.d.ts",
-      "import": "./dist/sources/literal.js"
-    },
-    "./sources/pull": {
-      "_entryPoint": "./src/sources/pull.ts",
-      "types": "./dist/sources/pull.d.ts",
-      "import": "./dist/sources/pull.js"
-    },
-    "./sources/shell": {
-      "_entryPoint": "./src/sources/shell.ts",
-      "types": "./dist/sources/shell.d.ts",
-      "import": "./dist/sources/shell.js"
-    },
-    "./react": {
-      "_entryPoint": "./src/react.ts",
-      "types": "./dist/react.d.ts",
-      "import": "./dist/react.js"
-    },
-    "./node": {
-      "_entryPoint": "./src/node.ts",
-      "types": "./dist/node.d.ts",
-      "import": "./dist/node.js"
-    },
-    "./utils/metrics": {
-      "_entryPoint": "./src/utils/metric.ts",
-      "types": "./dist/utils/metric.d.ts",
-      "import": "./dist/utils/metric.js"
-    }
+  "_buildEntripoint": {
+    ".": "./src/configs.ts",
+    "./sources/env": "./src/sources/env.ts",
+    "./sources/fetch": "./src/sources/fetch.ts",
+    "./sources/sse": "./src/sources/sse.ts",
+    "./sources/file": "./src/sources/file.ts",
+    "./sources/literal": "./src/sources/literal.ts",
+    "./sources/pull": "./src/sources/pull.ts",
+    "./sources/shell": "./src/sources/shell.ts",
+    "./react": "./src/react.ts",
+    "./node": "./src/node.ts",
+    "./utils/metrics": "./src/utils/metric.ts"
   },
   "scripts": {
     "build": "bun scripts/build.ts",

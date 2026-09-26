@@ -1160,15 +1160,15 @@ ok - a failed sseSource connection leaves the field null instead of throwing
 ALL_CHECKS_PASSED
 
 sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" KX [AttemptsExhaustedError]: httpFetch: failed after 1 attempt(s): fetch failed
-    at e (file:///tmp/jondotsoy-configs-test-cases-K0wknh/node_modules/@jondotsoy/configs/configs.js:1:9177)
-    at async q (file:///tmp/jondotsoy-configs-test-cases-K0wknh/node_modules/@jondotsoy/configs/configs.js:1:9547)
-    at async Object.start (file:///tmp/jondotsoy-configs-test-cases-K0wknh/node_modules/@jondotsoy/configs/configs.js:5:512) {
+    at e (file:///tmp/jondotsoy-configs-test-cases-ohSVkD/node_modules/@jondotsoy/configs/configs.js:1:9177)
+    at async q (file:///tmp/jondotsoy-configs-test-cases-ohSVkD/node_modules/@jondotsoy/configs/configs.js:1:9547)
+    at async Object.start (file:///tmp/jondotsoy-configs-test-cases-ohSVkD/node_modules/@jondotsoy/configs/configs.js:5:512) {
   [cause]: TypeError: fetch failed
       at node:internal/deps/undici/undici:14976:13
-      at async wX (file:///tmp/jondotsoy-configs-test-cases-K0wknh/node_modules/@jondotsoy/configs/configs.js:1:8819)
-      at async e (file:///tmp/jondotsoy-configs-test-cases-K0wknh/node_modules/@jondotsoy/configs/configs.js:1:9084)
-      at async q (file:///tmp/jondotsoy-configs-test-cases-K0wknh/node_modules/@jondotsoy/configs/configs.js:1:9547)
-      at async Object.start (file:///tmp/jondotsoy-configs-test-cases-K0wknh/node_modules/@jondotsoy/configs/configs.js:5:512) {
+      at async wX (file:///tmp/jondotsoy-configs-test-cases-ohSVkD/node_modules/@jondotsoy/configs/configs.js:1:8819)
+      at async e (file:///tmp/jondotsoy-configs-test-cases-ohSVkD/node_modules/@jondotsoy/configs/configs.js:1:9084)
+      at async q (file:///tmp/jondotsoy-configs-test-cases-ohSVkD/node_modules/@jondotsoy/configs/configs.js:1:9547)
+      at async Object.start (file:///tmp/jondotsoy-configs-test-cases-ohSVkD/node_modules/@jondotsoy/configs/configs.js:5:512) {
     [cause]: Error: bad port
         at makeNetworkError (node:internal/deps/undici/undici:9495:35)
         at mainFetch (node:internal/deps/undici/undici:10721:20)
@@ -1176,10 +1176,10 @@ sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" KX [Att
         at fetch (node:internal/deps/undici/undici:10576:20)
         at fetch (node:internal/deps/undici/undici:14974:10)
         at fetch (node:internal/bootstrap/web/exposed-window-or-worker:75:12)
-        at wX (file:///tmp/jondotsoy-configs-test-cases-K0wknh/node_modules/@jondotsoy/configs/configs.js:1:8825)
-        at e (file:///tmp/jondotsoy-configs-test-cases-K0wknh/node_modules/@jondotsoy/configs/configs.js:1:9090)
-        at file:///tmp/jondotsoy-configs-test-cases-K0wknh/node_modules/@jondotsoy/configs/configs.js:5:524
-        at q (file:///tmp/jondotsoy-configs-test-cases-K0wknh/node_modules/@jondotsoy/configs/configs.js:1:9575)
+        at wX (file:///tmp/jondotsoy-configs-test-cases-ohSVkD/node_modules/@jondotsoy/configs/configs.js:1:8825)
+        at e (file:///tmp/jondotsoy-configs-test-cases-ohSVkD/node_modules/@jondotsoy/configs/configs.js:1:9090)
+        at file:///tmp/jondotsoy-configs-test-cases-ohSVkD/node_modules/@jondotsoy/configs/configs.js:5:524
+        at q (file:///tmp/jondotsoy-configs-test-cases-ohSVkD/node_modules/@jondotsoy/configs/configs.js:1:9575)
   }
 }
 ```
@@ -1219,9 +1219,9 @@ ALL_CHECKS_PASSED
 sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" 1 | class K extends Error{}var RX=[0.005,0.01,0.025,0.05,0.1,0.25,0.5,1,2.5,5,10],qX=[0.5,0.9,0.99];function AX(X,Z,$){let Q=new Set(Z);for(let W of Object.keys(X))if(!Q.has(W))throw new K(`Metric "${$}": unknown label "${W}"`);for(let W of Z)if(!(W in X))throw new K(`Metric "${$}": missing label "${W}"`)}function PX(X,Z){return Z.map(($)=>`${$}=${JSON.stringify(X[$])}`).join(",")}function o(X,Z,$){if(typeof X==="number")return[{},X];if(X&&typeof X==="object")return[X,Z??$];return[{},$]}class m{name;help;labelNames;series=new Map;constructor(X){if(!X.name)throw new K('Metric: "name" is required');this.name=X.name,this.help=X.help??"",this.labelNames=X.labelNames??[]}resolveSeries(X){AX(X,this.labelNames,this.name);let Z=PX(X,this.labelNames),$=this.series.get(Z);if(!$)$={labels:X,state:this.initialState()},this.series.set(Z,$);return $}reset(){this.series.clear()}}class N extends m{initialState(){return{value:0}}inc(X,Z){let[$,Q]=o(X,Z,1);if(Q<0)throw new K(`CounterMetric "${this.name}": cannot decrement by ${Q}`
 
 AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): Unable to connect. Is the computer able to access the url?
-      at e (/tmp/jondotsoy-configs-test-cases-K0wknh/node_modules/@jondotsoy/configs/configs.js:1:9177)
-      at async q (/tmp/jondotsoy-configs-test-cases-K0wknh/node_modules/@jondotsoy/configs/configs.js:1:9579)
-      at async start (/tmp/jondotsoy-configs-test-cases-K0wknh/node_modules/@jondotsoy/configs/configs.js:5:518)
+      at e (/tmp/jondotsoy-configs-test-cases-ohSVkD/node_modules/@jondotsoy/configs/configs.js:1:9177)
+      at async q (/tmp/jondotsoy-configs-test-cases-ohSVkD/node_modules/@jondotsoy/configs/configs.js:1:9579)
+      at async start (/tmp/jondotsoy-configs-test-cases-ohSVkD/node_modules/@jondotsoy/configs/configs.js:5:518)
 
 error: Unable to connect. Is the computer able to access the url?
   path: "http://127.0.0.1:9/nobody-listens-here",
@@ -1292,9 +1292,9 @@ Compile: `$ bun build test/cases/08-sse-source-connection-failure.ts --target br
 [PASSED]
 Failed to load resource: net::ERR_UNSAFE_PORT
 sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): Failed to fetch
-    at e (http://localhost:34971/:275:9)
-    at async q (http://localhost:34971/:279:25)
-    at async Object.start (http://localhost:34971/:327:20)
+    at e (http://localhost:33425/:275:9)
+    at async q (http://localhost:33425/:279:25)
+    at async Object.start (http://localhost:33425/:327:20)
 ok - a failed sseSource connection leaves the field null instead of throwing
 ALL_CHECKS_PASSED
 RESULT: PASS
@@ -2821,10 +2821,10 @@ Compile: `$ bun build test/cases/16-shell-source-runs-command.ts --target browse
 ```
 [WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
 shellSource: failed to run "echo {"port":7070}" AttemptsExhaustedError: shellSource: failed after 1 attempt(s): GZ is not a function
-    at HZ (http://localhost:41313/:286:9)
-    at async q (http://localhost:41313/:226:25)
-    at async LZ (http://localhost:41313/:289:42)
-    at async Object.start (http://localhost:41313/:312:54)
+    at HZ (http://localhost:33353/:286:9)
+    at async q (http://localhost:33353/:226:25)
+    at async LZ (http://localhost:33353/:289:42)
+    at async Object.start (http://localhost:33353/:312:54)
 RESULT: FAIL: FAIL: shellSource runs a command and parses its stdout as JSON
 ```
 
@@ -3190,16 +3190,16 @@ Compile: `$ bun build test/cases/17-node-file-field.ts --target browser --format
 ```
 [WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
 W: Value at "key" could not be decoded as a file: P is not a function
-    at http://localhost:32967/:762:26
-    at http://localhost:32967/:772:50
-    at R.runSubscriber (http://localhost:32967/:400:13)
-    at R.set (http://localhost:32967/:391:12)
-    at http://localhost:32967/:523:11
-    at R.runSubscriber (http://localhost:32967/:400:13)
-    at R.set (http://localhost:32967/:391:12)
-    at http://localhost:32967/:555:29
-    at R.runSubscriber (http://localhost:32967/:400:13)
-    at R.subscribe (http://localhost:32967/:394:40)
+    at http://localhost:46613/:762:26
+    at http://localhost:46613/:772:50
+    at R.runSubscriber (http://localhost:46613/:400:13)
+    at R.set (http://localhost:46613/:391:12)
+    at http://localhost:46613/:523:11
+    at R.runSubscriber (http://localhost:46613/:400:13)
+    at R.set (http://localhost:46613/:391:12)
+    at http://localhost:46613/:555:29
+    at R.runSubscriber (http://localhost:46613/:400:13)
+    at R.subscribe (http://localhost:46613/:394:40)
 RESULT: FAIL: FAIL: a source's text value resolves to a FileBlob
 ```
 

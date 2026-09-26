@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The root `package.json` is now `"private": true` and no longer carries an
+  `exports` map or `publishConfig`/`files` (it's never published itself,
+  only `dist/package.json` is — see the `npm publish ./dist` change below).
+  Its former `exports` map (each condition's `_entryPoint` plus `types`/
+  `import` pointing into `dist/`) is replaced by a plain `_buildEntripoint`
+  map of subpath -> `src/*.ts` source; `scripts/build.ts` derives
+  `dist/package.json`'s own `exports` from it. `tsconfig.json` gained a
+  matching `paths` map (kept in sync with `_buildEntripoint`) so
+  `test/cases/*.ts`'s `@jondotsoy/configs` imports still type-check against
+  `dist/`'s `.d.ts` output, now that there's no `exports` map left for
+  TypeScript's package self-reference to resolve them against.
 - The `Publish Package` workflow (`.github/workflows/publish.yaml`) now
   checks out, commits the version bump to, and targets the GitHub release at
   the branch the workflow run was actually triggered on or dispatched
