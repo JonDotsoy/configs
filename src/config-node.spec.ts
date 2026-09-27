@@ -583,6 +583,39 @@ describe("create — start(control) is 100% in control of the field's value", ()
     await new Promise((resolve) => setTimeout(resolve, startDelayMs - sourceDelayMs + 10));
     expect(cfg.value.get()).toBe(4000);
   });
+
+  test("a hand-written Descriptor narrows its own Awaited type with neither `default` nor `required` in its options — Descriptor performs no inference itself, it only carries whatever Pending/Awaited the caller passed in", async () => {
+    // `options` here is just `{}` — no `default`, no `required`, nothing `WithDefault`/`Settled`
+    // could key off. The narrowing on `Awaited` comes purely from the two type arguments given to
+    // `new Descriptor<Pending, Awaited>(...)` below, same as `string()`/`numeric()`/... do for
+    // themselves, but written by hand instead of derived from an options object at all.
+    function alwaysEventually(): Descriptor<number | null, number> {
+      return new Descriptor<number | null, number>({
+        type: "always-eventually",
+        options: {},
+        start(control) {
+          control.set(null);
+          control.rawStore.subscribe((raw) => {
+            if (raw !== null && raw !== undefined) control.set(Number(raw));
+          });
+        },
+      });
+    }
+
+    const shape = { port: alwaysEventually() };
+    const cfg = create(shape, { sources: [testSource({ port: 9090 })] });
+
+    // Pending: honestly nullable — nothing forces `start()` to have set a real value yet.
+    expectTypeOf(cfg.port).toEqualTypeOf<Store<number | null>>();
+    expect(cfg.port.get()).toBeNull();
+
+    const resolved = await cfg;
+
+    // Awaited: narrowed to `number` — not because of any `default`/`required` option (there is
+    // none), but because the descriptor's own `Awaited` type argument said so.
+    expectTypeOf(resolved.port).toEqualTypeOf<Store<number>>();
+    expect(resolved.port.get()).toBe(9090);
+  });
 });
 
 describe("create — close()", () => {
