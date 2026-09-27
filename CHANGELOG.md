@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `scripts/build.ts` now builds `dist/` with `tsc -p tsconfig.build.json`
+  instead of `bun build`: a plain transpile, one `.js`/`.d.ts` pair per
+  `src/*.ts` module mirroring `src/`'s own module graph, instead of a
+  minified bundle per public entry point. The `build:types` script is
+  renamed `build:tsc` (it now emits both `.js` and `.d.ts`, not just
+  types). Trades away bundling/minification for a real guarantee: a class
+  like `Descriptor` now exists as exactly one module in the published
+  package, imported by reference everywhere, instead of a separate copy
+  inlined into each entry point's own bundle.
+- **Breaking:** `isConfigDescriptor()` now checks `node instanceof
+  Descriptor` instead of a structural "has a callable `.start()`" check.
+  Every descriptor accepted anywhere in this package — as a `ConfigsShape`
+  entry, or standalone — must now be built via `new Descriptor(...)`
+  (directly, or through a built-in builder, which always returns one). A
+  hand-written, plain-object descriptor (no `new Descriptor(...)`) is no
+  longer recognized; `create()` now treats it as a nested group instead of
+  a field. This is only safe now that the build above no longer duplicates
+  the `Descriptor` class across separately-bundled entry points.
+- Generic helper types that only need a descriptor's `Pending` type
+  parameter (`ConfigsShape`'s own `Descriptor<any>` member,
+  `InferPendingValue<D>`) now write it as a single-parameter
+  `Descriptor<infer R>` / `Descriptor<any>` instead of spelling out
+  `Descriptor<any, any>` — `Awaited`/`O` fall back to their own declared
+  defaults. Extracting `Awaited` specifically still needs the two-parameter
+  form (`Descriptor<any, infer R>`), since there's no way to skip the first
+  slot.
+
 ### Added
 
 - `ConfigValidationError` (extends `ConfigError`) and the `ConfigFieldError`

@@ -894,20 +894,21 @@ describe("create — every field builder resolves its raw value at runtime", () 
   });
 });
 
-describe("create — a hand-written custom Descriptor (structural start() contract)", () => {
-  // Cast to `Descriptor` since `ConfigsShape` is typed against the real class — the hand-written
-  // contract (key? + start()) is a runtime-only extension point, recognized structurally by
-  // `isConfigDescriptor()` (no tag needed) but not by the shape's own static type. `start(control)`
-  // is the only place this field's value ever comes from — same as `Source`'s own `start(control)`.
+describe("create — a hand-written custom Descriptor (must be a real Descriptor instance)", () => {
+  // Every descriptor accepted anywhere in this package must be a real `new Descriptor(...)`
+  // instance (`isConfigDescriptor()` checks `instanceof Descriptor`, not a structural shape) — a
+  // hand-written field type still only needs its own `start(control)`, same as a built-in one, but
+  // it has to go through the class constructor to be recognized at all.
   function csv(options: { key?: string | string[] } = {}): Descriptor<string[]> {
     const parse = (raw: unknown) => (typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
 
-    return {
-      key: options.key,
+    return new Descriptor<string[]>({
+      type: "csv",
+      options,
       start(control: DescriptorControl<string[]>) {
         control.rawStore.subscribe((raw) => control.set(parse(raw)));
       },
-    } as unknown as Descriptor<string[]>;
+    });
   }
 
   test("create() resolves a field backed by a hand-written descriptor, same as a built-in one", async () => {
@@ -943,14 +944,28 @@ describe("create — a hand-written custom Descriptor (structural start() contra
     expect(isConfigDescriptor({ key: "ALLOWED_ORIGINS" })).toBe(false);
   });
 
+  test("a plain object with a start() method, but not built via new Descriptor(...), isn't recognized either", () => {
+    const plainObjectWithStart = {
+      type: "csv",
+      options: {},
+      start(control: DescriptorControl<string[]>) {
+        control.set([]);
+      },
+    };
+
+    expect(isConfigDescriptor(plainObjectWithStart)).toBe(false);
+  });
+
   test("if start() only snapshots rawStore once and never listens, the field is pinned at whatever it saw", async () => {
-    const pinned = {
+    const pinned = new Descriptor<string[]>({
+      type: "csv-pinned",
+      options: {},
       start(control: DescriptorControl<string[]>) {
         // Snapshots once and never listens — deliberately not live, unlike `csv()` above.
         const raw = control.rawStore.get();
         control.set(typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
       },
-    } as unknown as Descriptor<string[]>;
+    });
 
     const { source, push } = liveTestSource({ allowedOrigins: "a.com" });
     const cfg = await create({ allowedOrigins: pinned }, { sources: [source] });

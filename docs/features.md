@@ -61,15 +61,20 @@ El punto de entrada público (`src/config-node.ts`, re-exportado desde
 
 `src/config-descriptor.ts` — el bloque de construcción de cada campo:
 
-- **`Descriptor<A, B>`** — la clase base, modelada igual que `Source`:
-  `A` es lo que `.get()` realmente devuelve (`T | null` sin `default`, o
-  `T` con uno) y `B` es el tipo ya resuelto del campo, siempre `T` sin
-  importar el `default` — `numeric()` devuelve `Descriptor<number | null,
-  number>` sola, o `Descriptor<number, number>` con `default`. Esa
-  distinción, antes calculada por `create()` fuera de la clase, ahora
-  vive directamente en el propio `Descriptor`, vía el helper exportado
-  `WithDefault<O, T>` (`T` cuando `O` trae `default`, `T | null` si no) —
-  cada builder integrado lo usa para su propio primer parámetro. Un
+- **`Descriptor<Pending, Awaited>`** — la clase base, modelada igual que
+  `Source`: `Pending` es lo que `.get()` devuelve antes de que el nodo
+  termine de resolver (`T | null` sin `default`, o `T` con uno) y
+  `Awaited` es lo que `.get()` devuelve una vez el nodo se resuelve (`T`
+  con `default` **o** `required: true`, `T | null` si no) — `numeric()`
+  devuelve `Descriptor<number | null, number | null>` sola,
+  `Descriptor<number, number>` con `default`, o `Descriptor<number |
+  null, number>` con `required: true` solo. Cada builder integrado
+  calcula ambos parámetros por su cuenta y se los pasa explícitamente a
+  `Descriptor` — la propia clase no infiere nada de `default`/`required`,
+  solo transporta lo que el builder ya decidió — vía los helpers
+  exportados `WithDefault<O, T>` (para `Pending`: `T` cuando `O` trae
+  `default`, `T | null` si no) y `Settled<O, T>` (para `Awaited`: `T`
+  cuando `O` trae `default` **o** `required: true`, `T | null` si no). Un
   único hook `.start(control)`, llamado **una sola vez** por `create()`,
   que recibe el control total del campo. `control` expone `.rawStore`
   (el valor crudo en vivo de ese campo, solo lectura: `.get()`/
@@ -93,12 +98,12 @@ El punto de entrada público (`src/config-node.ts`, re-exportado desde
   También expone
   `.close()` (siempre presente, no-op si el constructor no dio `close`)
   que `create()` llama una vez por campo desde el `.close()` del nodo.
-  Extensible a mano: `new Descriptor({ type, options, start, close? })`,
-  o directamente un objeto plano con `.start(control)` (`.close()`
-  opcional) — `isConfigDescriptor()` reconoce cualquiera de las dos
-  formas estructuralmente, solo por tener un `.start()` invocable, sin
-  necesitar ningún símbolo/tag. Un objeto sin `.start()` no se reconoce
-  como descriptor — `create()` lo trataría como un grupo anidado más.
+  Extensible a mano: `new Descriptor({ type, options, start, close? })`
+  — todo descriptor tiene que ser una instancia real de `Descriptor`
+  (`isConfigDescriptor()` comprueba `instanceof Descriptor`, no una
+  forma estructural); un objeto plano con solo `.start()` ya no se
+  reconoce como descriptor — `create()` lo trataría como un grupo
+  anidado más.
 - **`string(options?)`** — coerción a `string`; `pattern` opcional
   (`RegExp`) para validar el valor.
 - **`numeric(options?)`** — coerciona un string numérico (o `number`
