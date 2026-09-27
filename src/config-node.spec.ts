@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, spyOn, test } from "bun:test";
+import { describe, expect, expectTypeOf, mock, spyOn, test } from "bun:test";
 import { create, isConfigsNode, type ConfigsNode, type ConfigsNodePending, type ConfigsNodeReady, type ConfigsShape, type Options } from "./config-node.ts";
 import { boolean, choice, Descriptor, isConfigDescriptor, numeric, shape, string, url, type DescriptorControl } from "./config-descriptor.ts";
 import { ConfigError, ConfigValidationError } from "./errors.ts";
@@ -324,7 +324,9 @@ describe("types — ConfigsNode / ConfigsNodePending / Options", () => {
     type Shape = { port: ReturnType<typeof numeric<{ required: true }>> };
 
     expectTypeOf<ConfigsNode<Shape>>().toEqualTypeOf<{ port: Store<number | null> }>();
-    expectTypeOf<ConfigsNodeReady<Shape>>().toEqualTypeOf<{ port: Store<number> }>();
+    expectTypeOf<ConfigsNodeReady<Shape>>().toEqualTypeOf<
+      { port: Store<number> } & { close(): Promise<void>; [Symbol.asyncDispose](): Promise<void> }
+    >();
     expectTypeOf<Awaited<ConfigsNodePending<Shape>>>().toEqualTypeOf<ConfigsNodeReady<Shape>>();
   });
 
@@ -680,6 +682,128 @@ describe("create — close()", () => {
     await cfg.close();
 
     expect(embeddedClosed).toBe(true);
+  });
+
+  test("closes a field descriptor's close() and a source's close() exactly once each", async () => {
+    const descriptorCloseMock = mock(() => {});
+    const sourceCloseMock = mock(() => {});
+
+    const descriptor = new Descriptor<string>({
+      type: "tracked",
+      options: {},
+      start: (control) => control.set(String(control.rawStore.get())),
+      async close() {
+        descriptorCloseMock();
+      },
+    });
+    const source = new Source<{ port?: string }>({
+      async start(control) {
+        control.set({ port: "3000" });
+      },
+      async close() {
+        sourceCloseMock();
+      },
+    });
+
+    const cfg = await create({ port: descriptor }, { sources: [source] });
+
+    await cfg.close();
+
+    expect(descriptorCloseMock).toHaveBeenCalledTimes(1);
+    expect(sourceCloseMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("calling close() multiple times still only closes each field descriptor and source once", async () => {
+    const descriptorCloseMock = mock(() => {});
+    const sourceCloseMock = mock(() => {});
+
+    const descriptor = new Descriptor<string>({
+      type: "tracked",
+      options: {},
+      start: (control) => control.set(String(control.rawStore.get())),
+      async close() {
+        descriptorCloseMock();
+      },
+    });
+    const source = new Source<{ port?: string }>({
+      async start(control) {
+        control.set({ port: "3000" });
+      },
+      async close() {
+        sourceCloseMock();
+      },
+    });
+
+    const cfg = await create({ port: descriptor }, { sources: [source] });
+
+    await Promise.all([cfg.close(), cfg.close(), cfg.close()]);
+    await cfg.close();
+
+    expect(descriptorCloseMock).toHaveBeenCalledTimes(1);
+    expect(sourceCloseMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("exposes [Symbol.asyncDispose](), so `await using` closes the field descriptor and the source", async () => {
+    const descriptorCloseMock = mock(() => {});
+    const sourceCloseMock = mock(() => {});
+
+    const descriptor = new Descriptor<string>({
+      type: "tracked",
+      options: {},
+      start: (control) => control.set(String(control.rawStore.get())),
+      async close() {
+        descriptorCloseMock();
+      },
+    });
+    const source = new Source<{ port?: string }>({
+      async start(control) {
+        control.set({ port: "3000" });
+      },
+      async close() {
+        sourceCloseMock();
+      },
+    });
+
+    {
+      await using cfg = await create({ port: descriptor }, { sources: [source] });
+      expect(descriptorCloseMock).not.toHaveBeenCalled();
+      expect(sourceCloseMock).not.toHaveBeenCalled();
+    }
+
+    expect(descriptorCloseMock).toHaveBeenCalledTimes(1);
+    expect(sourceCloseMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("closing the outer node also closes the embedded (nested create()) node's own field descriptor and source, each exactly once", async () => {
+    const descriptorCloseMock = mock(() => {});
+    const sourceCloseMock = mock(() => {});
+
+    const nestedDescriptor = new Descriptor<string>({
+      type: "tracked",
+      options: {},
+      start: (control) => control.set(String(control.rawStore.get())),
+      async close() {
+        descriptorCloseMock();
+      },
+    });
+    const nestedSource = new Source<{ cert?: string }>({
+      async start(control) {
+        control.set({ cert: "cert.pem" });
+      },
+      async close() {
+        sourceCloseMock();
+      },
+    });
+
+    const cfg = create({
+      server: { tls: create({ cert: nestedDescriptor }, { sources: [nestedSource] }) },
+    });
+    await cfg;
+
+    await cfg.close();
+
+    expect(descriptorCloseMock).toHaveBeenCalledTimes(1);
+    expect(sourceCloseMock).toHaveBeenCalledTimes(1);
   });
 
   test("a hand-written descriptor with no close() doesn't break close()", async () => {

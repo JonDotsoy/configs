@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- The object a `create()` node's `await`/`then()` resolves to (`ConfigsNodeReady<T>`) now also
+  exposes `close()`, same as the pending node returned by `create()` itself — previously `close()`
+  was only reachable before awaiting the node.
+- `create()`'s node (both its pending shape and `ConfigsNodeReady<T>`) now also implements
+  `[Symbol.asyncDispose]()`, delegating to the same `close()` — an `await using cfg = create(...)`
+  (or `await using cfg = await create(...)`) now closes every source and field descriptor
+  automatically once `cfg` goes out of scope.
+
+### Fixed
+
+- `close()` now memoizes its result: calling it more than once on the same node no longer re-runs
+  every field descriptor's own `close()` and every source's own `close()` on each call — each one
+  now only ever runs once per node, as its own doc comment already promised.
+
 ## [1.2.16] - 2026-09-27
 
 ### Changed

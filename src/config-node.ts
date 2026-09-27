@@ -77,25 +77,33 @@ type InferConfigsNodeReady<T extends ConfigsShape> = {
         : never;
 };
 
+/**
+ * Mixed into both `ConfigsNodePending<T>` and `ConfigsNodeReady<T>` — `close()` releases every own
+ * `options.sources` entry (`Source.close()`), every field descriptor's own `close`
+ * (`Descriptor.close()`), and every embedded `create()` result's own `close()` in turn. Safe to
+ * call whether or not the node has finished opening yet, and any number of times — including on
+ * the object a `create()` node's own `await`/`then()` resolves to, which is the very same runtime
+ * object as the pending node (see `create()`'s own `ready.then()`), just narrowed to this type.
+ */
+interface ClosableNode {
+  close(): Promise<void>;
+  /** `await using cfg = create(...)` — delegates to the same `close()`, so it's just as safe to trigger any number of times. */
+  [Symbol.asyncDispose](): Promise<void>;
+}
+
 /** The shape exposed on a `create()` node before it's done resolving — each leaf `Store` typed by its descriptor's own `Pending` parameter. */
 export type ConfigsNode<T extends ConfigsShape> = InferConfigsNode<T>;
 
 /** The shape a `create()` node's `then()`/`await` actually resolves to — each leaf `Store` typed by its descriptor's own `Awaited` parameter, so a `required` field narrows out `null` here even though it doesn't on `ConfigsNode<T>`. */
-export type ConfigsNodeReady<T extends ConfigsShape> = InferConfigsNodeReady<T>;
+export type ConfigsNodeReady<T extends ConfigsShape> = InferConfigsNodeReady<T> & ClosableNode;
 
 export type ConfigsNodePending<T extends ConfigsShape> = ConfigsNode<T> &
-  ConfigsNodeMarker & {
+  ConfigsNodeMarker &
+  ClosableNode & {
     then<TResult1 = ConfigsNodeReady<T>, TResult2 = never>(
       onfulfilled?: ((value: ConfigsNodeReady<T>) => TResult1 | PromiseLike<TResult1>) | undefined | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | undefined | null,
     ): PromiseLike<TResult1 | TResult2>;
-    /**
-     * Releases everything this node opened: every own `options.sources` entry (`Source.close()`),
-     * every field descriptor's own `close` (`Descriptor.close()`), and every embedded `create()`
-     * result's own `close()` in turn. Safe to call whether or not the node has finished opening
-     * yet, and any number of times.
-     */
-    close(): Promise<void>;
   };
 
 /** Walks `path` into `snapshot`, one key at a time; `undefined` if any segment is missing or not an object. */
@@ -266,6 +274,19 @@ export function create<T extends ConfigsShape>(configShape: T, options: Options 
 
   const node = buildNode(configShape, [], rawSources, embeddedReady, closers, reportError, requiredChecks) as ConfigsNode<T>;
   (node as Record<symbol, unknown>)[CONFIGS_NODE_TAG] = true;
+  // Set directly on `node` (not only on the wrapper below) so `close()` also reaches the awaited
+  // node: `ready.then()` resolves to this exact same runtime object, just narrowed to
+  // `ConfigsNodeReady<T>` — no separate object is built for the resolved value.
+  let closePromise: Promise<void> | undefined;
+  (node as Record<string, unknown>).close = (): Promise<void> => {
+    // Memoized, same as `Source.close()` — calling `close()` more than once must still only run
+    // each closer (a field descriptor's own `close`, a source's own `close`) exactly once.
+    if (!closePromise) {
+      closePromise = Promise.all([...closers.map((close) => close()), ...sources.map((source) => source.close())]).then(() => undefined);
+    }
+    return closePromise;
+  };
+  (node as Record<PropertyKey, unknown>)[Symbol.asyncDispose] = (): Promise<void> => (node as unknown as ClosableNode).close();
 
   // create() itself never throws — every field error (from control.error(), or a missing `required`
   // value) only ever surfaces through the returned node's own reject (`await`/`.then()`), even with
@@ -310,7 +331,10 @@ export function create<T extends ConfigsShape>(configShape: T, options: Options 
       return ready.then(() => node as unknown as ConfigsNodeReady<T>).then(onfulfilled, onrejected as any);
     },
     close(): Promise<void> {
-      return Promise.all([...closers.map((close) => close()), ...sources.map((source) => source.close())]).then(() => undefined);
+      return (node as unknown as ClosableNode).close();
+    },
+    [Symbol.asyncDispose](): Promise<void> {
+      return (node as unknown as ClosableNode)[Symbol.asyncDispose]();
     },
   }) as ConfigsNodePending<T>;
 }
