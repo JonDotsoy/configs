@@ -324,7 +324,7 @@ describe("types — ConfigsNode / ConfigsNodePending / Options", () => {
     type Shape = { port: ReturnType<typeof numeric<{ required: true }>> };
 
     expectTypeOf<ConfigsNode<Shape>>().toEqualTypeOf<{ port: Store<number | null> }>();
-    expectTypeOf<ConfigsNodeReady<Shape>>().toEqualTypeOf<{ port: Store<number> }>();
+    expectTypeOf<ConfigsNodeReady<Shape>>().toEqualTypeOf<{ port: Store<number> } & { close(): Promise<void> }>();
     expectTypeOf<Awaited<ConfigsNodePending<Shape>>>().toEqualTypeOf<ConfigsNodeReady<Shape>>();
   });
 
