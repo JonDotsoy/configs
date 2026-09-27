@@ -774,6 +774,38 @@ describe("create — close()", () => {
     expect(sourceCloseMock).toHaveBeenCalledTimes(1);
   });
 
+  test("closing the outer node also closes the embedded (nested create()) node's own field descriptor and source, each exactly once", async () => {
+    const descriptorCloseMock = mock(() => {});
+    const sourceCloseMock = mock(() => {});
+
+    const nestedDescriptor = new Descriptor<string>({
+      type: "tracked",
+      options: {},
+      start: (control) => control.set(String(control.rawStore.get())),
+      async close() {
+        descriptorCloseMock();
+      },
+    });
+    const nestedSource = new Source<{ cert?: string }>({
+      async start(control) {
+        control.set({ cert: "cert.pem" });
+      },
+      async close() {
+        sourceCloseMock();
+      },
+    });
+
+    const cfg = create({
+      server: { tls: create({ cert: nestedDescriptor }, { sources: [nestedSource] }) },
+    });
+    await cfg;
+
+    await cfg.close();
+
+    expect(descriptorCloseMock).toHaveBeenCalledTimes(1);
+    expect(sourceCloseMock).toHaveBeenCalledTimes(1);
+  });
+
   test("a hand-written descriptor with no close() doesn't break close()", async () => {
     const handWritten = {
       start: (raw: unknown) => String(raw),
