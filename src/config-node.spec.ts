@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, spyOn, test } from "bun:test";
+import { describe, expect, expectTypeOf, mock, spyOn, test } from "bun:test";
 import { create, isConfigsNode, type ConfigsNode, type ConfigsNodePending, type ConfigsNodeReady, type ConfigsShape, type Options } from "./config-node.ts";
 import { boolean, choice, Descriptor, isConfigDescriptor, numeric, shape, string, url, type DescriptorControl } from "./config-descriptor.ts";
 import { ConfigError, ConfigValidationError } from "./errors.ts";
@@ -680,6 +680,36 @@ describe("create — close()", () => {
     await cfg.close();
 
     expect(embeddedClosed).toBe(true);
+  });
+
+  test("closes a field descriptor's close() and a source's close() exactly once each", async () => {
+    const descriptorCloseMock = mock(() => {});
+    const sourceCloseMock = mock(() => {});
+
+    const descriptor = new Descriptor<string>({
+      type: "tracked",
+      options: {},
+      start: (control) => control.set(String(control.rawStore.get())),
+      async close() {
+        descriptorCloseMock();
+      },
+    });
+    const source = new Source<{ port?: string }>({
+      async start(control) {
+        control.set({ port: "3000" });
+      },
+      async close() {
+        sourceCloseMock();
+      },
+    });
+
+    const cfg = create({ port: descriptor }, { sources: [source] });
+    await cfg;
+
+    await cfg.close();
+
+    expect(descriptorCloseMock).toHaveBeenCalledTimes(1);
+    expect(sourceCloseMock).toHaveBeenCalledTimes(1);
   });
 
   test("a hand-written descriptor with no close() doesn't break close()", async () => {
