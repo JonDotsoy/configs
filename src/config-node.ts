@@ -1,4 +1,5 @@
 import { isConfigDescriptor, type Descriptor, type DescriptorControl } from "./config-descriptor.js";
+import { ConfigError, ConfigValidationError, type ConfigFieldError } from "./errors.js";
 import type { Source } from "./sources/source.js";
 import { Store } from "./utils/store.js";
 
@@ -116,14 +117,32 @@ function resolveFieldPath(descriptor: Descriptor<unknown, unknown>, entryPath: s
  * `control.rawStore.listen(...)`, after an `await`, from a timer, ... — is the field's entire
  * lifetime; nothing else in this engine ever calls `.set()` on this `Store`.
  */
-function buildField(descriptor: Descriptor<unknown, unknown>, rawStore: Store<unknown>, path: string[]): Store<unknown> {
+function buildField(
+  descriptor: Descriptor<unknown, unknown>,
+  rawStore: Store<unknown>,
+  path: string[],
+  reportError: (path: string[], error: unknown) => void,
+  requiredChecks: (() => void)[],
+): Store<unknown> {
   const fieldStore = new Store<unknown>(null);
   const control: DescriptorControl<unknown> = {
     rawStore,
     path,
     set: (value) => fieldStore.set(value),
+    error: (error) => reportError(path, error),
   };
-  descriptor.start(control);
+  try {
+    descriptor.start(control);
+  } catch (err) {
+    // A hand-written descriptor that throws instead of calling control.error() directly — same
+    // aggregation either way.
+    reportError(path, err);
+  }
+  if (descriptor.required) {
+    requiredChecks.push(() => {
+      if (fieldStore.get() === null) reportError(path, new ConfigError(`Missing required value at "${path.join(".")}"`));
+    });
+  }
   return fieldStore;
 }
 
@@ -146,6 +165,8 @@ function buildNode(
   rawSources: Store<unknown>[],
   embeddedReady: PromiseLike<unknown>[],
   closers: (() => Promise<void>)[],
+  reportError: (path: string[], error: unknown) => void,
+  requiredChecks: (() => void)[],
 ): Record<string, unknown> {
   const node: Record<string, unknown> = {};
   for (const key of Object.keys(shape)) {
@@ -153,14 +174,27 @@ function buildNode(
     const entryPath = [...path, key];
     if (isConfigDescriptor(entry)) {
       const fieldPath = resolveFieldPath(entry, entryPath);
-      node[key] = buildField(entry, keyStore(rawSources, fieldPath), fieldPath);
+      node[key] = buildField(entry, keyStore(rawSources, fieldPath), fieldPath, reportError, requiredChecks);
       closers.push(() => (typeof entry.close === "function" ? entry.close() : Promise.resolve()));
     } else if (isConfigsNode(entry)) {
-      embeddedReady.push(entry);
+      // Inherit the embedded node's own errors instead of letting its rejection short-circuit
+      // Promise.all — its paths get prefixed with this embed's own position in the tree.
+      embeddedReady.push(
+        entry.then(
+          () => {},
+          (err) => {
+            if (err instanceof ConfigValidationError) {
+              for (const fieldError of err.errors) reportError([...entryPath, ...fieldError.path], fieldError.error);
+            } else {
+              reportError(entryPath, err);
+            }
+          },
+        ),
+      );
       closers.push(() => entry.close());
       node[key] = entry;
     } else {
-      node[key] = buildNode(entry as ConfigsShape, entryPath, rawSources, embeddedReady, closers);
+      node[key] = buildNode(entry as ConfigsShape, entryPath, rawSources, embeddedReady, closers, reportError, requiredChecks);
     }
   }
   return node;
@@ -182,10 +216,34 @@ export function create<T extends ConfigsShape>(configShape: T, options: Options 
   const rawSources = sources.map(() => new Store<unknown>(null));
   const embeddedReady: PromiseLike<unknown>[] = [];
   const closers: (() => Promise<void>)[] = [];
+  const requiredChecks: (() => void)[] = [];
 
-  const node = buildNode(configShape, [], rawSources, embeddedReady, closers) as ConfigsNode<T>;
+  // Every field error across the whole tree, by path — first error per path wins. `settled` flips
+  // once `ready` has resolved or rejected; a later error (a live source pushing a bad value after
+  // the node already resolved) has nowhere left to surface, so it's only logged from then on.
+  const fieldErrors = new Map<string, ConfigFieldError>();
+  let settled = false;
+  function reportError(path: string[], error: unknown): void {
+    const configError = error instanceof ConfigError ? error : new ConfigError(error instanceof Error ? error.message : String(error));
+    if (settled) {
+      console.error(configError);
+      return;
+    }
+    const key = path.join(".");
+    if (!fieldErrors.has(key)) fieldErrors.set(key, { path, error: configError });
+  }
+
+  const node = buildNode(configShape, [], rawSources, embeddedReady, closers, reportError, requiredChecks) as ConfigsNode<T>;
   (node as Record<symbol, unknown>)[CONFIGS_NODE_TAG] = true;
 
+  // create() itself never throws — every field error (from control.error(), or a missing `required`
+  // value) only ever surfaces through the returned node's own reject (`await`/`.then()`), even with
+  // `sources: []`. A node can be embedded inside another shape (`create({ server: create(...) })`):
+  // the embedded create() call is evaluated as a plain argument, before the outer create() even
+  // starts, so a synchronous throw there would escape at the call site and never reach the outer's
+  // own error-inheritance wiring (`buildNode()`'s `isConfigsNode(entry)` branch, which only ever runs
+  // once `entry` already exists as a pending node). Staying exclusively async/thenable is what lets
+  // that wiring work regardless of how "instantly" the embedded node was always going to fail.
   const ownReady = Promise.all(
     sources.map((source, index) =>
       source.open().then((opened) => {
@@ -194,7 +252,18 @@ export function create<T extends ConfigsShape>(configShape: T, options: Options 
     ),
   );
 
-  const ready = Promise.all([ownReady, ...embeddedReady]).then(() => node);
+  const ready = Promise.all([ownReady, ...embeddedReady]).then(
+    () => {
+      for (const check of requiredChecks) check();
+      settled = true;
+      if (fieldErrors.size > 0) throw new ConfigValidationError([...fieldErrors.values()]);
+      return node;
+    },
+    (err) => {
+      settled = true;
+      throw err;
+    },
+  );
 
   return Object.assign({ ...node }, {
     then<TResult1 = ConfigsNode<T>, TResult2 = never>(

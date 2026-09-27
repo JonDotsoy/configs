@@ -1,8 +1,9 @@
 import { describe, expect, expectTypeOf, spyOn, test } from "bun:test";
 import { create, isConfigsNode, type ConfigsNode, type ConfigsNodePending, type ConfigsShape, type Options } from "./config-node.ts";
 import { boolean, choice, Descriptor, isConfigDescriptor, numeric, shape, string, url, type DescriptorControl } from "./config-descriptor.ts";
-import { ConfigError } from "./errors.ts";
+import { ConfigError, ConfigValidationError } from "./errors.ts";
 import { envSource } from "./sources/env.ts";
+import { literalSource } from "./sources/literal.ts";
 import { Source } from "./sources/source.ts";
 import { Store, type ReadOnlyStore } from "./utils/store.ts";
 import { z } from "zod";
@@ -657,6 +658,115 @@ describe("create — parser failures", () => {
       );
 
       expect(resolved.jwt.get()).toBeNull();
+      expect(errorSpy).toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+});
+
+describe("create — error aggregation by path (ConfigValidationError)", () => {
+  test("a required field with no resolved value rejects with a ConfigValidationError naming its path", async () => {
+    const cfg = create({ port: numeric({ required: true }) }, { sources: [testSource({})] });
+
+    await expect(Promise.resolve(cfg)).rejects.toThrow(ConfigValidationError);
+    await Promise.resolve(cfg).catch((err: unknown) => {
+      expect((err as ConfigValidationError).errors).toEqual([{ path: ["port"], error: expect.any(ConfigError) }]);
+    });
+  });
+
+  test("two required fields missing at once reject with a single ConfigValidationError naming both paths", async () => {
+    const cfg = create({ port: numeric({ required: true }), host: string({ required: true }) }, { sources: [testSource({})] });
+
+    await Promise.resolve(cfg).catch((err: unknown) => {
+      const validationError = err as ConfigValidationError;
+      expect(validationError).toBeInstanceOf(ConfigValidationError);
+      expect(validationError.errors).toHaveLength(2);
+      expect(validationError.errors.map((e) => e.path)).toEqual(expect.arrayContaining([["port"], ["host"]]));
+    });
+  });
+
+  test("an embedded create() node's own errors are inherited by the parent, with the embed's path prefixed", async () => {
+    const cfg = create({
+      server: create({ port: numeric({ required: true }) }, { sources: [testSource({})] }),
+    });
+
+    await Promise.resolve(cfg).catch((err: unknown) => {
+      const validationError = err as ConfigValidationError;
+      expect(validationError).toBeInstanceOf(ConfigValidationError);
+      expect(validationError.errors).toEqual([{ path: ["server", "port"], error: expect.any(ConfigError) }]);
+    });
+  });
+
+  test("a required field nested under a group, fed only by a literalSource, still rejects — but only once ready, not synchronously", async () => {
+    // Every `Source` — even a fully static one like `literalSource` — defers its own `start()` by at
+    // least one microtask (see `Source`'s own doc comment, and `configs.spec.ts`'s "resolves
+    // synchronously to each field's default before process.env is read"): no field can ever see real
+    // source data at the exact synchronous point `create()` itself returns, so a missing `required`
+    // value can only be confirmed once `ready` settles here, same as with any other source.
+    const cfg = create({ server: { port: numeric({ required: true }) } }, { sources: [literalSource({})] });
+    expect(cfg.server.port.get()).toBeNull();
+
+    await expect(Promise.resolve(cfg)).rejects.toThrow(ConfigValidationError);
+    await Promise.resolve(cfg).catch((err: unknown) => {
+      expect((err as ConfigValidationError).errors).toEqual([{ path: ["server", "port"], error: expect.any(ConfigError) }]);
+    });
+  });
+
+  test("the same shape with the value actually present doesn't throw", async () => {
+    const cfg = await create({ server: { port: numeric({ required: true }) } }, { sources: [literalSource({ server: { port: 3000 } })] });
+
+    expect(cfg.server.port.get()).toBe(3000);
+  });
+
+  test("a required field with no sources configured at all still only rejects the awaited node, never create() itself", async () => {
+    const cfg = create({ port: numeric({ required: true }) }); // no throw here — no sources at all
+
+    await expect(Promise.resolve(cfg)).rejects.toThrow(ConfigValidationError);
+    await Promise.resolve(cfg).catch((err: unknown) => {
+      expect((err as ConfigValidationError).errors).toEqual([{ path: ["port"], error: expect.any(ConfigError) }]);
+    });
+  });
+
+  test("a descriptor that calls control.error() synchronously still only rejects the awaited node, never create() itself", async () => {
+    const boom = new ConfigError("boom");
+    const dummy = new Descriptor({
+      type: "string",
+      options: {},
+      start(control) {
+        control.error(boom);
+      },
+    });
+
+    const cfg = create({ field: dummy }); // no throw here, even though the error is already known
+
+    await expect(Promise.resolve(cfg)).rejects.toThrow(ConfigValidationError);
+    await Promise.resolve(cfg).catch((err: unknown) => {
+      expect((err as ConfigValidationError).errors).toEqual([{ path: ["field"], error: boom }]);
+    });
+  });
+
+  test("nesting a create() whose only failure would be synchronous (no sources) doesn't throw while building the shape — only the parent's await rejects", async () => {
+    // If create() still threw synchronously for "no sources at all", this line alone would blow up,
+    // before the parent create() below even exists — the whole point of staying exclusively thenable.
+    const inner = create({ port: numeric({ required: true }) });
+
+    const cfg = create({ server: inner });
+
+    await expect(Promise.resolve(cfg)).rejects.toThrow(ConfigValidationError);
+    await Promise.resolve(cfg).catch((err: unknown) => {
+      expect((err as ConfigValidationError).errors).toEqual([{ path: ["server", "port"], error: expect.any(ConfigError) }]);
+    });
+  });
+
+  test("a parse failure from a live source arriving after the node already resolved is only logged, not rejected", async () => {
+    const { source, push } = liveTestSource<{ port: unknown }>({ port: 8080 });
+    const cfg = await create({ port: numeric() }, { sources: [source] });
+    expect(cfg.port.get()).toBe(8080);
+
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      push({ port: "not-a-number" });
       expect(errorSpy).toHaveBeenCalled();
     } finally {
       errorSpy.mockRestore();

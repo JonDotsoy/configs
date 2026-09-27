@@ -25,14 +25,16 @@ function expectDescriptor(descriptor: unknown, type: FieldType, options: object)
 
 /**
  * Runs `descriptor.start(control)` against a fresh `rawStore` seeded with `initialRaw`, recording
- * every `control.set(...)` call in order — the same way `config-node.ts`'s `buildField()` drives a
- * real field, minus the `Store` it would otherwise write into.
+ * every `control.set(...)`/`control.error(...)` call in order — the same way `config-node.ts`'s
+ * `buildField()` drives a real field, minus the `Store`/error-aggregation it would otherwise write
+ * into.
  */
 function runStart<T>(descriptor: Descriptor<T, any>, initialRaw: unknown, path: string[] = []) {
   const rawStore = new Store<unknown>(initialRaw);
   const values: T[] = [];
-  descriptor.start({ rawStore, path, set: (value) => values.push(value) });
-  return { rawStore, values, last: () => values[values.length - 1] };
+  const errors: ConfigError[] = [];
+  descriptor.start({ rawStore, path, set: (value) => values.push(value), error: (error) => errors.push(error) });
+  return { rawStore, values, errors, last: () => values[values.length - 1] };
 }
 
 describe("string/numeric/boolean field builders", () => {
@@ -79,8 +81,10 @@ describe("url() field builder", () => {
     expect(parsed?.pathname).toBe("/app");
   });
 
-  test("rejects a value that isn't a valid URL", () => {
-    expect(() => runStart(url(), "not a url", ["uri"])).toThrow(ConfigError);
+  test("rejects a value that isn't a valid URL by reporting it via control.error(), not by throwing", () => {
+    const { errors, values } = runStart(url(), "not a url", ["uri"]);
+    expect(errors[0]).toBeInstanceOf(ConfigError);
+    expect(values).toEqual([]);
   });
 });
 
@@ -96,7 +100,8 @@ describe("choice() field builder", () => {
   test("start accepts only one of the listed options", () => {
     const descriptor = choice({ options: ["debug", "info", "warn", "error"] });
     expect(runStart(descriptor, "warn", ["logLevel"]).last()).toBe("warn");
-    expect(() => runStart(descriptor, "verbose", ["logLevel"])).toThrow(ConfigError);
+    const { errors } = runStart(descriptor, "verbose", ["logLevel"]);
+    expect(errors[0]).toBeInstanceOf(ConfigError);
   });
 });
 
@@ -115,9 +120,11 @@ describe("shape() field builder", () => {
     expect(runStart(shape(), { any: "thing" }, ["metadata"]).last()).toEqual({ any: "thing" });
   });
 
-  test("required: true escalates an invalid value into a thrown ConfigError instead of logging", () => {
+  test("required: true escalates an invalid value into control.error() instead of logging", () => {
     const descriptor = shape({ schema: z.object({ issuer: z.string() }), required: true });
-    expect(() => runStart(descriptor, { issuer: 42 }, ["jwt"])).toThrow(ConfigError);
+    const { errors, values } = runStart(descriptor, { issuer: 42 }, ["jwt"]);
+    expect(errors[0]).toBeInstanceOf(ConfigError);
+    expect(values).toEqual([]);
   });
 });
 
@@ -134,7 +141,8 @@ describe("every built-in field builder's own start(): default fallback and liven
   test("runs raw through the field's own parser synchronously, right when start() is called", () => {
     expect(runStart(numeric(), "8080").last()).toBe(8080);
     expect(runStart(string({ pattern: /^\w+$/ }), "abc").last()).toBe("abc");
-    expect(() => runStart(string({ pattern: /^\w+$/ }), "not valid")).toThrow(ConfigError);
+    const { errors } = runStart(string({ pattern: /^\w+$/ }), "not valid");
+    expect(errors[0]).toBeInstanceOf(ConfigError);
   });
 
   test("stays live: re-runs the parser (calling control.set again) on every rawStore change", () => {
@@ -283,7 +291,7 @@ describe("writing a custom Descriptor by hand (structural start() contract)", ()
 
     const rawStore = new Store<unknown>("a.com, b.com, c.com");
     const values: string[][] = [];
-    descriptor.start({ rawStore, path: [], set: (v) => values.push(v) });
+    descriptor.start({ rawStore, path: [], set: (v) => values.push(v), error: () => {} });
 
     expect(values[0]).toEqual(["a.com", "b.com", "c.com"]);
 
