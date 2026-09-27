@@ -703,8 +703,7 @@ describe("create — close()", () => {
       },
     });
 
-    const cfg = create({ port: descriptor }, { sources: [source] });
-    await cfg;
+    const cfg = await create({ port: descriptor }, { sources: [source] });
 
     await cfg.close();
 
