@@ -37,12 +37,26 @@ export function isConfigsNode(value: unknown): value is ConfigsNodePending<Confi
   return typeof value === "object" && value !== null && (value as Record<symbol, unknown>)[CONFIGS_NODE_TAG] === true;
 }
 
-/** A field's exposed type is already encoded in `Descriptor`'s own first type parameter — see `WithDefault` in `./config-descriptor.js`. */
-type InferValue<D> = D extends Descriptor<infer A, any> ? A : never;
+/**
+ * A field's **pending** type — read straight off `Descriptor`'s own `Pending` type parameter (see
+ * `./config-descriptor.js`), which each built-in builder already computed from its own options
+ * (`WithDefault`, no inference happens here). This is what a leaf field's `Store` is typed as on
+ * `ConfigsNode<T>` — the shape exposed on a still-unresolved `create()` node.
+ */
+type InferPendingValue<D> = D extends Descriptor<infer Pending, any> ? Pending : never;
+
+/**
+ * A field's **awaited** type — read straight off `Descriptor`'s own `Awaited` type parameter (see
+ * `./config-descriptor.js`, `Settled`), same as `InferPendingValue` but for the second parameter.
+ * This is what a leaf field's `Store` is typed as on `ConfigsNodeReady<T>` — the shape a `create()`
+ * node's `then()`/`await` actually resolves to, once its `required` fields are guaranteed to hold
+ * a real value (or the awaited node has already rejected instead).
+ */
+type InferAwaitedValue<D> = D extends Descriptor<any, infer Awaited> ? Awaited : never;
 
 type InferConfigsNode<T extends ConfigsShape> = {
   [K in keyof T]: T[K] extends Descriptor<any, any>
-    ? Store<InferValue<T[K]>>
+    ? Store<InferPendingValue<T[K]>>
     : T[K] extends ConfigsNodePending<infer S>
       ? ConfigsNode<S>
       : T[K] extends ConfigsShape
@@ -50,12 +64,26 @@ type InferConfigsNode<T extends ConfigsShape> = {
         : never;
 };
 
+type InferConfigsNodeReady<T extends ConfigsShape> = {
+  [K in keyof T]: T[K] extends Descriptor<any, any>
+    ? Store<InferAwaitedValue<T[K]>>
+    : T[K] extends ConfigsNodePending<infer S>
+      ? ConfigsNodeReady<S>
+      : T[K] extends ConfigsShape
+        ? InferConfigsNodeReady<T[K]>
+        : never;
+};
+
+/** The shape exposed on a `create()` node before it's done resolving — each leaf `Store` typed by its descriptor's own `Pending` parameter. */
 export type ConfigsNode<T extends ConfigsShape> = InferConfigsNode<T>;
+
+/** The shape a `create()` node's `then()`/`await` actually resolves to — each leaf `Store` typed by its descriptor's own `Awaited` parameter, so a `required` field narrows out `null` here even though it doesn't on `ConfigsNode<T>`. */
+export type ConfigsNodeReady<T extends ConfigsShape> = InferConfigsNodeReady<T>;
 
 export type ConfigsNodePending<T extends ConfigsShape> = ConfigsNode<T> &
   ConfigsNodeMarker & {
-    then<TResult1 = ConfigsNode<T>, TResult2 = never>(
-      onfulfilled?: ((value: ConfigsNode<T>) => TResult1 | PromiseLike<TResult1>) | undefined | null,
+    then<TResult1 = ConfigsNodeReady<T>, TResult2 = never>(
+      onfulfilled?: ((value: ConfigsNodeReady<T>) => TResult1 | PromiseLike<TResult1>) | undefined | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | undefined | null,
     ): PromiseLike<TResult1 | TResult2>;
     /**
@@ -266,13 +294,17 @@ export function create<T extends ConfigsShape>(configShape: T, options: Options 
   );
 
   return Object.assign({ ...node }, {
-    then<TResult1 = ConfigsNode<T>, TResult2 = never>(
-      onfulfilled?: ((value: ConfigsNode<T>) => TResult1 | PromiseLike<TResult1>) | undefined | null,
+    then<TResult1 = ConfigsNodeReady<T>, TResult2 = never>(
+      onfulfilled?: ((value: ConfigsNodeReady<T>) => TResult1 | PromiseLike<TResult1>) | undefined | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | undefined | null,
     ): PromiseLike<TResult1 | TResult2> {
       // `node` (not `this`) is what resolves: `this` also carries `then`, so resolving to it would
       // make the Promise machinery treat it as thenable again and re-invoke `then` recursively.
-      return ready.then(() => node).then(onfulfilled, onrejected as any);
+      // It's the exact same runtime object as the pending node's own fields (no new Stores are
+      // built here) — only its *type* changes, from `ConfigsNode<T>` (each leaf's `Pending` type)
+      // to `ConfigsNodeReady<T>` (each leaf's `Awaited` type), now that `ready` has confirmed every
+      // `required` field actually holds a value.
+      return ready.then(() => node as unknown as ConfigsNodeReady<T>).then(onfulfilled, onrejected as any);
     },
     close(): Promise<void> {
       return Promise.all([...closers.map((close) => close()), ...sources.map((source) => source.close())]).then(() => undefined);

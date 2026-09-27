@@ -37,15 +37,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer propagates as an uncaught exception from a live source's later
   update — it's captured and folded into the same `ConfigValidationError`
   aggregation as everything else.
-- `WithDefault<O, T>` (and every built-in field builder's exposed type) now
-  also narrows out `null` for `required: true`, the same way it already did
-  for `default` — `numeric({ required: true })` (and
-  `string()`/`boolean()`/`url()`/`shape()`/`choice()` the same way) is now
-  typed `Store<number>` instead of `Store<number | null>`, matching the
-  runtime guarantee that a required field either resolves to a real value
-  or rejects the awaited node instead (see the `required: true` enforcement
-  above). `file()`'s own `FileFieldValue` used to special-case this itself;
-  it now just delegates to `WithDefault`.
+- `Descriptor`'s two type parameters are now named `Pending`/`Awaited` (were
+  `A`/`B`) and are always computed and passed in explicitly by the builder
+  that constructs it (`string()`/`numeric()`/`boolean()`/`url()`/`shape()`/
+  `choice()`/`file()`) — `Descriptor` itself performs no inference from
+  `default`/`required`. New exported type `Settled<O, T>` computes a field's
+  `Awaited` type: `T` for a `default` **or** `required: true`, `T | null`
+  otherwise — `WithDefault<O, T>` (still `default`-only) keeps computing
+  `Pending`. `create()`'s returned node now exposes two distinct shapes
+  instead of one: `ConfigsNode<T>` (each leaf's `Pending` type, unchanged)
+  for the still-unresolved node, and the new exported `ConfigsNodeReady<T>`
+  (each leaf's `Awaited` type) for what `then()`/`await` actually resolves
+  to — so `numeric({ required: true })` (and every other built-in builder,
+  `file()` included) now types `.get()` as `number | null` before `await`
+  (honest: a required field with no default can still be `null` at that
+  exact moment) but `number` after — matching the runtime guarantee that a
+  required field either resolves to a real value by then or has already
+  rejected the awaited node instead (see the `required: true` enforcement
+  above).
 
 ## [1.2.15] - 2026-09-26
 
