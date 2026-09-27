@@ -10,8 +10,11 @@ alwaysApply: false
 dependencies; every field is a live `Store` backed by pluggable
 `Source`s (`env`, `fetch`, `sse`).
 
-**Technology**: TypeScript, runs on and is built with Bun (no Node.js APIs,
-no bundler other than `bun build`). Distributed as ESM only.
+**Technology**: TypeScript, runs on and is built with Bun (no Node.js APIs
+in `src/`). Distributed as ESM only. `dist/` is transpiled with `tsc`, not
+bundled — one output module per `src/*.ts` module, no minification (see
+"Build: `tsc`, not a bundler" below) — so no bundler is used to produce the
+published package.
 
 ### Folder structure
 
@@ -35,7 +38,7 @@ src/
     data-types.ts             # field type/coercion helpers
 
 scripts/
-  build.ts                  # bun build + minify + dist/package.json (entry points read from package.json "_buildEntripoint")
+  build.ts                  # tsc (transpile, no bundle) + dist/package.json (entry points read from package.json "_buildEntripoint")
 
 dist/                      # build output, gitignored — its own self-contained, publishable package.json
 ```
@@ -43,27 +46,64 @@ dist/                      # build output, gitignored — its own self-contained
 The root `package.json` is `"private": true` and has no `exports` of its
 own; public entry points instead live in its `_buildEntripoint` map (`.` and
 `./sources/{env,fetch,sse}`), each subpath pointing straight at its
-`src/*.ts` source. `scripts/build.ts` reads that map to drive `bun build`
-and derives `dist/package.json`'s own `exports` map from it (the only
-`exports` map that actually gets published). Add a new public module by
-adding both its `src/` file and its `_buildEntripoint` entry, not just one.
+`src/*.ts` source. `scripts/build.ts` reads that map to drive the `tsc`
+build (see below) and derives `dist/package.json`'s own `exports` map from
+it (the only `exports` map that actually gets published). Add a new public
+module by adding both its `src/` file and its `_buildEntripoint` entry, not
+just one.
+
+### Build: `tsc`, not a bundler
+
+`bun run build` (`scripts/build.ts`) runs `tsc -p tsconfig.build.json` to
+produce `dist/` — a plain transpile, one `.js`/`.d.ts` pair per `src/*.ts`
+module, mirroring `src/`'s own module graph exactly (no bundling, no
+minification). This is deliberate: a bundler that packages each public
+entry point (`.`, `./sources/env`, `./node`, ...) independently would inline
+a separate copy of a shared class like `Descriptor` into every entry
+point's own output, so an object built by one entry point's bundle could
+fail `instanceof` against another entry point's copy of the same class.
+With `tsc`, `Descriptor` (`config-descriptor.ts`) stays a single module,
+imported by reference from everywhere else in the published package — which
+is what makes `isConfigDescriptor()`'s `instanceof Descriptor` check
+reliable (see "Every descriptor must be a real `Descriptor` instance"
+below). The tradeoff: a published `dist/` is many small files instead of
+one minified bundle per entry point.
 
 ### Internal imports use explicit `.js` extensions
 
 Every relative import/export in `src/*.ts` (not the `.spec.ts` files) must
 carry an explicit `.js` extension — e.g. `import { Source } from
 "./sources/source.js"`, `from "../types/index.js"` for a directory import —
-even though the file on disk is `.ts`. Both `bun build` and `tsc` in
-`moduleResolution: bundler` (this repo's `tsconfig.json`) resolve that `.js`
-specifier against the real `.ts` file, so nothing breaks locally. The reason
-is `build:types`: `tsc -p tsconfig.build.json` emits `dist/**/*.d.ts` with
-the same relative specifiers written in the source, verbatim. A bare
-specifier (`from "./source"`) comes out just as bare in the `.d.ts` — which
-`moduleResolution: node16`/`nodenext` (what TypeScript recommends for
-consuming a published ESM package from Node) cannot resolve. Writing the
-`.js` extension in `src/*.ts` is what makes the published declarations
-resolve correctly, with no post-build rewrite step needed. `.spec.ts` files
-aren't built into `dist/`, so they're exempt.
+even though the file on disk is `.ts`. `tsc` in `moduleResolution: bundler`
+(this repo's `tsconfig.json`) resolves that `.js` specifier against the real
+`.ts` file, so nothing breaks locally. The reason is `bun run build:tsc`
+(`tsc -p tsconfig.build.json`, which the top-level `bun run build` also
+runs): it emits both `dist/**/*.js` and `dist/**/*.d.ts` with the same
+relative specifiers written in the source, verbatim — no rewriting step. A
+bare specifier (`from "./source"`) comes out just as bare in the emitted
+output — which `moduleResolution: node16`/`nodenext` (what TypeScript
+recommends for consuming a published ESM package from Node) cannot resolve,
+and which Node/Bun's own ESM loader can't resolve at runtime either. Writing
+the `.js` extension in `src/*.ts` is what makes both the emitted `.js` and
+the published `.d.ts` resolve correctly. `.spec.ts` files aren't built into
+`dist/`, so they're exempt.
+
+### Every descriptor must be a real `Descriptor` instance
+
+`isConfigDescriptor()` (`config-descriptor.ts`) checks `node instanceof
+Descriptor` — not a structural check. A shape entry must be built via `new
+Descriptor(...)` (directly, or through one of the built-in builders, which
+all return one); a plain object with only a `.start()` method is no longer
+recognized as a descriptor and `create()` treats it as a nested group
+instead. This is only safe because of the `tsc`-based build above — see
+"Build: `tsc`, not a bundler". A generic helper that only needs to read a
+descriptor's own type parameters can rely on this and write a single-
+parameter `T extends Descriptor<infer R>` (letting `Awaited`/`O` fall back
+to their own declared defaults) instead of spelling out every parameter —
+`config-node.ts`'s `InferPendingValue`/`ConfigsShape` do this; only
+extracting the second (`Awaited`) parameter still needs the two-parameter
+form, `Descriptor<any, infer R>`, since there's no way to skip the first
+slot.
 
 ### Naming pattern: `Source`
 

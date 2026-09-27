@@ -1,6 +1,6 @@
 {
   "name": "@jondotsoy/configs",
-  "version": "1.2.15",
+  "version": "1.2.16",
   "description": "A reactive, typed configuration library backed by pluggable sources (env, fetch, sse, file, literal).",
   "keywords": [
     "config",
@@ -49,7 +49,7 @@
   },
   "scripts": {
     "build": "bun scripts/build.ts",
-    "build:types": "tsc -p tsconfig.build.json",
+    "build:tsc": "tsc -p tsconfig.build.json",
     "test:browser": "playwright test",
     "test:cases": "bun run scripts/run-test-cases.ts"
   },

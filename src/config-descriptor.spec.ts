@@ -18,9 +18,9 @@ import { z } from "zod";
 /** A `Descriptor` carries its own `start` closure, never equal by reference across two calls — assert `.type`/`.options` shape instead of a full `toEqual` against a hand-built instance. */
 function expectDescriptor(descriptor: unknown, type: FieldType, options: object): void {
   expect(descriptor).toBeInstanceOf(Descriptor);
-  expect((descriptor as Descriptor<unknown, any>).type).toBe(type);
-  expect((descriptor as Descriptor<unknown, any>).options).toEqual(options);
-  expect(typeof (descriptor as Descriptor<unknown, any>).start).toBe("function");
+  expect((descriptor as Descriptor<unknown>).type).toBe(type);
+  expect((descriptor as Descriptor<unknown>).options).toEqual(options);
+  expect(typeof (descriptor as Descriptor<unknown>).start).toBe("function");
 }
 
 /**
@@ -29,7 +29,7 @@ function expectDescriptor(descriptor: unknown, type: FieldType, options: object)
  * `buildField()` drives a real field, minus the `Store`/error-aggregation it would otherwise write
  * into.
  */
-function runStart<T>(descriptor: Descriptor<T, any>, initialRaw: unknown, path: string[] = []) {
+function runStart<T>(descriptor: Descriptor<T>, initialRaw: unknown, path: string[] = []) {
   const rawStore = new Store<unknown>(initialRaw);
   const values: T[] = [];
   const errors: ConfigError[] = [];
@@ -248,10 +248,10 @@ describe("isConfigDescriptor()", () => {
     expect(isConfigDescriptor(descriptor)).toBe(true);
   });
 
-  test("recognizes a hand-written object exposing a callable start() — no tag needed, close() is optional", () => {
+  test("rejects a plain object exposing a callable start(), even close(), unless it's a real Descriptor instance", () => {
     const handWritten = { start: (control: DescriptorControl<string>) => control.set(String(control.rawStore.get())) };
-    expect(isConfigDescriptor(handWritten)).toBe(true);
-    expect(isConfigDescriptor({ ...handWritten, close: async () => {} })).toBe(true);
+    expect(isConfigDescriptor(handWritten)).toBe(false);
+    expect(isConfigDescriptor({ ...handWritten, close: async () => {} })).toBe(false);
   });
 
   test("rejects an object without a start()", () => {
@@ -272,17 +272,18 @@ describe("isConfigDescriptor()", () => {
   });
 });
 
-describe("writing a custom Descriptor by hand (structural start() contract)", () => {
-  test("a hand-written descriptor (key + start()) behaves like a real one", () => {
+describe("writing a custom Descriptor by hand (must go through new Descriptor(...))", () => {
+  test("a hand-written descriptor (key + start()), built via new Descriptor(...), behaves like a real one", () => {
     function csv(options: { key?: string | string[] } = {}) {
       const parse = (raw: unknown): string[] => (typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
 
-      return {
-        key: options.key,
+      return new Descriptor<string[]>({
+        type: "csv",
+        options,
         start(control: DescriptorControl<string[]>) {
           control.rawStore.subscribe((raw) => control.set(parse(raw)));
         },
-      };
+      });
     }
 
     const descriptor = csv({ key: "ALLOWED_ORIGINS" });
@@ -297,5 +298,20 @@ describe("writing a custom Descriptor by hand (structural start() contract)", ()
 
     rawStore.set("d.com");
     expect(values[1]).toEqual(["d.com"]);
+  });
+
+  test("the same shape (key + start()) as a plain object, without new Descriptor(...), is not recognized", () => {
+    function csvPlain(options: { key?: string | string[] } = {}) {
+      const parse = (raw: unknown): string[] => (typeof raw === "string" ? raw.split(",").map((s) => s.trim()) : []);
+
+      return {
+        key: options.key,
+        start(control: DescriptorControl<string[]>) {
+          control.rawStore.subscribe((raw) => control.set(parse(raw)));
+        },
+      };
+    }
+
+    expect(isConfigDescriptor(csvPlain({ key: "ALLOWED_ORIGINS" }))).toBe(false);
   });
 });

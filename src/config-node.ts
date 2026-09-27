@@ -25,7 +25,7 @@ interface ConfigsNodeMarker {
 
 /** A shape entry is a leaf field descriptor, a nested group of more shape entries, or an embedded `create()` result. */
 export interface ConfigsShape {
-  [key: string]: Descriptor<any, any> | ConfigsNodeMarker | ConfigsShape;
+  [key: string]: Descriptor<any> | ConfigsNodeMarker | ConfigsShape;
 }
 
 export interface Options {
@@ -41,9 +41,12 @@ export function isConfigsNode(value: unknown): value is ConfigsNodePending<Confi
  * A field's **pending** type — read straight off `Descriptor`'s own `Pending` type parameter (see
  * `./config-descriptor.js`), which each built-in builder already computed from its own options
  * (`WithDefault`, no inference happens here). This is what a leaf field's `Store` is typed as on
- * `ConfigsNode<T>` — the shape exposed on a still-unresolved `create()` node.
+ * `ConfigsNode<T>` — the shape exposed on a still-unresolved `create()` node. Every descriptor is
+ * now a real `Descriptor` instance (see `isConfigDescriptor`), so a single-parameter
+ * `Descriptor<infer Pending>` is enough here — `Awaited`/`O` fall back to their own declared
+ * defaults and play no part in this match.
  */
-type InferPendingValue<D> = D extends Descriptor<infer Pending, any> ? Pending : never;
+type InferPendingValue<D> = D extends Descriptor<infer Pending> ? Pending : never;
 
 /**
  * A field's **awaited** type — read straight off `Descriptor`'s own `Awaited` type parameter (see
@@ -55,7 +58,7 @@ type InferPendingValue<D> = D extends Descriptor<infer Pending, any> ? Pending :
 type InferAwaitedValue<D> = D extends Descriptor<any, infer Awaited> ? Awaited : never;
 
 type InferConfigsNode<T extends ConfigsShape> = {
-  [K in keyof T]: T[K] extends Descriptor<any, any>
+  [K in keyof T]: T[K] extends Descriptor<any>
     ? Store<InferPendingValue<T[K]>>
     : T[K] extends ConfigsNodePending<infer S>
       ? ConfigsNode<S>
@@ -65,7 +68,7 @@ type InferConfigsNode<T extends ConfigsShape> = {
 };
 
 type InferConfigsNodeReady<T extends ConfigsShape> = {
-  [K in keyof T]: T[K] extends Descriptor<any, any>
+  [K in keyof T]: T[K] extends Descriptor<any>
     ? Store<InferAwaitedValue<T[K]>>
     : T[K] extends ConfigsNodePending<infer S>
       ? ConfigsNodeReady<S>
@@ -130,7 +133,7 @@ function keyStore(rawSources: Store<unknown>[], path: string[]): Store<unknown> 
 }
 
 /** A field's explicit `key` override (if set) is an absolute path, taken as-is instead of `entryPath`. */
-function resolveFieldPath(descriptor: Descriptor<unknown, unknown>, entryPath: string[]): string[] {
+function resolveFieldPath(descriptor: Descriptor<unknown>, entryPath: string[]): string[] {
   const explicitKey = descriptor.key;
   if (explicitKey === undefined) return entryPath;
   return Array.isArray(explicitKey) ? explicitKey : [explicitKey];
@@ -146,7 +149,7 @@ function resolveFieldPath(descriptor: Descriptor<unknown, unknown>, entryPath: s
  * lifetime; nothing else in this engine ever calls `.set()` on this `Store`.
  */
 function buildField(
-  descriptor: Descriptor<unknown, unknown>,
+  descriptor: Descriptor<unknown>,
   rawStore: Store<unknown>,
   path: string[],
   reportError: (path: string[], error: unknown) => void,

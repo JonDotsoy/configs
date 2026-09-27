@@ -367,19 +367,20 @@ export function choice<const O extends ChoiceFieldOptions<string>>(
 }
 
 /**
- * Structural, not `instanceof Descriptor`: `bun build` bundles each public entry point (`.`,
- * `./node`, ...) independently, so a `Descriptor` built by one entry point's own bundled copy of
- * this module (e.g. `file()` from `./node`) would fail an `instanceof` check against another entry
- * point's separately-bundled copy of the same class (e.g. `configs.ts`'s own
- * `isConfigDescriptor`). Checking for the one method every real `Descriptor` always has —
- * `.start()` — survives that duplication, the same way the deprecated, now-removed
- * `CONFIG_DESCRIPTOR_TAG` registry symbol used to. `.close()` is deliberately not required here:
- * it's optional even on a hand-written descriptor (`create()`'s own `close()`, in
- * `./config-node.js`, only calls it when present).
+ * A real `instanceof Descriptor` check — every descriptor accepted anywhere in this package must
+ * now actually be built via `new Descriptor(...)` (or one of the built-in builders, which all
+ * return one). This used to be a structural check (only `.start` being a function) because `bun
+ * build` bundled each public entry point (`.`, `./node`, ...) independently, so a `Descriptor`
+ * built by one entry point's own bundled copy of this module (e.g. `file()` from `./node`) would
+ * fail `instanceof` against another entry point's separately-bundled copy of the same class (e.g.
+ * `configs.ts`'s own `isConfigDescriptor`). Now that `scripts/build.ts` transpiles `dist/` with
+ * `tsc` instead of bundling (see its own doc comment), `Descriptor` is a single module imported by
+ * reference everywhere in the published package, so `instanceof` is reliable again — a
+ * hand-written, plain-object descriptor (no longer supported) would fail this check even if it had
+ * a `.start` method of its own.
  */
-export function isConfigDescriptor(node: unknown): node is Descriptor<unknown, unknown> {
-  if (typeof node !== "object" || node === null) return false;
-  return typeof (node as { start?: unknown }).start === "function";
+export function isConfigDescriptor(node: unknown): node is Descriptor<unknown> {
+  return node instanceof Descriptor;
 }
 
 function typeMismatch(type: FieldType, value: unknown, path: string[]): never {

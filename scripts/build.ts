@@ -1,10 +1,11 @@
 #!/usr/bin/env bun
 /**
- * Builds dist/: bundles every public entry point (read from package.json's
- * "_buildEntripoint" map, one `src/*.ts` path per subpath, so that map stays
- * the single source of truth for what gets built), emits .d.ts via tsc, and
- * writes a trimmed dist/package.json — with its own "exports" map derived
- * from "_buildEntripoint" — so dist/ is a self-contained, publishable
+ * Builds dist/: transpiles every `src/*.ts` module (one file in, one
+ * `.js`/`.d.ts` pair out, via `tsc -p tsconfig.build.json` — no bundling, no
+ * minification) and writes a trimmed dist/package.json — with its own
+ * "exports" map derived from package.json's "_buildEntripoint" (one
+ * `src/*.ts` path per public subpath, so that map stays the single source of
+ * truth for what's public) — so dist/ is a self-contained, publishable
  * package on its own (no dist/-prefixed paths, no dev-only metadata). The
  * root package.json is "private": true and carries no "exports" of its own;
  * dist/package.json is the only manifest ever published. README.md, LICENSE,
@@ -12,9 +13,17 @@
  * carries them (npm's registry page reads README.md straight from the
  * published package root).
  *
- * Replaces the old scripts/build.sh + `bun -e` entry-point extraction with a
- * single typed script; behavior (bundling, --external react, build:types) is
- * unchanged, plus --minify for smaller published output.
+ * `tsc` mirrors src/'s own module graph 1:1 into dist/ — every module keeps
+ * its own file, importing its siblings by the same relative `.js` specifiers
+ * already written in `src/*.ts` (see AGENTS.md's "Internal imports use
+ * explicit .js extensions" — `tsc` copies those specifiers through emit
+ * verbatim, so they resolve dist-side without any rewriting here). That
+ * means a class like `Descriptor` (`config-descriptor.ts`) exists as exactly
+ * one module, imported by reference everywhere else in the published
+ * package — unlike a bundler, which would inline a separate copy of it into
+ * every entry point's own bundle. Trades away bundling/minification (a
+ * published `dist/` is now many small files instead of one bundle per entry
+ * point) for that single-source-of-truth guarantee.
  */
 import { $ } from "bun";
 import { cp, rm } from "node:fs/promises";
@@ -40,12 +49,9 @@ const pkg = (await Bun.file("package.json").json()) as {
 
 await rm("dist", { recursive: true, force: true });
 
-const entryPoints = Object.values(pkg._buildEntripoint);
+await $`bun run build:tsc`;
 
-await $`bun build ${entryPoints} --outdir dist --root src --target node --format esm --external react --minify`;
-await $`bun run build:types`;
-
-/** "./src/sources/env.ts" -> "sources/env" — the path bun build/tsc emit under dist/, relative to dist/ itself. */
+/** "./src/sources/env.ts" -> "sources/env" — the path tsc emits under dist/, relative to dist/ itself. */
 function distBasename(srcPath: string): string {
   return srcPath.replace(/^\.\/src\//, "").replace(/\.ts$/, "");
 }

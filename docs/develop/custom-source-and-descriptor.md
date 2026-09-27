@@ -38,9 +38,8 @@ mismo desde el lado de quien escribe el `Source`/`Descriptor`.
 - [Patrones de `Descriptor`](#patrones-de-descriptor)
   - [Campo escalar con `parse`/`defaultValue`](#campo-escalar-con-parsedefaultvalue)
   - [Campo cuyo tipo no es un escalar plano](#campo-cuyo-tipo-no-es-un-escalar-plano)
-  - [`WithDefault<O, T>` — el mismo tipado `T | null` / `T` que los builders integrados](#withdefaulto-t--el-mismo-tipado-t--null--t-que-los-builders-integrados)
-  - [Escribir un `Descriptor` como objeto plano, sin `new Descriptor(...)`](#escribir-un-descriptor-como-objeto-plano-sin-new-descriptor)
-- [`isConfigDescriptor()`: por qué es estructural y no `instanceof`](#isconfigdescriptor-por-qué-es-estructural-y-no-instanceof)
+  - [`WithDefault<O, T>` / `Settled<O, T>` — el mismo tipado que usan los builders integrados](#withdefaulto-t--settledo-t--el-mismo-tipado-que-usan-los-builders-integrados)
+- [`isConfigDescriptor()`: por qué exige `instanceof Descriptor`](#isconfigdescriptor-por-qué-exige-instanceof-descriptor)
 - [Errores comunes](#errores-comunes)
 
 ## Los dos puntos de extensión, en una frase
@@ -277,13 +276,19 @@ export interface DescriptorUnderlying<T, O extends object = object> {
   close?(): Promise<void>;
 }
 
-new Descriptor<A, B, O>(underlying: DescriptorUnderlying<A, O>): Descriptor<A, B, O>
+new Descriptor<Pending, Awaited, O>(underlying: DescriptorUnderlying<Pending, O>): Descriptor<Pending, Awaited, O>
 ```
 
-(`src/config-descriptor.ts`.) `A` es lo que `.get()` devuelve ahora mismo
-(`T` o `T | null` según si hay `default` — ver `WithDefault<O, T>` más
-abajo); `B` es el tipo ya resuelto del campo, siempre `T`, sin importar si
-hay `default`.
+(`src/config-descriptor.ts`.) `Pending` es lo que `.get()` devuelve en el
+`Store` expuesto por un nodo todavía sin resolver (`T` o `T | null` según si
+hay `default` — ver `WithDefault<O, T>` más abajo; `required: true` por sí
+solo **no** afecta a `Pending`, ya que en ese instante el campo puede
+genuinamente seguir siendo `null`); `Awaited` es lo que `.get()` devuelve una
+vez que el nodo de `create()` termina de resolver (`then()`/`await`) — `T`
+si hay `default` **o** `required: true`, `T | null` si no (ver
+`Settled<O, T>`, más abajo). `Descriptor` en sí no infiere nada de
+`default`/`required`: cada builder calcula `Pending`/`Awaited` por su cuenta
+y se los pasa explícitamente.
 
 ### `start(control)`
 
@@ -353,12 +358,12 @@ una sola vez desde el único `control.rawStore.subscribe(...)`, igual que
 `string()`/`numeric()` por dentro:
 
 ```ts
-import { Descriptor, create, type WithDefault } from "@jondotsoy/configs";
+import { Descriptor, create, type Settled, type WithDefault } from "@jondotsoy/configs";
 import { envSource } from "@jondotsoy/configs/sources/env";
 
-function port<const O extends { key?: string | string[]; default?: number } = {}>(
+function port<const O extends { key?: string | string[]; default?: number; required?: boolean } = {}>(
   options?: O,
-): Descriptor<WithDefault<O, number>, number> {
+): Descriptor<WithDefault<O, number>, Settled<O, number>> {
   const opts = (options ?? {}) as O;
   const parse = (raw: unknown, path: string[]): number => {
     const num = Number(raw);
@@ -377,7 +382,7 @@ function port<const O extends { key?: string | string[]; default?: number } = {}
         control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
       });
     },
-  }) as Descriptor<WithDefault<O, number>, number>;
+  }) as Descriptor<WithDefault<O, number>, Settled<O, number>>;
 }
 
 // PORT=3000
@@ -441,88 +446,71 @@ function pollingDescriptor() {
 }
 ```
 
-### `WithDefault<O, T>` — el mismo tipado `T | null` / `T` que los builders integrados
+### `WithDefault<O, T>` / `Settled<O, T>` — el mismo tipado que usan los builders integrados
 
 ```ts
 export type WithDefault<O, T> = O extends { default: any } ? T : T | null;
+export type Settled<O, T> = O extends { default: any } ? T : O extends { required: true } ? T : T | null;
 ```
 
-Es el helper que usa cada builder integrado para calcular su propio primer
-parámetro de tipo de `Descriptor<A, B>`: `T` cuando `O` trae `default`, `T |
-null` si no. Se exporta desde la raíz del paquete precisamente para que un
-builder propio (como `port()`/`csv()` arriba, o `file()` en `src/node.ts`)
-pueda calcular su propio `Descriptor<A, B>` de retorno con la misma regla,
-sin reinventarla — el "cast final" (`as Descriptor<WithDefault<O, T>, T>`)
-es el mismo patrón en los tres: `string()`, `numeric()`, `boolean()`,
-`url()`, `shape()`, `choice()` lo hacen así, y `file()` en `src/node.ts` lo
-mismo con `FileFieldValue<O>`.
+Son los helpers que cada builder integrado usa para calcular sus dos
+parámetros de tipo de `Descriptor<Pending, Awaited>`: `WithDefault<O, T>`
+para `Pending` (`T` cuando `O` trae `default`, `T | null` si no —
+`required: true` por sí solo no cuenta aquí, ver más abajo), y
+`Settled<O, T>` para `Awaited` (`T` cuando `O` trae `default` **o**
+`required: true`, `T | null` si no). Se exportan desde la raíz del paquete
+precisamente para que un builder propio (como `port()`/`csv()` arriba, o
+`file()` en `src/node.ts`) pueda calcular su propio
+`Descriptor<Pending, Awaited>` de retorno con la misma regla, sin
+reinventarla — el "cast final" (`as Descriptor<WithDefault<O, T>, Settled<O, T>>`)
+es el mismo patrón en `string()`, `numeric()`, `boolean()`, `url()`,
+`shape()`, `choice()`, y en `file()` (`src/node.ts`).
 
-Un `Descriptor` escrito a mano no está obligado a usarlo — un
-`Descriptor<number, number>` fijo (sin `WithDefault`) también compila,
+`Pending` y `Awaited` son deliberadamente dos parámetros separados: antes de
+que un nodo de `create()` termine de resolver, un campo `required: true` sin
+`default` puede genuinamente seguir siendo `null` (ninguna fuente ha
+publicado nada todavía) — por eso `required` no afecta a `Pending`. Una vez
+que el nodo se resuelve (`then()`/`await`), ese mismo campo está garantizado
+a tener un valor real o el nodo entero ya rechazó en su lugar — por eso
+`required` sí afecta a `Awaited`. `Descriptor` en sí no calcula nada de esto:
+solo transporta los dos tipos que el builder ya decidió.
+
+Un `Descriptor` escrito a mano no está obligado a usar `WithDefault`/
+`Settled` — un `Descriptor<number, number>` fijo también compila,
 simplemente tipa `.get()` siempre como `number`, nunca `number | null`, sin
-importar si `options.default` se dio o no. `WithDefault` solo hace falta
-cuando se quiere que el tipo del campo reaccione a si el llamador pasó
-`default`, igual que los builtins.
+importar `options.default`/`options.required`. Esos helpers solo hacen
+falta cuando se quiere que el tipo del campo reaccione a lo que el llamador
+pasó, igual que los builtins.
 
-### Escribir un `Descriptor` como objeto plano, sin `new Descriptor(...)`
-
-`isConfigDescriptor()` (ver [la sección siguiente](#isconfigdescriptor-por-qué-es-estructural-y-no-instanceof))
-reconoce cualquier valor con un método `.start()`, no específicamente una
-instancia de la clase `Descriptor`. Esto significa que un shape entry no
-necesita pasar por `new Descriptor(...)` en absoluto — un objeto plano con
-la forma correcta funciona igual:
+## `isConfigDescriptor()`: por qué exige `instanceof Descriptor`
 
 ```ts
-function csvPlain(options: { key?: string | string[]; default?: string[] } = {}) {
-  const defaultValue = options.default ?? [];
-  return {
-    type: "csv" as const,
-    options,
-    start(control: DescriptorControl<string[]>) {
-      control.rawStore.subscribe((raw) => {
-        control.set(
-          raw == null
-            ? defaultValue
-            : typeof raw === "string"
-              ? raw.split(",").map((s) => s.trim())
-              : (() => { throw new Error(`Expected a comma-separated string at "${control.path.join(".")}"`); })(),
-        );
-      });
-    },
-  };
+export function isConfigDescriptor(node: unknown): node is Descriptor<unknown> {
+  return node instanceof Descriptor;
 }
 ```
 
-`create()` lo acepta exactamente igual que un `new Descriptor(...)` real —
-la clase `Descriptor` es una conveniencia (guarda `type`/`options`, expone
-`.key`/`.freeze`, envuelve `start`/`close`), no un requisito estructural.
-Lo único que hace falta para que `isConfigDescriptor()` lo reconozca es la
-propia función `start`.
+Todo descriptor aceptado en cualquier parte de este paquete tiene que ser
+una instancia real de `Descriptor` — construida con `new Descriptor(...)`,
+directamente o a través de uno de los builders integrados, que siempre
+devuelven uno. Un objeto plano con solo un método `.start()` (sin pasar por
+`new Descriptor(...)`) **ya no** se reconoce como descriptor — `create()` lo
+trataría como un grupo anidado más, no como un campo.
 
-## `isConfigDescriptor()`: por qué es estructural y no `instanceof`
-
-```ts
-export function isConfigDescriptor(node: unknown): node is Descriptor<unknown, unknown> {
-  if (typeof node !== "object" || node === null) return false;
-  return typeof (node as { start?: unknown }).start === "function";
-}
-```
-
-La razón está en cómo se empaqueta esta librería: `bun build` compila cada
+Esto no siempre fue así: `isConfigDescriptor()` solía ser una comprobación
+estructural (solo miraba que `.start` fuera una función), porque
+`scripts/build.ts` empaquetaba `dist/` con `bun build`, que compila cada
 punto de entrada público (`.`, `./sources/env`, `./node`, ...) de forma
-**independiente** — ver `scripts/build.ts` y el mapa `_buildEntripoint` de
-`package.json`. Eso significa que `file()`, exportado desde el entry point
-`./node`, termina con su propia copia bundleada de la clase `Descriptor`,
-separada de la copia que usa `configs.ts` (el entry point `.`) para su
-propio `isConfigDescriptor`. Un `instanceof Descriptor` comparando esas dos
-copias — dos clases con el mismo nombre pero distinto origen de módulo —
-daría `false` aunque el objeto sea, en todo sentido práctico, un
-`Descriptor` real. Comprobar solo la presencia de `.start` como función
-sobrevive a esa duplicación entre bundles, del mismo modo que lo hacía el
-símbolo de registro `CONFIG_DESCRIPTOR_TAG` (ya eliminado) que esta
-comprobación reemplazó. `.close` deliberadamente **no** se exige — es
-opcional incluso en un `Descriptor` escrito a mano (`create()`'s propio
-`close()` solo lo llama cuando está presente).
+**independiente**. Eso significaba que `file()`, exportado desde el entry
+point `./node`, terminaba con su propia copia bundleada de la clase
+`Descriptor`, separada de la copia que usa `configs.ts` (el entry point `.`)
+para su propio `isConfigDescriptor` — un `instanceof Descriptor` comparando
+esas dos copias (dos clases con el mismo nombre pero distinto origen de
+módulo) daría `false` aunque el objeto fuera, en todo sentido práctico, un
+`Descriptor` real. Ahora que `scripts/build.ts` transpila `dist/` con `tsc`
+en vez de empaquetar (ver su propio comentario), `Descriptor` es un único
+módulo importado por referencia en todo el paquete publicado, así que
+`instanceof` vuelve a ser confiable.
 
 ## Errores comunes
 

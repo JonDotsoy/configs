@@ -2,10 +2,14 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
-    "emitDeclarationOnly": true,
     "declaration": true,
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    // Only `*.spec.ts` files (excluded below) import a sibling by its literal `.ts` extension —
+    // every real `src/*.ts` module already uses `.js` (see AGENTS.md), so this build needs none of
+    // the base config's `allowImportingTsExtensions`, and tsc refuses it anyway once actually
+    // emitting JS (not just `--noEmit`/`--emitDeclarationOnly`).
+    "allowImportingTsExtensions": false
   },
   "include": ["src"],
   "exclude": ["src/**/*.spec.ts"]
