@@ -1186,6 +1186,10 @@ function App() {
 
 Further guides live under [`docs/`](./docs):
 
+- [`docs/api.md`](./docs/api.md) — API reference: the `create()`/`load()`
+  overview, `Source`/`Descriptor` concepts, every built-in descriptor's
+  syntax and options, every built-in source's syntax and options, and how to
+  write a custom descriptor/source.
 - [`docs/features.md`](./docs/features.md) — a full feature list by area
   (`create()`/`load()`, field descriptors, sources, `file()`, React,
   utilities), in Spanish.
