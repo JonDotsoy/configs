@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The object a `create()` node's `await`/`then()` resolves to (`ConfigsNodeReady<T>`) now also
   exposes `close()`, same as the pending node returned by `create()` itself — previously `close()`
   was only reachable before awaiting the node.
+- `create()`'s node (both its pending shape and `ConfigsNodeReady<T>`) now also implements
+  `[Symbol.asyncDispose]()`, delegating to the same `close()` — an `await using cfg = create(...)`
+  (or `await using cfg = await create(...)`) now closes every source and field descriptor
+  automatically once `cfg` goes out of scope.
 
 ### Fixed
 

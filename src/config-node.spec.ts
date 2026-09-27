@@ -324,7 +324,9 @@ describe("types — ConfigsNode / ConfigsNodePending / Options", () => {
     type Shape = { port: ReturnType<typeof numeric<{ required: true }>> };
 
     expectTypeOf<ConfigsNode<Shape>>().toEqualTypeOf<{ port: Store<number | null> }>();
-    expectTypeOf<ConfigsNodeReady<Shape>>().toEqualTypeOf<{ port: Store<number> } & { close(): Promise<void> }>();
+    expectTypeOf<ConfigsNodeReady<Shape>>().toEqualTypeOf<
+      { port: Store<number> } & { close(): Promise<void>; [Symbol.asyncDispose](): Promise<void> }
+    >();
     expectTypeOf<Awaited<ConfigsNodePending<Shape>>>().toEqualTypeOf<ConfigsNodeReady<Shape>>();
   });
 
@@ -736,6 +738,37 @@ describe("create — close()", () => {
 
     await Promise.all([cfg.close(), cfg.close(), cfg.close()]);
     await cfg.close();
+
+    expect(descriptorCloseMock).toHaveBeenCalledTimes(1);
+    expect(sourceCloseMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("exposes [Symbol.asyncDispose](), so `await using` closes the field descriptor and the source", async () => {
+    const descriptorCloseMock = mock(() => {});
+    const sourceCloseMock = mock(() => {});
+
+    const descriptor = new Descriptor<string>({
+      type: "tracked",
+      options: {},
+      start: (control) => control.set(String(control.rawStore.get())),
+      async close() {
+        descriptorCloseMock();
+      },
+    });
+    const source = new Source<{ port?: string }>({
+      async start(control) {
+        control.set({ port: "3000" });
+      },
+      async close() {
+        sourceCloseMock();
+      },
+    });
+
+    {
+      await using cfg = await create({ port: descriptor }, { sources: [source] });
+      expect(descriptorCloseMock).not.toHaveBeenCalled();
+      expect(sourceCloseMock).not.toHaveBeenCalled();
+    }
 
     expect(descriptorCloseMock).toHaveBeenCalledTimes(1);
     expect(sourceCloseMock).toHaveBeenCalledTimes(1);

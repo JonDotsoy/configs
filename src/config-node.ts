@@ -87,6 +87,8 @@ type InferConfigsNodeReady<T extends ConfigsShape> = {
  */
 interface ClosableNode {
   close(): Promise<void>;
+  /** `await using cfg = create(...)` — delegates to the same `close()`, so it's just as safe to trigger any number of times. */
+  [Symbol.asyncDispose](): Promise<void>;
 }
 
 /** The shape exposed on a `create()` node before it's done resolving — each leaf `Store` typed by its descriptor's own `Pending` parameter. */
@@ -284,6 +286,7 @@ export function create<T extends ConfigsShape>(configShape: T, options: Options 
     }
     return closePromise;
   };
+  (node as Record<PropertyKey, unknown>)[Symbol.asyncDispose] = (): Promise<void> => (node as unknown as ClosableNode).close();
 
   // create() itself never throws — every field error (from control.error(), or a missing `required`
   // value) only ever surfaces through the returned node's own reject (`await`/`.then()`), even with
@@ -329,6 +332,9 @@ export function create<T extends ConfigsShape>(configShape: T, options: Options 
     },
     close(): Promise<void> {
       return (node as unknown as ClosableNode).close();
+    },
+    [Symbol.asyncDispose](): Promise<void> {
+      return (node as unknown as ClosableNode)[Symbol.asyncDispose]();
     },
   }) as ConfigsNodePending<T>;
 }
