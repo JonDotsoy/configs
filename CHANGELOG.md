@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `ConfigValidationError` (extends `ConfigError`) and the `ConfigFieldError`
+  type, both exported from the package root: `create()`/`load()` now
+  aggregate every field's own failure across the whole tree — by path —
+  into one error, instead of surfacing only the first one.
+- `required: true` is now enforced for every built-in field type
+  (`string()`/`numeric()`/`boolean()`/`url()`/`choice()`, not just
+  `shape()`/`file()`): a required field still resolved to `null` once every
+  source has settled is reported as a missing-value error at its own path.
+- `DescriptorControl.error(error)`: the sanctioned way for a descriptor's
+  own `start()` to report a field failure without tearing down the rest of
+  the tree — `create()` collects it by path the same way it collects a
+  missing `required` value. A descriptor that calls `control.error()` (or
+  throws) with no sources configured at all makes `create()` itself throw
+  synchronously, since nothing could ever resolve that field later either.
+- An embedded `create()` node's own errors are now inherited by the parent
+  instead of being dropped: they surface in the parent's own
+  `ConfigValidationError`, with the embed's own position in the shape tree
+  prefixed onto each inherited path.
+
+### Changed
+
+- A parse failure escalated by `required: true` (`shape()`/`file()`) no
+  longer propagates as an uncaught exception from a live source's later
+  update — it's captured and folded into the same `ConfigValidationError`
+  aggregation as everything else.
+
 ## [1.2.15] - 2026-09-26
 
 ### Added

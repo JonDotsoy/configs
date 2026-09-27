@@ -38,7 +38,8 @@ export { isConfigsNode } from "./config-node.js";
 export { Store } from "./utils/store.js";
 export { DataTypes } from "./utils/data-types.js";
 export { DotEnv } from "./utils/dotenv.js";
-export { ConfigError } from "./errors.js";
+export { ConfigError, ConfigValidationError } from "./errors.js";
+export type { ConfigFieldError } from "./errors.js";
 
 export const create: typeof createConfigsNode = createConfigsNode;
 

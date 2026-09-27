@@ -79,6 +79,13 @@ export interface DescriptorControl<T> {
   rawStore: ReadOnlyStore<unknown>;
   path: string[];
   set(value: T): void;
+  /**
+   * Reports a failure for this field without tearing down the tree — `create()` (`./config-node.js`)
+   * collects every field's own errors by path instead of surfacing only the first one. Prefer this
+   * over throwing directly from `start()`/a `rawStore` subscriber: a thrown error works too (`create()`
+   * catches it), but `control.error()` is the sanctioned way to report one.
+   */
+  error(error: ConfigError): void;
 }
 
 /**
@@ -146,6 +153,17 @@ export class Descriptor<A, B = A, O extends object = object> {
   }
 
   /**
+   * Whether this field must resolve to a value (`options.required`) — exposed directly, same as
+   * `.key`/`.freeze`. `create()` (`./config-node.js`) is what actually acts on this: once every
+   * source has settled, a `required` field still resolved to `null` is reported as a missing-value
+   * error, uniformly across every built-in field type (a parse failure for `shape()`/`file()` still
+   * escalates to `control.error()` on its own, per-value, regardless of `required`).
+   */
+  get required(): boolean {
+    return (this.options as { required?: boolean }).required === true;
+  }
+
+  /**
    * Runs the constructor's own `start` against `control` — `create()` (`./config-node.js`) calls
    * this exactly once per field, right when it builds the field's `Store`, and never again. Every
    * update the field will ever see comes from what `start` itself does with `control` — see
@@ -165,6 +183,27 @@ export class Descriptor<A, B = A, O extends object = object> {
   }
 }
 
+/**
+ * Shared `start(control)` body for every built-in field type: falls back to `defaultValue` when raw
+ * is undefined/null, otherwise runs `parse`. A `parse` that throws (`typeMismatch`, `choiceParser`,
+ * `urlParser`, `shapeParser`/`shapeFailure` with `required: true`) doesn't propagate out of the
+ * `rawStore` subscriber — it's caught here and forwarded to `control.error()`, so one field's failure
+ * never tears down the rest of the tree. `file()` (`./node.js`) reuses this too.
+ */
+export function subscribeParsed<T>(control: DescriptorControl<T>, defaultValue: T, parse: (raw: unknown, path: string[]) => T): void {
+  control.rawStore.subscribe((raw) => {
+    if (raw === undefined || raw === null) {
+      control.set(defaultValue);
+      return;
+    }
+    try {
+      control.set(parse(raw, control.path));
+    } catch (err) {
+      control.error(err instanceof ConfigError ? err : new ConfigError(err instanceof Error ? err.message : String(err)));
+    }
+  });
+}
+
 /** Builds a `"string"` field descriptor, returned as a `Descriptor<string | null, string>` (or `Descriptor<string, string>` with a `default`). */
 export function string<const O extends StringFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, string>, string> {
   const opts = (options ?? {}) as O;
@@ -175,9 +214,7 @@ export function string<const O extends StringFieldOptions = {}>(options?: O): De
     type: "string",
     options: opts,
     start(control) {
-      control.rawStore.subscribe((raw) => {
-        control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
-      });
+      subscribeParsed(control, defaultValue, parse);
     },
   }) as Descriptor<WithDefault<O, string>, string>;
 }
@@ -192,9 +229,7 @@ export function numeric<const O extends NumberFieldOptions = {}>(options?: O): D
     type: "number",
     options: opts,
     start(control) {
-      control.rawStore.subscribe((raw) => {
-        control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
-      });
+      subscribeParsed(control, defaultValue, parse);
     },
   }) as Descriptor<WithDefault<O, number>, number>;
 }
@@ -209,9 +244,7 @@ export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): 
     type: "boolean",
     options: opts,
     start(control) {
-      control.rawStore.subscribe((raw) => {
-        control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
-      });
+      subscribeParsed(control, defaultValue, parse);
     },
   }) as Descriptor<WithDefault<O, boolean>, boolean>;
 }
@@ -226,9 +259,7 @@ export function url<const O extends UrlFieldOptions = {}>(options?: O): Descript
     type: "url",
     options: opts,
     start(control) {
-      control.rawStore.subscribe((raw) => {
-        control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
-      });
+      subscribeParsed(control, defaultValue, parse);
     },
   }) as Descriptor<WithDefault<O, URL>, URL>;
 }
@@ -259,9 +290,7 @@ export function shape<const O extends ShapeFieldOptions = {}>(
     type: "shape",
     options: opts,
     start(control) {
-      control.rawStore.subscribe((raw) => {
-        control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
-      });
+      subscribeParsed(control, defaultValue, parse);
     },
   }) as Descriptor<WithDefault<O, V>, V>;
 }
@@ -285,9 +314,7 @@ export function choice<const O extends ChoiceFieldOptions<string>>(
     type: "choice",
     options,
     start(control) {
-      control.rawStore.subscribe((raw) => {
-        control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
-      });
+      subscribeParsed(control, defaultValue, parse);
     },
   }) as Descriptor<WithDefault<O, V>, V>;
 }

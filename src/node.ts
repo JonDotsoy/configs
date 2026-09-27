@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Descriptor, shapeFailure, type WithDefault } from "./config-descriptor.js";
+import { Descriptor, shapeFailure, subscribeParsed, type WithDefault } from "./config-descriptor.js";
 import { ConfigError } from "./errors.js";
 import { tSync } from "./utils/t.js";
 
@@ -288,9 +288,7 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): Descri
     type: "file",
     options: runtimeOptions,
     start(control) {
-      control.rawStore.subscribe((raw) => {
-        control.set(raw === undefined || raw === null ? defaultValue : parse(raw, control.path));
-      });
+      subscribeParsed(control, defaultValue, parse);
     },
   }) as Descriptor<FileFieldValue<O>, FileBlob>;
 }
