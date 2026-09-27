@@ -437,3 +437,142 @@ literalSource({ host: "localhost", port: 3000 });
 ```
 
 Takes the value directly — no options object.
+
+## Writing a custom descriptor
+
+A descriptor is a real `Descriptor` instance — every shape entry that isn't
+one (and isn't a nested `create()` node) is treated as a plain nested group
+instead, so a hand-written field type has to go through `new Descriptor(...)`,
+same as every built-in builder does.
+
+```ts
+import { Descriptor, type Settled, type WithDefault } from "@jondotsoy/configs";
+
+interface PortFieldOptions {
+  key?: string | string[];
+  required?: boolean;
+  default?: number;
+}
+
+function port<const O extends PortFieldOptions = {}>(
+  options?: O,
+): Descriptor<WithDefault<O, number>, Settled<O, number>> {
+  const opts = (options ?? {}) as O;
+  const defaultValue = opts.default !== undefined ? opts.default : (null as unknown as number);
+
+  return new Descriptor<number, number>({
+    type: "port",
+    options: opts,
+    start(control) {
+      control.rawStore.subscribe((raw) => {
+        if (raw === undefined || raw === null) {
+          control.set(defaultValue);
+          return;
+        }
+        const num = Number(raw);
+        if (typeof raw !== "string" || raw.trim() === "" || Number.isNaN(num) || num <= 0) {
+          control.error(new Error(`Expected a positive port number at "${control.path.join(".")}"`));
+          return;
+        }
+        control.set(num);
+      });
+    },
+  }) as Descriptor<WithDefault<O, number>, Settled<O, number>>;
+}
+```
+
+- **`start(control)`** runs exactly once per field, synchronously, when
+  `create()`/`load()` builds that field — before any source has opened.
+  `control.rawStore` is this field's live raw value, already merged across
+  every `options.sources` entry by priority (read-only:
+  `.get()`/`.subscribe()`/`.listen()`). Subscribing to it is what makes the
+  field live: the subscriber fires immediately with the current raw value
+  (tick 0) and again on every later change. A `start` that never subscribes
+  (or sets up nothing else of its own) leaves the field frozen forever —
+  there's no error or warning for it.
+- **`control.set(value)`** publishes the field's next typed value —
+  callable synchronously inside `start` and/or any number of times later,
+  from a `rawStore` subscriber, a timer, a resolved promise, whatever `start`
+  sets up. It's the only thing that ever updates the field.
+- **`control.error(error)`** reports a failure for this field without
+  tearing down the rest of the tree — `create()` collects every field's
+  errors by path and surfaces them together as a `ConfigValidationError` once
+  the node settles. A `start` that throws instead is caught and forwarded the
+  same way, so either style works.
+- **`close()`** (optional, on the constructor — not `control.close()`,
+  which doesn't exist on `Descriptor`) releases whatever `start` set up (a
+  timer, a subscription); `create()`'s own `close()` calls it once per field.
+- There's no `reduce()` on `Descriptor` (unlike `Source`): a field's
+  `start` always works from one already-merged `rawStore`, so any combining
+  logic — falling back to a default, comparing against a previous value —
+  belongs directly inside the `rawStore.subscribe()` callback.
+- `WithDefault<O, T>`/`Settled<O, T>` (exported from the package root) are
+  the same helpers every built-in builder uses to compute `Descriptor`'s two
+  type parameters from `O`: `WithDefault` narrows the *pending* type (before
+  `await`) to exclude `null` when `O` has a `default`; `Settled` narrows the
+  *awaited* type the same way, plus when `O` has `required: true`. A
+  hand-written descriptor isn't obligated to use them — a fixed
+  `Descriptor<number, number>` also compiles, it just never types `.get()`
+  as `number | null` regardless of `options`.
+
+See [`docs/develop/custom-source-and-descriptor.md`](./develop/custom-source-and-descriptor.md)
+for the full contract, more patterns (a non-scalar field type, a field with
+its own timer independent of any source), and common mistakes.
+
+## Writing a custom source
+
+A `Source<T>` wraps an `UnderlyingSource<T>` — same `start`/`close` shape as
+a descriptor, but for a whole config tree instead of a single field, plus an
+optional `reduce` for sources that only ever produce partial patches.
+
+```ts
+import { Source } from "@jondotsoy/configs";
+
+function pollingSource(url: string, intervalMs: number): Source<{ port: number }> {
+  let timer: ReturnType<typeof setInterval>;
+
+  return new Source({
+    async start(control) {
+      const poll = async () => control.set((await (await fetch(url)).json()) as { port: number });
+      await poll(); // first value before open() resolves
+      timer = setInterval(poll, intervalMs);
+    },
+    close() {
+      clearInterval(timer);
+    },
+  });
+}
+```
+
+- **`start(control)`** runs exactly once per `Source`. `control.set(value)`
+  publishes the tree's next snapshot — callable once (a static source like
+  `literalSource`) or any number of times later (a live source like
+  `sseSource`/`fileSource`). `source.open()` — what `create()` awaits to wire
+  this source into the tree — resolves once `start()` itself finishes
+  running, **not** once the first `control.set()` has fired: a `start` that
+  only arms a timer and returns immediately makes `open()` resolve with the
+  store still empty. To make `await cfg` wait for a real first value (as
+  `pollingSource` above and every built-in polling/watching source do),
+  `start` has to stay in an `await` until that first `control.set()` has run.
+- **`close()`** (optional) releases whatever `start` set up — a timer, an
+  in-flight connection, a watcher. `Source.close()` calls it at most once,
+  whether triggered from inside `start` (via `control.close()`, a pure
+  signal with no effect of its own) or from the outside, and is safe to call
+  any number of times.
+- **`reduce(incoming, previous)`** (optional) is for a source whose `start`
+  can only ever hand `control.set()` a partial patch instead of a whole
+  snapshot (e.g. one SSE message). Every `control.set(value)` runs through it
+  first — `previous` is `null` before the first call — and its return value
+  is what actually gets published. Without `reduce`, every `control.set()`
+  replaces the tree outright; see `sseSource`'s default shallow patch-merge
+  for a worked example.
+- **`metrics`** (optional) is a plain `Record<string, Metric>`
+  (`CounterMetric`/`HistogramMetric`/`GaugeMetric`, from
+  `@jondotsoy/configs/utils/metrics`) bumped from inside `start`/`close` and
+  exposed as-is on the returned `Source` via `source.metrics` — the same
+  pattern every built-in source (`envSource`, `fetchSource`, ...) uses for
+  its own request/read counters.
+
+See [`docs/develop/custom-source-and-descriptor.md`](./develop/custom-source-and-descriptor.md)
+for the full contract, more patterns (cleaning up a connection/timer in
+`close()`, patch vs. full-snapshot `reduce`), and common mistakes.
