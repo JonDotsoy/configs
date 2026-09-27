@@ -275,8 +275,15 @@ export function create<T extends ConfigsShape>(configShape: T, options: Options 
   // Set directly on `node` (not only on the wrapper below) so `close()` also reaches the awaited
   // node: `ready.then()` resolves to this exact same runtime object, just narrowed to
   // `ConfigsNodeReady<T>` — no separate object is built for the resolved value.
-  (node as Record<string, unknown>).close = (): Promise<void> =>
-    Promise.all([...closers.map((close) => close()), ...sources.map((source) => source.close())]).then(() => undefined);
+  let closePromise: Promise<void> | undefined;
+  (node as Record<string, unknown>).close = (): Promise<void> => {
+    // Memoized, same as `Source.close()` — calling `close()` more than once must still only run
+    // each closer (a field descriptor's own `close`, a source's own `close`) exactly once.
+    if (!closePromise) {
+      closePromise = Promise.all([...closers.map((close) => close()), ...sources.map((source) => source.close())]).then(() => undefined);
+    }
+    return closePromise;
+  };
 
   // create() itself never throws — every field error (from control.error(), or a missing `required`
   // value) only ever surfaces through the returned node's own reject (`await`/`.then()`), even with

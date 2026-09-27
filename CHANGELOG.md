@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exposes `close()`, same as the pending node returned by `create()` itself — previously `close()`
   was only reachable before awaiting the node.
 
+### Fixed
+
+- `close()` now memoizes its result: calling it more than once on the same node no longer re-runs
+  every field descriptor's own `close()` and every source's own `close()` on each call — each one
+  now only ever runs once per node, as its own doc comment already promised.
+
 ## [1.2.16] - 2026-09-27
 
 ### Changed

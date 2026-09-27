@@ -711,6 +711,36 @@ describe("create — close()", () => {
     expect(sourceCloseMock).toHaveBeenCalledTimes(1);
   });
 
+  test("calling close() multiple times still only closes each field descriptor and source once", async () => {
+    const descriptorCloseMock = mock(() => {});
+    const sourceCloseMock = mock(() => {});
+
+    const descriptor = new Descriptor<string>({
+      type: "tracked",
+      options: {},
+      start: (control) => control.set(String(control.rawStore.get())),
+      async close() {
+        descriptorCloseMock();
+      },
+    });
+    const source = new Source<{ port?: string }>({
+      async start(control) {
+        control.set({ port: "3000" });
+      },
+      async close() {
+        sourceCloseMock();
+      },
+    });
+
+    const cfg = await create({ port: descriptor }, { sources: [source] });
+
+    await Promise.all([cfg.close(), cfg.close(), cfg.close()]);
+    await cfg.close();
+
+    expect(descriptorCloseMock).toHaveBeenCalledTimes(1);
+    expect(sourceCloseMock).toHaveBeenCalledTimes(1);
+  });
+
   test("a hand-written descriptor with no close() doesn't break close()", async () => {
     const handWritten = {
       start: (raw: unknown) => String(raw),
