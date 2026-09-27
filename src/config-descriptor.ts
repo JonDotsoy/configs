@@ -36,8 +36,14 @@ export interface Parseable<T> {
 export type StringFieldOptions = BaseFieldOptions & { pattern?: RegExp; default?: string };
 export type NumberFieldOptions = BaseFieldOptions & { default?: number };
 export type BooleanFieldOptions = BaseFieldOptions & { default?: boolean };
-/** A `"url"` field parses a string value into a `URL` instance (and validates it's actually one), same as `numeric()` does for numbers. */
-export type UrlFieldOptions = BaseFieldOptions & { default?: URL };
+/**
+ * A `"url"` field parses a string value into a `URL` instance (and validates it's actually one),
+ * same as `numeric()` does for numbers. `base` resolves a relative value against it (as `new
+ * URL(raw, base)` would) instead of requiring an absolute URL; omitting it falls back to the
+ * environment's `location` (e.g. a browser's `window.location`) when one is globally available,
+ * so a relative value still resolves there without needing `base` set explicitly.
+ */
+export type UrlFieldOptions = BaseFieldOptions & { default?: URL; base?: string | URL };
 /**
  * `schema` is optional: a `"shape"` field with no `schema` is passed through as-is (only checked
  * for `typeof value === "object"`), for callers who just want a free-form object.
@@ -433,15 +439,15 @@ export function booleanParser(_options: BooleanFieldOptions): (raw: unknown, pat
 }
 
 /** `url()`'s own parser — a string is parsed (and validated) into a `URL` instance; an already-`URL` value passes through as-is. */
-export function urlParser(_options: UrlFieldOptions): (raw: unknown, path: string[]) => URL {
+export function urlParser(options: UrlFieldOptions): (raw: unknown, path: string[]) => URL {
+  const base = options.base ?? (globalThis as { location?: { href: string } }).location?.href;
   return (raw, path) => {
     if (raw instanceof URL) return raw;
     if (typeof raw !== "string") typeMismatch("url", raw, path);
-    try {
-      return new URL(raw);
-    } catch {
+    if (!URL.canParse(raw, base?.toString())) {
       throw new ConfigError(`Value at "${path.join(".")}" is not a valid URL: ${JSON.stringify(raw)}`);
     }
+    return new URL(raw, base);
   };
 }
 

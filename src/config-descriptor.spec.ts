@@ -86,6 +86,28 @@ describe("url() field builder", () => {
     expect(errors[0]).toBeInstanceOf(ConfigError);
     expect(values).toEqual([]);
   });
+
+  test("resolves a relative value against an explicit base", () => {
+    const parsed = runStart(url({ base: "https://example.com/api/" }), "users", ["uri"]).last();
+    expect(parsed?.toString()).toBe("https://example.com/api/users");
+  });
+
+  test("without base, a relative value falls back to globalThis.location when set", () => {
+    const original = (globalThis as { location?: unknown }).location;
+    (globalThis as { location?: unknown }).location = { href: "https://example.com/base/" };
+    try {
+      const parsed = runStart(url(), "users", ["uri"]).last();
+      expect(parsed?.toString()).toBe("https://example.com/base/users");
+    } finally {
+      (globalThis as { location?: unknown }).location = original;
+    }
+  });
+
+  test("without base or location, a relative value fails to parse via control.error()", () => {
+    const { errors, values } = runStart(url(), "users", ["uri"]);
+    expect(errors[0]).toBeInstanceOf(ConfigError);
+    expect(values).toEqual([]);
+  });
 });
 
 describe("choice() field builder", () => {
