@@ -719,18 +719,16 @@ describe("create — error aggregation by path (ConfigValidationError)", () => {
     expect(cfg.server.port.get()).toBe(3000);
   });
 
-  test("a required field with no sources configured at all fails create() itself synchronously — nothing could ever supply it", () => {
-    expect(() => create({ port: numeric({ required: true }) })).toThrow(ConfigValidationError);
+  test("a required field with no sources configured at all still only rejects the awaited node, never create() itself", async () => {
+    const cfg = create({ port: numeric({ required: true }) }); // no throw here — no sources at all
 
-    try {
-      create({ port: numeric({ required: true }) });
-      throw new Error("expected create() to throw");
-    } catch (err) {
+    await expect(Promise.resolve(cfg)).rejects.toThrow(ConfigValidationError);
+    await Promise.resolve(cfg).catch((err: unknown) => {
       expect((err as ConfigValidationError).errors).toEqual([{ path: ["port"], error: expect.any(ConfigError) }]);
-    }
+    });
   });
 
-  test("a descriptor that calls control.error() synchronously at tick 0 makes create() itself throw", () => {
+  test("a descriptor that calls control.error() synchronously still only rejects the awaited node, never create() itself", async () => {
     const boom = new ConfigError("boom");
     const dummy = new Descriptor({
       type: "string",
@@ -740,14 +738,25 @@ describe("create — error aggregation by path (ConfigValidationError)", () => {
       },
     });
 
-    expect(() => create({ field: dummy })).toThrow(ConfigValidationError);
-    try {
-      create({ field: dummy });
-      throw new Error("expected create() to throw");
-    } catch (err) {
-      expect(err).toBeInstanceOf(ConfigValidationError);
+    const cfg = create({ field: dummy }); // no throw here, even though the error is already known
+
+    await expect(Promise.resolve(cfg)).rejects.toThrow(ConfigValidationError);
+    await Promise.resolve(cfg).catch((err: unknown) => {
       expect((err as ConfigValidationError).errors).toEqual([{ path: ["field"], error: boom }]);
-    }
+    });
+  });
+
+  test("nesting a create() whose only failure would be synchronous (no sources) doesn't throw while building the shape — only the parent's await rejects", async () => {
+    // If create() still threw synchronously for "no sources at all", this line alone would blow up,
+    // before the parent create() below even exists — the whole point of staying exclusively thenable.
+    const inner = create({ port: numeric({ required: true }) });
+
+    const cfg = create({ server: inner });
+
+    await expect(Promise.resolve(cfg)).rejects.toThrow(ConfigValidationError);
+    await Promise.resolve(cfg).catch((err: unknown) => {
+      expect((err as ConfigValidationError).errors).toEqual([{ path: ["server", "port"], error: expect.any(ConfigError) }]);
+    });
   });
 
   test("a parse failure from a live source arriving after the node already resolved is only logged, not rejected", async () => {

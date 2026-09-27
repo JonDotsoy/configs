@@ -236,21 +236,14 @@ export function create<T extends ConfigsShape>(configShape: T, options: Options 
   const node = buildNode(configShape, [], rawSources, embeddedReady, closers, reportError, requiredChecks) as ConfigsNode<T>;
   (node as Record<symbol, unknown>)[CONFIGS_NODE_TAG] = true;
 
-  // Synchronous (tick 0) level: a descriptor may have already called control.error() (or thrown)
-  // during its own start(), independent of any source — every source's raw value is still `null`
-  // at this exact point (every `Source` defers its own `start()` by at least one microtask, even a
-  // fully static one like `literalSource`, so a field can never see real source data this early).
-  // The missing-`required` check only runs here too when there's nothing to wait on at all: with no
-  // sources configured, a field can never resolve later either, so "still null now" already means
-  // "missing, permanently" — with any source configured, that same check is deferred to `ready`
-  // instead, since a field's `null` right now says nothing about what a source is about to supply.
-  if (sources.length === 0) {
-    for (const check of requiredChecks) check();
-  }
-  if (fieldErrors.size > 0) {
-    throw new ConfigValidationError([...fieldErrors.values()]);
-  }
-
+  // create() itself never throws — every field error (from control.error(), or a missing `required`
+  // value) only ever surfaces through the returned node's own reject (`await`/`.then()`), even with
+  // `sources: []`. A node can be embedded inside another shape (`create({ server: create(...) })`):
+  // the embedded create() call is evaluated as a plain argument, before the outer create() even
+  // starts, so a synchronous throw there would escape at the call site and never reach the outer's
+  // own error-inheritance wiring (`buildNode()`'s `isConfigsNode(entry)` branch, which only ever runs
+  // once `entry` already exists as a pending node). Staying exclusively async/thenable is what lets
+  // that wiring work regardless of how "instantly" the embedded node was always going to fail.
   const ownReady = Promise.all(
     sources.map((source, index) =>
       source.open().then((opened) => {

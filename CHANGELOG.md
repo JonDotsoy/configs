@@ -20,9 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DescriptorControl.error(error)`: the sanctioned way for a descriptor's
   own `start()` to report a field failure without tearing down the rest of
   the tree — `create()` collects it by path the same way it collects a
-  missing `required` value. A descriptor that calls `control.error()` (or
-  throws) with no sources configured at all makes `create()` itself throw
-  synchronously, since nothing could ever resolve that field later either.
+  missing `required` value. `create()` itself never throws: every field
+  error, including a required value that could never be supplied (no
+  sources configured at all), only ever surfaces through the returned
+  node's own reject (`await`/`.then()`) — needed for a `create()` node
+  embedded inside another shape to fail predictably, since the embedded
+  call is evaluated before the parent even runs.
 - An embedded `create()` node's own errors are now inherited by the parent
   instead of being dropped: they surface in the parent's own
   `ConfigValidationError`, with the embed's own position in the shape tree
