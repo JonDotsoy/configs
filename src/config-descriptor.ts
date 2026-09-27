@@ -55,15 +55,31 @@ export interface ChoiceFieldOptions<T extends string = string> extends BaseField
 }
 
 /**
- * The field's not-yet-resolved value type: `T` when `O` carries a `default`, otherwise `T | null`
- * — a field with no default can still resolve to `null` (no source has it yet, or ever will ever
- * publish it). This is what each built-in field builder (`string()`/`numeric()`/...) plugs into
- * `Descriptor`'s own first type parameter, so the "does this field have a default" check happens
- * once, right where the builder already knows `O`, instead of downstream in `create()`'s own type
- * inference. Exported so a hand-written field builder (e.g. `file()` in `./node.js`) can compute
- * its own `Descriptor<A, B>` return type the same way.
+ * The field's **pending** type — what `.get()` returns on the live `Store` before `create()`'s
+ * node has settled (see `Descriptor`'s own `Pending`/`Awaited` type parameters): `T` when `O`
+ * carries a `default`, otherwise `T | null`. `required: true` deliberately does **not** narrow
+ * this one — a required field with no default can genuinely still be `null` at this exact moment
+ * (no source has opened yet, or the value just hasn't arrived), `required` only guarantees
+ * something once the node is done resolving (see `Settled`, used for `Descriptor`'s `Awaited`
+ * parameter instead). This is what each built-in field builder (`string()`/`numeric()`/...) plugs
+ * into `Descriptor`'s own `Pending` type parameter, so the "does this field have a default" check
+ * happens once, right where the builder already knows `O`. Exported so a hand-written field
+ * builder (e.g. `file()` in `./node.js`) can compute its own `Descriptor<Pending, Awaited>` return
+ * type the same way.
  */
 export type WithDefault<O, T> = O extends { default: any } ? T : T | null;
+
+/**
+ * The field's **awaited** type — what `.get()` returns once `create()`'s node has actually settled
+ * (its `then()`/`await` fulfills): `T` when `O` carries a `default` **or** `required: true`,
+ * otherwise `T | null`. A field with neither can genuinely resolve to `null` forever (no source
+ * has it, or ever will publish it) — but a `required` field without a `default` is guaranteed, by
+ * `create()`'s own `requiredChecks` sweep (`./config-node.js`), to either settle on a real value or
+ * reject the awaited node instead, so it never actually surfaces `null` in the awaited shape. This
+ * is what each built-in field builder plugs into `Descriptor`'s own `Awaited` type parameter (see
+ * `WithDefault` for the counterpart `Pending` parameter).
+ */
+export type Settled<O, T> = O extends { default: any } ? T : O extends { required: true } ? T : T | null;
 
 /**
  * What `start(control)` gets, modeled directly after `Source`'s own `SourceControl` — same shape,
@@ -112,23 +128,29 @@ export interface DescriptorUnderlying<T, O extends object = object> {
 }
 
 /**
- * What `string()`/`numeric()`/`boolean()` build. Two type parameters, mirroring a field's own two
- * states: `A` is what `.get()` actually returns right now — `T | null` for a field with no
- * `default` (nothing may have resolved it yet, or ever will), or `T` once one is set. `B` is the
- * field's *resolved* type once it does have a value — always `T`, regardless of `default` — so a
- * generic helper written against `Descriptor<A, B>` can recover the underlying value type without
- * re-deriving it from `A`'s own nullability. `numeric()` returns `Descriptor<number | null,
- * number>` with no `default`, or `Descriptor<number, number>` with one — see `WithDefault`, which
- * every built-in builder uses to compute its own `A`. See `DescriptorUnderlying` for the
- * constructor shape.
+ * What `string()`/`numeric()`/`boolean()` build. Two type parameters, one per state a field's
+ * `Store` actually goes through: `Pending` is what `.get()` is typed to return on the live `Store`
+ * exposed by a still-unresolved `create()` node — `T | null` unless `O` carries a `default` (see
+ * `WithDefault`); `required: true` alone does not narrow this one, since a required field can
+ * still genuinely be `null` at that exact moment. `Awaited` is what `.get()` is typed to return
+ * once `create()`'s node has settled (its `then()`/`await` fulfills) — `T | null` unless `O`
+ * carries a `default` **or** `required: true` (see `Settled`), since a required field is
+ * guaranteed by then to either hold a real value or have already rejected the awaited node.
+ * `config-node.ts`'s `ConfigsNode<T>`/`ConfigsNodeReady<T>` read `Pending`/`Awaited` back off this
+ * class to type a field's `Store` differently before and after `await`. Each built-in builder
+ * computes both explicitly from its own `O` and passes them in directly — `Descriptor` itself
+ * performs no inference from `default`/`required`, it only carries whatever the builder computed.
+ * `numeric()` returns `Descriptor<number | null, number>` with neither `default` nor `required`,
+ * or `Descriptor<number, number>` with either one. See `DescriptorUnderlying` for the constructor
+ * shape.
  */
-export class Descriptor<A, B = A, O extends object = object> {
+export class Descriptor<Pending, Awaited = Pending, O extends object = object> {
   readonly type: FieldType;
   readonly options: O;
-  private readonly startFn: (control: DescriptorControl<A>) => void | Promise<void>;
+  private readonly startFn: (control: DescriptorControl<Pending>) => void | Promise<void>;
   private readonly closeFn?: () => Promise<void>;
 
-  constructor(underlying: DescriptorUnderlying<A, O>) {
+  constructor(underlying: DescriptorUnderlying<Pending, O>) {
     this.type = underlying.type;
     this.options = underlying.options;
     this.startFn = underlying.start;
@@ -170,7 +192,7 @@ export class Descriptor<A, B = A, O extends object = object> {
    * `DescriptorUnderlying`'s own doc. Whatever `start` returns (`void` or a `Promise<void>`) is
    * discarded here — same as `Source`'s own `start`, nothing awaits it.
    */
-  start(control: DescriptorControl<A>): void {
+  start(control: DescriptorControl<Pending>): void {
     void this.startFn(control);
   }
 
@@ -204,8 +226,13 @@ export function subscribeParsed<T>(control: DescriptorControl<T>, defaultValue: 
   });
 }
 
-/** Builds a `"string"` field descriptor, returned as a `Descriptor<string | null, string>` (or `Descriptor<string, string>` with a `default`). */
-export function string<const O extends StringFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, string>, string> {
+/**
+ * Builds a `"string"` field descriptor, returned as `Descriptor<Pending, Awaited>` where both are
+ * computed from `O` up front and passed in explicitly: `Descriptor<string | null, string | null>`
+ * with neither `default` nor `required`, `Descriptor<string, string>` with a `default`, or
+ * `Descriptor<string | null, string>` with `required: true` alone (see `WithDefault`/`Settled`).
+ */
+export function string<const O extends StringFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, string>, Settled<O, string>> {
   const opts = (options ?? {}) as O;
   const parse = stringParser(opts);
   const defaultValue = opts.default !== undefined ? opts.default : (null as unknown as string);
@@ -216,11 +243,16 @@ export function string<const O extends StringFieldOptions = {}>(options?: O): De
     start(control) {
       subscribeParsed(control, defaultValue, parse);
     },
-  }) as Descriptor<WithDefault<O, string>, string>;
+  }) as Descriptor<WithDefault<O, string>, Settled<O, string>>;
 }
 
-/** Builds a `"number"` field descriptor, returned as a `Descriptor<number | null, number>` (or `Descriptor<number, number>` with a `default`). */
-export function numeric<const O extends NumberFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, number>, number> {
+/**
+ * Builds a `"number"` field descriptor, returned as `Descriptor<Pending, Awaited>` where both are
+ * computed from `O` up front and passed in explicitly: `Descriptor<number | null, number | null>`
+ * with neither `default` nor `required`, `Descriptor<number, number>` with a `default`, or
+ * `Descriptor<number | null, number>` with `required: true` alone (see `WithDefault`/`Settled`).
+ */
+export function numeric<const O extends NumberFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, number>, Settled<O, number>> {
   const opts = (options ?? {}) as O;
   const parse = numberParser(opts);
   const defaultValue = opts.default !== undefined ? opts.default : (null as unknown as number);
@@ -231,11 +263,16 @@ export function numeric<const O extends NumberFieldOptions = {}>(options?: O): D
     start(control) {
       subscribeParsed(control, defaultValue, parse);
     },
-  }) as Descriptor<WithDefault<O, number>, number>;
+  }) as Descriptor<WithDefault<O, number>, Settled<O, number>>;
 }
 
-/** Builds a `"boolean"` field descriptor, returned as a `Descriptor<boolean | null, boolean>` (or `Descriptor<boolean, boolean>` with a `default`). */
-export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, boolean>, boolean> {
+/**
+ * Builds a `"boolean"` field descriptor, returned as `Descriptor<Pending, Awaited>` where both are
+ * computed from `O` up front and passed in explicitly: `Descriptor<boolean | null, boolean | null>`
+ * with neither `default` nor `required`, `Descriptor<boolean, boolean>` with a `default`, or
+ * `Descriptor<boolean | null, boolean>` with `required: true` alone (see `WithDefault`/`Settled`).
+ */
+export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, boolean>, Settled<O, boolean>> {
   const opts = (options ?? {}) as O;
   const parse = booleanParser(opts);
   const defaultValue = opts.default !== undefined ? opts.default : (null as unknown as boolean);
@@ -246,11 +283,17 @@ export function boolean<const O extends BooleanFieldOptions = {}>(options?: O): 
     start(control) {
       subscribeParsed(control, defaultValue, parse);
     },
-  }) as Descriptor<WithDefault<O, boolean>, boolean>;
+  }) as Descriptor<WithDefault<O, boolean>, Settled<O, boolean>>;
 }
 
-/** Builds a `"url"` field descriptor, returned as a `Descriptor<URL | null, URL>` (or `Descriptor<URL, URL>` with a `default`). Parses (and validates) a string value into a `URL` instance. */
-export function url<const O extends UrlFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, URL>, URL> {
+/**
+ * Builds a `"url"` field descriptor, returned as `Descriptor<Pending, Awaited>` where both are
+ * computed from `O` up front and passed in explicitly: `Descriptor<URL | null, URL | null>` with
+ * neither `default` nor `required`, `Descriptor<URL, URL>` with a `default`, or
+ * `Descriptor<URL | null, URL>` with `required: true` alone (see `WithDefault`/`Settled`). Parses
+ * (and validates) a string value into a `URL` instance.
+ */
+export function url<const O extends UrlFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, URL>, Settled<O, URL>> {
   const opts = (options ?? {}) as O;
   const parse = urlParser(opts);
   const defaultValue = opts.default !== undefined ? opts.default : (null as unknown as URL);
@@ -261,7 +304,7 @@ export function url<const O extends UrlFieldOptions = {}>(options?: O): Descript
     start(control) {
       subscribeParsed(control, defaultValue, parse);
     },
-  }) as Descriptor<WithDefault<O, URL>, URL>;
+  }) as Descriptor<WithDefault<O, URL>, Settled<O, URL>>;
 }
 
 /**
@@ -273,13 +316,15 @@ export function url<const O extends UrlFieldOptions = {}>(options?: O): Descript
 type InferShapeOptionValue<O> = O extends { schema: infer Z } ? (Z extends { parse(value: unknown): infer R } ? R : unknown) : unknown;
 
 /**
- * Builds a `"shape"` field descriptor, returned as a `Descriptor<V | null, V>` (or
- * `Descriptor<V, V>` with a `default`), where `V` is inferred from `schema`'s `parse` return type;
- * omitting `schema` (`shape()` alone) infers `V` as `unknown`.
+ * Builds a `"shape"` field descriptor, returned as `Descriptor<Pending, Awaited>` where both are
+ * computed from `O` up front and passed in explicitly: `Descriptor<V | null, V | null>` with
+ * neither `default` nor `required`, `Descriptor<V, V>` with a `default`, or `Descriptor<V | null,
+ * V>` with `required: true` alone (see `WithDefault`/`Settled`) — `V` is inferred from `schema`'s
+ * `parse` return type; omitting `schema` (`shape()` alone) infers `V` as `unknown`.
  */
 export function shape<const O extends ShapeFieldOptions = {}>(
   options?: O,
-): Descriptor<WithDefault<O, InferShapeOptionValue<O>>, InferShapeOptionValue<O>> {
+): Descriptor<WithDefault<O, InferShapeOptionValue<O>>, Settled<O, InferShapeOptionValue<O>>> {
   type V = InferShapeOptionValue<O>;
   const opts = (options ?? {}) as O;
   const parse = shapeParser<V>(opts as { schema?: Parseable<V>; required?: boolean }, "shape");
@@ -292,20 +337,22 @@ export function shape<const O extends ShapeFieldOptions = {}>(
     start(control) {
       subscribeParsed(control, defaultValue, parse);
     },
-  }) as Descriptor<WithDefault<O, V>, V>;
+  }) as Descriptor<WithDefault<O, V>, Settled<O, V>>;
 }
 
 /**
  * Builds a `"choice"` field descriptor — resolves only to one of the strings listed in
  * `options.options`, rejecting (per the same log-or-throw rule as `shape()`'s `required`, see
  * `typeMismatch`) anything else. `V` is inferred from `options.options` itself (via the `const`
- * type parameter), so `choice({ options: ["a", "b"] })` resolves to `Descriptor<"a" | "b" | null,
- * "a" | "b">` rather than the widened `string`, or `Descriptor<"a" | "b", "a" | "b">` with a
- * `default`.
+ * type parameter), and both `Descriptor<Pending, Awaited>` type parameters are computed from `O`
+ * up front and passed in explicitly, so `choice({ options: ["a", "b"] })` resolves to
+ * `Descriptor<"a" | "b" | null, "a" | "b" | null>` rather than the widened `string`,
+ * `Descriptor<"a" | "b", "a" | "b">` with a `default`, or `Descriptor<"a" | "b" | null, "a" |
+ * "b">` with `required: true` alone (see `WithDefault`/`Settled`).
  */
 export function choice<const O extends ChoiceFieldOptions<string>>(
   options: O,
-): Descriptor<WithDefault<O, O["options"][number]>, O["options"][number]> {
+): Descriptor<WithDefault<O, O["options"][number]>, Settled<O, O["options"][number]>> {
   type V = O["options"][number];
   const parse = choiceParser(options);
   const defaultValue = options.default !== undefined ? options.default : (null as unknown as V);
@@ -316,7 +363,7 @@ export function choice<const O extends ChoiceFieldOptions<string>>(
     start(control) {
       subscribeParsed(control, defaultValue, parse);
     },
-  }) as Descriptor<WithDefault<O, V>, V>;
+  }) as Descriptor<WithDefault<O, V>, Settled<O, V>>;
 }
 
 /**

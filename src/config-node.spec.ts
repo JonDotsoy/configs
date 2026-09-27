@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, spyOn, test } from "bun:test";
-import { create, isConfigsNode, type ConfigsNode, type ConfigsNodePending, type ConfigsShape, type Options } from "./config-node.ts";
+import { create, isConfigsNode, type ConfigsNode, type ConfigsNodePending, type ConfigsNodeReady, type ConfigsShape, type Options } from "./config-node.ts";
 import { boolean, choice, Descriptor, isConfigDescriptor, numeric, shape, string, url, type DescriptorControl } from "./config-descriptor.ts";
 import { ConfigError, ConfigValidationError } from "./errors.ts";
 import { envSource } from "./sources/env.ts";
@@ -83,6 +83,33 @@ describe("create", () => {
     const cfg = create(shape);
 
     expectTypeOf(cfg.port).toEqualTypeOf<Store<number>>();
+  });
+
+  test("types: required without a default does NOT narrow the pending node — `.get()` on the still-unresolved `Store` can genuinely be null at that exact moment", () => {
+    const shape = { port: numeric({ required: true }) };
+    const cfg = create(shape, { sources: [testSource({ port: 3000 })] });
+
+    expectTypeOf(cfg.port).toEqualTypeOf<Store<number | null>>();
+  });
+
+  test("types: awaiting narrows each field by its own descriptor's `Awaited` type parameter — a default always narrows out null, `required` alone narrows it only once awaited, and neither narrows the still-pending node", async () => {
+    const withDefault = create({ port: numeric({ default: 3000 }) });
+    const withoutDefault = create({ port: numeric() });
+    const requiredOnly = create({ port: numeric({ required: true }) }, { sources: [testSource({ port: 3000 })] });
+
+    // Pending (before await): only `default` narrows.
+    expectTypeOf(withDefault.port).toEqualTypeOf<Store<number>>();
+    expectTypeOf(withoutDefault.port).toEqualTypeOf<Store<number | null>>();
+    expectTypeOf(requiredOnly.port).toEqualTypeOf<Store<number | null>>();
+
+    const readyWithDefault = await withDefault;
+    const readyWithoutDefault = await withoutDefault;
+    const readyRequiredOnly = await requiredOnly;
+
+    // Awaited (after await): `default` or bare `required` both narrow.
+    expectTypeOf(readyWithDefault.port).toEqualTypeOf<Store<number>>();
+    expectTypeOf(readyWithoutDefault.port).toEqualTypeOf<Store<number | null>>();
+    expectTypeOf(readyRequiredOnly.port).toEqualTypeOf<Store<number>>();
   });
 });
 
@@ -287,10 +314,18 @@ describe("types — ConfigsNode / ConfigsNodePending / Options", () => {
     expectTypeOf<ConfigsNode<Shape>>().toEqualTypeOf<{ server: { port: Store<number | null> } }>();
   });
 
-  test("ConfigsNodePending<T> is ConfigsNode<T> plus a then() that resolves to ConfigsNode<T>", () => {
+  test("ConfigsNodePending<T> is ConfigsNode<T> plus a then() that resolves to ConfigsNodeReady<T>", () => {
     type Shape = { port: ReturnType<typeof numeric> };
     expectTypeOf<ConfigsNodePending<Shape>>().toMatchTypeOf<ConfigsNode<Shape>>();
-    expectTypeOf<Awaited<ConfigsNodePending<Shape>>>().toEqualTypeOf<ConfigsNode<Shape>>();
+    expectTypeOf<Awaited<ConfigsNodePending<Shape>>>().toEqualTypeOf<ConfigsNodeReady<Shape>>();
+  });
+
+  test("ConfigsNode<T> (pending) and ConfigsNodeReady<T> (awaited) diverge for a required field with no default — each reads a different type parameter off the same Descriptor", () => {
+    type Shape = { port: ReturnType<typeof numeric<{ required: true }>> };
+
+    expectTypeOf<ConfigsNode<Shape>>().toEqualTypeOf<{ port: Store<number | null> }>();
+    expectTypeOf<ConfigsNodeReady<Shape>>().toEqualTypeOf<{ port: Store<number> }>();
+    expectTypeOf<Awaited<ConfigsNodePending<Shape>>>().toEqualTypeOf<ConfigsNodeReady<Shape>>();
   });
 
   test("create()'s return type is exactly ConfigsNodePending<typeof shape>, and awaiting it drops `then`", async () => {
@@ -300,7 +335,7 @@ describe("types — ConfigsNode / ConfigsNodePending / Options", () => {
     expectTypeOf(cfg).toEqualTypeOf<ConfigsNodePending<typeof shape>>();
 
     const resolved = await cfg;
-    expectTypeOf(resolved).toEqualTypeOf<ConfigsNode<typeof shape>>();
+    expectTypeOf(resolved).toEqualTypeOf<ConfigsNodeReady<typeof shape>>();
   });
 
   test("Options.sources accepts an array of Source<any> and is itself optional", () => {
@@ -547,6 +582,39 @@ describe("create — start(control) is 100% in control of the field's value", ()
 
     await new Promise((resolve) => setTimeout(resolve, startDelayMs - sourceDelayMs + 10));
     expect(cfg.value.get()).toBe(4000);
+  });
+
+  test("a hand-written Descriptor narrows its own Awaited type with neither `default` nor `required` in its options — Descriptor performs no inference itself, it only carries whatever Pending/Awaited the caller passed in", async () => {
+    // `options` here is just `{}` — no `default`, no `required`, nothing `WithDefault`/`Settled`
+    // could key off. The narrowing on `Awaited` comes purely from the two type arguments given to
+    // `new Descriptor<Pending, Awaited>(...)` below, same as `string()`/`numeric()`/... do for
+    // themselves, but written by hand instead of derived from an options object at all.
+    function alwaysEventually(): Descriptor<number | null, number> {
+      return new Descriptor<number | null, number>({
+        type: "always-eventually",
+        options: {},
+        start(control) {
+          control.set(null);
+          control.rawStore.subscribe((raw) => {
+            if (raw !== null && raw !== undefined) control.set(Number(raw));
+          });
+        },
+      });
+    }
+
+    const shape = { port: alwaysEventually() };
+    const cfg = create(shape, { sources: [testSource({ port: 9090 })] });
+
+    // Pending: honestly nullable — nothing forces `start()` to have set a real value yet.
+    expectTypeOf(cfg.port).toEqualTypeOf<Store<number | null>>();
+    expect(cfg.port.get()).toBeNull();
+
+    const resolved = await cfg;
+
+    // Awaited: narrowed to `number` — not because of any `default`/`required` option (there is
+    // none), but because the descriptor's own `Awaited` type argument said so.
+    expectTypeOf(resolved.port).toEqualTypeOf<Store<number>>();
+    expect(resolved.port.get()).toBe(9090);
   });
 });
 

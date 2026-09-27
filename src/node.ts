@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Descriptor, shapeFailure, subscribeParsed, type WithDefault } from "./config-descriptor.js";
+import { Descriptor, shapeFailure, subscribeParsed, type Settled, type WithDefault } from "./config-descriptor.js";
 import { ConfigError } from "./errors.js";
 import { tSync } from "./utils/t.js";
 
@@ -220,17 +220,6 @@ function resolveDefault(defaultValue: string | URL | undefined, format: FileValu
 }
 
 /**
- * `file()`'s own not-yet-resolved type: same as `WithDefault<O, FileBlob>`, except `required:
- * true` also narrows it to `FileBlob` (never `null`) — same effect a real `default` has
- * elsewhere, applied here from `required` instead since a `file()` field almost always wants
- * "always present" enforced by `required`, not by a fallback value. Same caveat as `default`
- * everywhere else in this package: this is a type-level promise, not a runtime guarantee — a
- * `required` field with nothing from any source still resolves to `null` at runtime, it just
- * isn't supposed to happen.
- */
-type FileFieldValue<O extends FileFieldOptions> = O extends { required: true } ? FileBlob : WithDefault<O, FileBlob>;
-
-/**
  * `file()`'s own `start` — decodes a raw string value (as base64 or text, per `format` or
  * inferred — see `FileFieldOptions.format`) into a `FileBlob`; an already-`FileBlob` value (its
  * own resolved `default`) passes through as-is. A decoding failure — a non-string/non-`FileBlob`
@@ -266,8 +255,14 @@ function fileStart(options: Pick<FileFieldOptions, "required" | "format">): (raw
  * `.location` is always set: a `file:` `URL` default is used as-is, and every other value (a
  * source's raw value, or a string `default`) is written out to a fresh temp file whose `file:`
  * `URL` becomes `.location`.
+ *
+ * Returned as `Descriptor<Pending, Awaited>` where both are computed from `O` up front and passed
+ * in explicitly, same as every built-in builder in `./config-descriptor.js`:
+ * `Descriptor<FileBlob | null, FileBlob | null>` with neither `default` nor `required`,
+ * `Descriptor<FileBlob, FileBlob>` with a `default`, or `Descriptor<FileBlob | null, FileBlob>`
+ * with `required: true` alone (see `WithDefault`/`Settled`).
  */
-export function file<const O extends FileFieldOptions = {}>(options?: O): Descriptor<FileFieldValue<O>, FileBlob> {
+export function file<const O extends FileFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, FileBlob>, Settled<O, FileBlob>> {
   const opts = options ?? ({} as O);
 
   const runtimeOptions: Omit<FileFieldOptions, "default"> & { default?: FileBlob } = {
@@ -290,5 +285,5 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): Descri
     start(control) {
       subscribeParsed(control, defaultValue, parse);
     },
-  }) as Descriptor<FileFieldValue<O>, FileBlob>;
+  }) as Descriptor<WithDefault<O, FileBlob>, Settled<O, FileBlob>>;
 }

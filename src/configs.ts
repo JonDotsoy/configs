@@ -1,7 +1,7 @@
 import { create as createConfigsNode, type ConfigsNodePending, type ConfigsShape, type Options } from "./config-node.js";
 import { envSource } from "./sources/env.js";
 
-export type { ConfigsNode, ConfigsNodePending, ConfigsShape, Options } from "./config-node.js";
+export type { ConfigsNode, ConfigsNodePending, ConfigsNodeReady, ConfigsShape, Options } from "./config-node.js";
 export type {
   BooleanFieldOptions,
   ChoiceFieldOptions,
@@ -10,6 +10,7 @@ export type {
   FieldType,
   NumberFieldOptions,
   Parseable,
+  Settled,
   ShapeFieldOptions,
   StringFieldOptions,
   UrlFieldOptions,
