@@ -85,14 +85,14 @@ describe("create", () => {
     expectTypeOf(cfg.port).toEqualTypeOf<Store<number>>();
   });
 
-  test("types: required without a default still types as `number | null` — required is only enforced at runtime (rejects the awaited node), it never narrows the static type", () => {
+  test("types: required without a default also narrows out null — a required field either settles on a real value or rejects the awaited node, so `.get()` is never typed nullable for it", () => {
     const shape = { port: numeric({ required: true }) };
     const cfg = create(shape, { sources: [testSource({ port: 3000 })] });
 
-    expectTypeOf(cfg.port).toEqualTypeOf<Store<number | null>>();
+    expectTypeOf(cfg.port).toEqualTypeOf<Store<number>>();
   });
 
-  test("types: awaiting a pending node keeps each field's type as-is — a default still narrows out null, a bare `required` still doesn't", async () => {
+  test("types: awaiting a pending node keeps each field's type as-is — a default or a bare `required` both narrow out null", async () => {
     const withDefault = create({ port: numeric({ default: 3000 }) });
     const withoutDefault = create({ port: numeric() });
     const requiredOnly = create({ port: numeric({ required: true }) }, { sources: [testSource({ port: 3000 })] });
@@ -103,7 +103,7 @@ describe("create", () => {
 
     expectTypeOf(readyWithDefault.port).toEqualTypeOf<Store<number>>();
     expectTypeOf(readyWithoutDefault.port).toEqualTypeOf<Store<number | null>>();
-    expectTypeOf(readyRequiredOnly.port).toEqualTypeOf<Store<number | null>>();
+    expectTypeOf(readyRequiredOnly.port).toEqualTypeOf<Store<number>>();
   });
 });
 

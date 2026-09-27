@@ -37,6 +37,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer propagates as an uncaught exception from a live source's later
   update — it's captured and folded into the same `ConfigValidationError`
   aggregation as everything else.
+- `WithDefault<O, T>` (and every built-in field builder's exposed type) now
+  also narrows out `null` for `required: true`, the same way it already did
+  for `default` — `numeric({ required: true })` (and
+  `string()`/`boolean()`/`url()`/`shape()`/`choice()` the same way) is now
+  typed `Store<number>` instead of `Store<number | null>`, matching the
+  runtime guarantee that a required field either resolves to a real value
+  or rejects the awaited node instead (see the `required: true` enforcement
+  above). `file()`'s own `FileFieldValue` used to special-case this itself;
+  it now just delegates to `WithDefault`.
 
 ## [1.2.15] - 2026-09-26
 

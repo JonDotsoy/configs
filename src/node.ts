@@ -220,15 +220,11 @@ function resolveDefault(defaultValue: string | URL | undefined, format: FileValu
 }
 
 /**
- * `file()`'s own not-yet-resolved type: same as `WithDefault<O, FileBlob>`, except `required:
- * true` also narrows it to `FileBlob` (never `null`) — same effect a real `default` has
- * elsewhere, applied here from `required` instead since a `file()` field almost always wants
- * "always present" enforced by `required`, not by a fallback value. Same caveat as `default`
- * everywhere else in this package: this is a type-level promise, not a runtime guarantee — a
- * `required` field with nothing from any source still resolves to `null` at runtime, it just
- * isn't supposed to happen.
+ * `file()`'s own exposed type: `WithDefault<O, FileBlob>` already narrows out `null` for either a
+ * `default` or `required: true` — a `file()` field almost always wants "always present" enforced
+ * by `required` rather than by a fallback value, and `WithDefault` treats the two the same way.
  */
-type FileFieldValue<O extends FileFieldOptions> = O extends { required: true } ? FileBlob : WithDefault<O, FileBlob>;
+type FileFieldValue<O extends FileFieldOptions> = WithDefault<O, FileBlob>;
 
 /**
  * `file()`'s own `start` — decodes a raw string value (as base64 or text, per `format` or
