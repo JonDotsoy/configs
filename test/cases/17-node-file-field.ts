@@ -6,7 +6,8 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, literalSource } from "hotconfigs";
+import { create } from "hotconfigs";
+import { literalSource } from "hotconfigs/sources/literal";
 import { FileBlob, file } from "hotconfigs/node";
 
 function assert(cond: unknown, message: string): void {

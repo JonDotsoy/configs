@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING**: the root entry point (`hotconfigs`) now re-exports only `envSource` as a source
+  factory; `fileSource`, `literalSource`, and `pullSource` (previously re-exported from root
+  alongside `envSource`) are no longer available from `hotconfigs`. They remain available,
+  unchanged, from their own dedicated subpaths — `hotconfigs/sources/file`,
+  `hotconfigs/sources/literal`, `hotconfigs/sources/pull` — along with their
+  `FileSourceOptions`/`PullSourceOptions` types (also dropped from root). The `Source` base
+  class itself keeps being re-exported from root, unchanged, since it carries no capability of
+  its own. `fetchSource`/`sseSource`/`shellSource` were already subpath-only (see 1.0.5) and are
+  unaffected.
+
 ## [1.0.5] - 2026-09-28
 
 ### Changed
