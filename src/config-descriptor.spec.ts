@@ -3,6 +3,7 @@ import {
   boolean,
   choice,
   Descriptor,
+  describeValue,
   isConfigDescriptor,
   list,
   numeric,
@@ -108,6 +109,32 @@ describe("url() field builder", () => {
     const { errors, values } = runStart(url(), "users", ["uri"]);
     expect(errors[0]).toBeInstanceOf(ConfigError);
     expect(values).toEqual([]);
+  });
+
+  test("masks an unparseable value when its path looks sensitive, instead of leaking it into the error message", () => {
+    const { errors } = runStart(url(), "not-a-secret-url", ["database", "apiKey"]);
+    expect(errors[0]?.message).toContain("***");
+    expect(errors[0]?.message).not.toContain("not-a-secret-url");
+  });
+});
+
+describe("describeValue()", () => {
+  test("renders the value as-is (JSON-stringified) for a path with no sensitive word", () => {
+    expect(describeValue("localhost", ["host"])).toBe('"localhost"');
+    expect(describeValue(42, ["server", "port"])).toBe("42");
+  });
+
+  test("masks the value when any path segment contains key/secret/password/token/credential/auth", () => {
+    for (const path of [
+      ["apiKey"],
+      ["db", "password"],
+      ["auth", "SECRET"],
+      ["accessToken"],
+      ["client_credential"],
+      ["Authorization"],
+    ]) {
+      expect(describeValue("s3cr3t-value", path)).toBe("***");
+    }
   });
 });
 

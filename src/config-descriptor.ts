@@ -430,8 +430,33 @@ export function isConfigDescriptor(node: unknown): node is Descriptor<unknown> {
   return node instanceof Descriptor;
 }
 
+/**
+ * Path segments treated as sensitive (case-insensitive substring match against the full dotted
+ * path) — a field whose path matches one of these has its unparseable raw value masked instead of
+ * embedded verbatim in a thrown `ConfigError`, so a bad secret/password/token never ends up in a
+ * log or crash report just because it failed to parse.
+ */
+const SENSITIVE_PATH_WORDS = ["key", "secret", "password", "token", "credential", "auth"];
+
+const MASKED_VALUE = "***";
+
+function isSensitivePath(path: string[]): boolean {
+  const joined = path.join(".").toLowerCase();
+  return SENSITIVE_PATH_WORDS.some((word) => joined.includes(word));
+}
+
+/**
+ * Renders `value` for a field-error message: masked (`"***"`) when `path` looks sensitive (see
+ * `SENSITIVE_PATH_WORDS`), `JSON.stringify`'d as usual otherwise. Every built-in parser that embeds
+ * a field's raw value in a thrown `ConfigError` message goes through this instead of calling
+ * `JSON.stringify` directly.
+ */
+export function describeValue(value: unknown, path: string[]): string {
+  return isSensitivePath(path) ? MASKED_VALUE : JSON.stringify(value);
+}
+
 function typeMismatch(type: FieldType, value: unknown, path: string[]): never {
-  throw new ConfigError(`Expected ${type} at "${path.join(".")}", got ${JSON.stringify(value)}`);
+  throw new ConfigError(`Expected ${type} at "${path.join(".")}", got ${describeValue(value, path)}`);
 }
 
 /**
@@ -486,7 +511,7 @@ export function urlParser(options: UrlFieldOptions): (raw: unknown, path: string
     if (raw instanceof URL) return raw;
     if (typeof raw !== "string") typeMismatch("url", raw, path);
     if (!URL.canParse(raw, base?.toString())) {
-      throw new ConfigError(`Value at "${path.join(".")}" is not a valid URL: ${JSON.stringify(raw)}`);
+      throw new ConfigError(`Value at "${path.join(".")}" is not a valid URL: ${describeValue(raw, path)}`);
     }
     return new URL(raw, base);
   };
@@ -497,7 +522,7 @@ export function choiceParser<T extends string>(options: { options: readonly T[] 
   return (raw, path) => {
     if (typeof raw !== "string" || !options.options.includes(raw as T)) {
       throw new ConfigError(
-        `Expected one of ${JSON.stringify(options.options)} at "${path.join(".")}", got ${JSON.stringify(raw)}`,
+        `Expected one of ${JSON.stringify(options.options)} at "${path.join(".")}", got ${describeValue(raw, path)}`,
       );
     }
     return raw as T;
@@ -585,7 +610,7 @@ export function shapeParser<T>(options: { schema?: Parseable<T>; required?: bool
       if (typeof raw !== "object" || raw === null) {
         return shapeFailure(
           options.required,
-          new ConfigError(`Expected ${typeLabel} at "${path.join(".")}", got ${JSON.stringify(raw)}`),
+          new ConfigError(`Expected ${typeLabel} at "${path.join(".")}", got ${describeValue(raw, path)}`),
         ) as T;
       }
       return raw as T;

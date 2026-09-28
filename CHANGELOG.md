@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- A field whose path contains a sensitive word (`key`, `secret`, `password`, `token`,
+  `credential`, `auth` — case-insensitive) now has its raw value masked (`***`) in the
+  `ConfigError` thrown/reported when it fails to parse, instead of embedding the unparseable value
+  verbatim in the error message.
+
 ## [1.0.2] - 2026-09-28
 
 ## [1.0.0]

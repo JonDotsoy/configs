@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Descriptor, shapeFailure, subscribeParsed, type Settled, type WithDefault } from "./config-descriptor.js";
+import { describeValue, Descriptor, shapeFailure, subscribeParsed, type Settled, type WithDefault } from "./config-descriptor.js";
 import { ConfigError } from "./errors.js";
 import { tSync } from "./utils/t.js";
 
@@ -233,7 +233,7 @@ function fileStart(options: Pick<FileFieldOptions, "required" | "format">): (raw
     if (typeof raw !== "string") {
       return shapeFailure(
         options.required,
-        new ConfigError(`Value at "${path.join(".")}" is not a file: expected a string, got ${JSON.stringify(raw)}`),
+        new ConfigError(`Value at "${path.join(".")}" is not a file: expected a string, got ${describeValue(raw, path)}`),
       ) as FileBlob;
     }
     const [ok, err, result] = tSync(() => blobFromText(raw, options.format));
