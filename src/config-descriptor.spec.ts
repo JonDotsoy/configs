@@ -204,29 +204,72 @@ describe("list() field builder", () => {
     expect(runStart(list(), ",", ["values"]).last()).toEqual(["", ""]);
   });
 
-  describe("avoidSplit option", () => {
-    test("skips comma-splitting: a string raw value resolves to a single-element array holding it verbatim", () => {
-      expect(runStart(list({ avoidSplit: true }), "a,b,c", ["values"]).last()).toEqual(["a,b,c"]);
-      expect(runStart(list({ avoidSplit: true }), '"quoted, value"', ["values"]).last()).toEqual(['"quoted, value"']);
+  describe("delimiter option", () => {
+    test("overrides the split character", () => {
+      expect(runStart(list({ delimiter: ";" }), "a;b;c", ["values"]).last()).toEqual(["a", "b", "c"]);
     });
 
-    test("without avoidSplit, the same raw value would have been split", () => {
+    test("a delimiter override still respects quoting and backslash-escaping", () => {
+      expect(runStart(list({ delimiter: ";" }), '"a;b";c', ["values"]).last()).toEqual(["a;b", "c"]);
+      expect(runStart(list({ delimiter: ";" }), "a\\;b;c", ["values"]).last()).toEqual(["a;b", "c"]);
+    });
+
+    test("a comma is no longer a separator once delimiter is overridden", () => {
+      expect(runStart(list({ delimiter: ";" }), "a,b;c", ["values"]).last()).toEqual(["a,b", "c"]);
+    });
+
+    test("delimiter: false skips splitting entirely: a string raw value resolves to a single-element array holding it verbatim", () => {
+      expect(runStart(list({ delimiter: false }), "a,b,c", ["values"]).last()).toEqual(["a,b,c"]);
+      expect(runStart(list({ delimiter: false }), '"quoted, value"', ["values"]).last()).toEqual(['"quoted, value"']);
+    });
+
+    test("without delimiter: false, the same raw value would have been split", () => {
       expect(runStart(list(), "a,b,c", ["values"]).last()).toEqual(["a", "b", "c"]);
     });
 
-    test("still collapses an empty/whitespace-only raw string to [], same as when splitting", () => {
-      expect(runStart(list({ avoidSplit: true }), "", ["values"]).last()).toEqual([]);
-      expect(runStart(list({ avoidSplit: true }), "   ", ["values"]).last()).toEqual([]);
+    test("delimiter: false still collapses an empty/whitespace-only raw string to [], and still trims the sole field", () => {
+      expect(runStart(list({ delimiter: false }), "", ["values"]).last()).toEqual([]);
+      expect(runStart(list({ delimiter: false }), "   ", ["values"]).last()).toEqual([]);
+      expect(runStart(list({ delimiter: false }), "  a,b,c  ", ["values"]).last()).toEqual(["a,b,c"]);
     });
 
     test("doesn't affect an already-array raw value, or a number/boolean raw value", () => {
-      expect(runStart(list({ avoidSplit: true }), ["a", "b"], ["values"]).last()).toEqual(["a", "b"]);
-      expect(runStart(list({ avoidSplit: true }), 1, ["values"]).last()).toEqual(["1"]);
-      expect(runStart(list({ avoidSplit: true }), true, ["values"]).last()).toEqual(["true"]);
+      expect(runStart(list({ delimiter: false }), ["a", "b"], ["values"]).last()).toEqual(["a", "b"]);
+      expect(runStart(list({ delimiter: false }), 1, ["values"]).last()).toEqual(["1"]);
+      expect(runStart(list({ delimiter: false }), true, ["values"]).last()).toEqual(["true"]);
     });
 
     test("is carried through .options, same as every other option", () => {
-      expectDescriptor(list({ avoidSplit: true }), "list", { avoidSplit: true });
+      expectDescriptor(list({ delimiter: ";" }), "list", { delimiter: ";" });
+      expectDescriptor(list({ delimiter: false }), "list", { delimiter: false });
+    });
+  });
+
+  describe("avoidTrim option", () => {
+    test("keeps each unquoted field's surrounding whitespace instead of trimming it", () => {
+      expect(runStart(list({ avoidTrim: true }), " a , b ,c", ["values"]).last()).toEqual([" a ", " b ", "c"]);
+    });
+
+    test("without avoidTrim, the same raw value would have been trimmed", () => {
+      expect(runStart(list(), " a , b ,c", ["values"]).last()).toEqual(["a", "b", "c"]);
+    });
+
+    test("a quoted field's content is never trimmed, with or without avoidTrim", () => {
+      expect(runStart(list({ avoidTrim: true }), '" a ",b', ["values"]).last()).toEqual([" a ", "b"]);
+      expect(runStart(list(), '" a ",b', ["values"]).last()).toEqual([" a ", "b"]);
+    });
+
+    test("an empty/whitespace-only raw string still collapses to [], regardless of avoidTrim", () => {
+      expect(runStart(list({ avoidTrim: true }), "", ["values"]).last()).toEqual([]);
+      expect(runStart(list({ avoidTrim: true }), "   ", ["values"]).last()).toEqual([]);
+    });
+
+    test("combines with delimiter: false to keep the sole field's whitespace verbatim", () => {
+      expect(runStart(list({ delimiter: false, avoidTrim: true }), "  a,b,c  ", ["values"]).last()).toEqual(["  a,b,c  "]);
+    });
+
+    test("is carried through .options, same as every other option", () => {
+      expectDescriptor(list({ avoidTrim: true }), "list", { avoidTrim: true });
     });
   });
 });

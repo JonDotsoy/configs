@@ -36,12 +36,14 @@ export interface Parseable<T> {
 export type StringFieldOptions = BaseFieldOptions & { pattern?: RegExp; default?: string };
 /**
  * `list()`'s own options — `default` is a plain `string[]`, same rule as every other field type.
- * `avoidSplit`, when `true`, skips comma-splitting entirely: a string raw value resolves to a
- * single-element array holding it verbatim (`"a,b,c"` → `["a,b,c"]`) instead of being split on its
- * commas — for a field whose value happens to contain commas but was never meant to be a list of
- * comma-separated items.
+ * `delimiter` overrides the character split on (`,` by default) — e.g. `delimiter: ";"` for
+ * `"a;b;c"` → `["a", "b", "c"]`; pass `delimiter: false` to skip splitting entirely, so a string raw
+ * value resolves to a single-element array holding it verbatim (`"a,b,c"` → `["a,b,c"]`) — for a
+ * field whose value happens to contain the delimiter but was never meant to be split into a list.
+ * `avoidTrim`, when `true`, keeps each unquoted field's surrounding whitespace instead of trimming
+ * it (a quoted field's content is never trimmed either way).
  */
-export type ListFieldOptions = BaseFieldOptions & { default?: string[]; avoidSplit?: boolean };
+export type ListFieldOptions = BaseFieldOptions & { default?: string[]; delimiter?: string | false; avoidTrim?: boolean };
 export type NumberFieldOptions = BaseFieldOptions & { default?: number };
 export type BooleanFieldOptions = BaseFieldOptions & { default?: boolean };
 /**
@@ -332,9 +334,11 @@ export function url<const O extends UrlFieldOptions = {}>(options?: O): Descript
  * sources) passes through as-is (each element coerced with `String(...)`). A raw `number` or
  * `boolean` (e.g. a source that only ever hands back JSON primitives) is wrapped into a single-
  * element array via `String(...)` instead of being rejected — `1` → `["1"]`, `true` → `["true"]`.
- * `options.avoidSplit` skips the comma-splitting altogether: a string raw value resolves to a
- * single-element array holding it verbatim (`"a,b,c"` → `["a,b,c"]`) — for a field whose value
- * happens to contain commas but was never meant to be split into a list.
+ * `options.delimiter` overrides the split character, or (`false`) skips splitting altogether — a
+ * string raw value then resolves to a single-element array holding it verbatim (`"a,b,c"` →
+ * `["a,b,c"]`) — for a field whose value happens to contain the delimiter but was never meant to be
+ * split into a list. `options.avoidTrim` keeps each unquoted field's surrounding whitespace instead
+ * of trimming it.
  */
 export function list<const O extends ListFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, string[]>, Settled<O, string[]>> {
   const opts = (options ?? {}) as O;
@@ -503,35 +507,48 @@ export function choiceParser<T extends string>(options: { options: readonly T[] 
 /**
  * `list()`'s own parser — an array value passes through (each element coerced via `String(...)`);
  * a `number`/`boolean` is wrapped into a single-element array (also via `String(...)`); a string is
- * split via `splitList`, unless `options.avoidSplit` is set, in which case it's wrapped into a
- * single-element array verbatim instead (empty/whitespace-only still collapses to `[]`, same as
- * `splitList` does).
+ * split via `splitList`, honoring `options.delimiter`/`options.avoidTrim` — `delimiter: false` skips
+ * splitting altogether (see `splitList`'s own doc).
  */
 export function listParser(options: ListFieldOptions): (raw: unknown, path: string[]) => string[] {
   return (raw, path) => {
     if (Array.isArray(raw)) return raw.map(String);
     if (typeof raw === "number" || typeof raw === "boolean") return [String(raw)];
     if (typeof raw !== "string") typeMismatch("list", raw, path);
-    if (options.avoidSplit) return raw.trim() === "" ? [] : [raw];
-    return splitList(raw);
+    return splitList(raw, options);
   };
 }
 
 /**
- * Splits a comma-separated string into fields, honoring two escape mechanisms so a literal comma
- * can appear inside a field: a double-quoted span (`"a,b",c` → `["a,b", "c"]`, the quotes
- * themselves are stripped and commas inside them are literal) and a backslash immediately before
- * any character outside quotes (`a\,b,c` → `["a,b", "c"]`, the backslash itself is stripped). Each
- * unquoted field is trimmed of surrounding whitespace; a quoted field is not, so its content is kept
- * verbatim. A raw value that's empty, or only whitespace, splits to `[]` rather than a
- * single-element `[""]` — an empty raw string means "no items", not "one empty item".
+ * Splits a string into fields on `options.delimiter` (`,` by default), honoring two escape
+ * mechanisms so a literal delimiter can appear inside a field: a double-quoted span (`"a,b",c` →
+ * `["a,b", "c"]`, the quotes themselves are stripped and the delimiter inside them is literal) and
+ * a backslash immediately before any character outside quotes (`a\,b,c` → `["a,b", "c"]`, the
+ * backslash itself is stripped). Each field with no quoting anywhere in it is trimmed of
+ * surrounding whitespace unless `options.avoidTrim` is set; a field that used quoting anywhere
+ * (`"a" b` just as much as `"a b"`) is never trimmed, so its content is kept verbatim either way.
+ * `options.delimiter: false` skips splitting entirely — the whole (trimmed, unless
+ * `avoidTrim`) raw string becomes the sole element instead. A raw value that's empty, or only
+ * whitespace, always splits to `[]` rather than a single-element `[""]` — an empty raw string means
+ * "no items", not "one empty item" — regardless of `avoidTrim`/`delimiter`.
  */
-export function splitList(raw: string): string[] {
+export function splitList(raw: string, options: { delimiter?: string | false; avoidTrim?: boolean } = {}): string[] {
   if (raw.trim() === "") return [];
 
+  const trim = options.avoidTrim ? (s: string) => s : (s: string) => s.trim();
+
+  if (options.delimiter === false) return [trim(raw)];
+
+  const delimiter = options.delimiter ?? ",";
   const fields: string[] = [];
   let current = "";
   let inQuotes = false;
+  let currentWasQuoted = false;
+  const pushField = () => {
+    fields.push(currentWasQuoted ? current : trim(current));
+    current = "";
+    currentWasQuoted = false;
+  };
 
   for (let i = 0; i < raw.length; i++) {
     const char = raw[i];
@@ -542,16 +559,16 @@ export function splitList(raw: string): string[] {
     }
     if (char === '"') {
       inQuotes = !inQuotes;
+      currentWasQuoted = true;
       continue;
     }
-    if (char === "," && !inQuotes) {
-      fields.push(current.trim());
-      current = "";
+    if (char === delimiter && !inQuotes) {
+      pushField();
       continue;
     }
     current += char;
   }
-  fields.push(current.trim());
+  pushField();
   return fields;
 }
 
