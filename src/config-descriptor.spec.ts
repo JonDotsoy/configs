@@ -203,6 +203,32 @@ describe("list() field builder", () => {
   test("a comma with nothing around it still yields empty fields — only a wholly empty/whitespace raw string collapses to []", () => {
     expect(runStart(list(), ",", ["values"]).last()).toEqual(["", ""]);
   });
+
+  describe("avoidSplit option", () => {
+    test("skips comma-splitting: a string raw value resolves to a single-element array holding it verbatim", () => {
+      expect(runStart(list({ avoidSplit: true }), "a,b,c", ["values"]).last()).toEqual(["a,b,c"]);
+      expect(runStart(list({ avoidSplit: true }), '"quoted, value"', ["values"]).last()).toEqual(['"quoted, value"']);
+    });
+
+    test("without avoidSplit, the same raw value would have been split", () => {
+      expect(runStart(list(), "a,b,c", ["values"]).last()).toEqual(["a", "b", "c"]);
+    });
+
+    test("still collapses an empty/whitespace-only raw string to [], same as when splitting", () => {
+      expect(runStart(list({ avoidSplit: true }), "", ["values"]).last()).toEqual([]);
+      expect(runStart(list({ avoidSplit: true }), "   ", ["values"]).last()).toEqual([]);
+    });
+
+    test("doesn't affect an already-array raw value, or a number/boolean raw value", () => {
+      expect(runStart(list({ avoidSplit: true }), ["a", "b"], ["values"]).last()).toEqual(["a", "b"]);
+      expect(runStart(list({ avoidSplit: true }), 1, ["values"]).last()).toEqual(["1"]);
+      expect(runStart(list({ avoidSplit: true }), true, ["values"]).last()).toEqual(["true"]);
+    });
+
+    test("is carried through .options, same as every other option", () => {
+      expectDescriptor(list({ avoidSplit: true }), "list", { avoidSplit: true });
+    });
+  });
 });
 
 describe("shape() field builder", () => {

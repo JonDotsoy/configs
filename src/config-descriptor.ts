@@ -36,8 +36,12 @@ export interface Parseable<T> {
 export type StringFieldOptions = BaseFieldOptions & { pattern?: RegExp; default?: string };
 /**
  * `list()`'s own options — `default` is a plain `string[]`, same rule as every other field type.
+ * `avoidSplit`, when `true`, skips comma-splitting entirely: a string raw value resolves to a
+ * single-element array holding it verbatim (`"a,b,c"` → `["a,b,c"]`) instead of being split on its
+ * commas — for a field whose value happens to contain commas but was never meant to be a list of
+ * comma-separated items.
  */
-export type ListFieldOptions = BaseFieldOptions & { default?: string[] };
+export type ListFieldOptions = BaseFieldOptions & { default?: string[]; avoidSplit?: boolean };
 export type NumberFieldOptions = BaseFieldOptions & { default?: number };
 export type BooleanFieldOptions = BaseFieldOptions & { default?: boolean };
 /**
@@ -328,6 +332,9 @@ export function url<const O extends UrlFieldOptions = {}>(options?: O): Descript
  * sources) passes through as-is (each element coerced with `String(...)`). A raw `number` or
  * `boolean` (e.g. a source that only ever hands back JSON primitives) is wrapped into a single-
  * element array via `String(...)` instead of being rejected — `1` → `["1"]`, `true` → `["true"]`.
+ * `options.avoidSplit` skips the comma-splitting altogether: a string raw value resolves to a
+ * single-element array holding it verbatim (`"a,b,c"` → `["a,b,c"]`) — for a field whose value
+ * happens to contain commas but was never meant to be split into a list.
  */
 export function list<const O extends ListFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, string[]>, Settled<O, string[]>> {
   const opts = (options ?? {}) as O;
@@ -496,13 +503,16 @@ export function choiceParser<T extends string>(options: { options: readonly T[] 
 /**
  * `list()`'s own parser — an array value passes through (each element coerced via `String(...)`);
  * a `number`/`boolean` is wrapped into a single-element array (also via `String(...)`); a string is
- * split via `splitList`.
+ * split via `splitList`, unless `options.avoidSplit` is set, in which case it's wrapped into a
+ * single-element array verbatim instead (empty/whitespace-only still collapses to `[]`, same as
+ * `splitList` does).
  */
-export function listParser(_options: ListFieldOptions): (raw: unknown, path: string[]) => string[] {
+export function listParser(options: ListFieldOptions): (raw: unknown, path: string[]) => string[] {
   return (raw, path) => {
     if (Array.isArray(raw)) return raw.map(String);
     if (typeof raw === "number" || typeof raw === "boolean") return [String(raw)];
     if (typeof raw !== "string") typeMismatch("list", raw, path);
+    if (options.avoidSplit) return raw.trim() === "" ? [] : [raw];
     return splitList(raw);
   };
 }

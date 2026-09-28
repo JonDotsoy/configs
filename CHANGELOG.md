@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   string splits to `[]` rather than a single-element `[""]`; note `required: true` only guards
   against a missing value (`null`) — `[]` is a real resolved value, so a required list field fed an
   empty string resolves to `[]` instead of rejecting.
+- `list()` gained an `avoidSplit` option: when `true`, a string raw value resolves to a
+  single-element array holding it verbatim (`"a,b,c"` → `["a,b,c"]`) instead of being split on its
+  commas — for a field whose value happens to contain commas but was never meant to be a
+  comma-separated list.
 - The object a `create()` node's `await`/`then()` resolves to (`ConfigsNodeReady<T>`) now also
   exposes `close()`, same as the pending node returned by `create()` itself — previously `close()`
   was only reachable before awaiting the node.

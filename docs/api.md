@@ -202,6 +202,7 @@ Foo\,tar,biz                     -> ["Foo,tar", "biz"]
 | Option | Type | Description |
 | --- | --- | --- |
 | `default` | `string[]` | Fallback used when no source has a value for this field. Narrows the field's type to exclude `null`. |
+| `avoidSplit` | `boolean` | Skips the comma-splitting entirely: a string raw value resolves to a single-element array holding it verbatim (`"a,b,c"` → `["a,b,c"]`) — for a field whose value happens to contain commas but was never meant to be split into a list. |
 
 An already-`string[]` raw value passes through as-is (each element coerced
 via `String(...)`), and a raw `number`/`boolean` is wrapped into a
