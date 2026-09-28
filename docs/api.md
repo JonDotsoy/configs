@@ -208,6 +208,13 @@ via `String(...)`), and a raw `number`/`boolean` is wrapped into a
 single-element array (`1` → `["1"]`, `true` → `["true"]`) instead of being
 rejected. Rejects anything else (e.g. a plain object).
 
+An empty (or whitespace-only) raw string splits to `[]`, not a single-element
+`[""]` — an empty source value means "no items". Note that `required: true`
+only guards against a `null` field (no source ever published a value here):
+`[]` is a real resolved value, so a `required` list field fed an empty string
+resolves to `[]` rather than rejecting; use `pattern`-level validation
+(via a custom `Descriptor`) if an empty list must itself be rejected.
+
 ### `shape(options?)`
 
 A free-form object field, optionally validated against a schema.

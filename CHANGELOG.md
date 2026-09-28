@@ -13,7 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in double quotes may contain literal commas (`"a,b",c` → `["a,b", "c"]`), and a backslash escapes
   a single character outside quotes (`a\,b,c` → `["a,b", "c"]`). An already-`string[]` raw value
   passes through as-is, and a raw `number`/`boolean` is wrapped into a single-element array
-  (`1` → `["1"]`, `true` → `["true"]`) instead of being rejected.
+  (`1` → `["1"]`, `true` → `["true"]`) instead of being rejected. An empty (or whitespace-only) raw
+  string splits to `[]` rather than a single-element `[""]`; note `required: true` only guards
+  against a missing value (`null`) — `[]` is a real resolved value, so a required list field fed an
+  empty string resolves to `[]` instead of rejecting.
 - The object a `create()` node's `await`/`then()` resolves to (`ConfigsNodeReady<T>`) now also
   exposes `close()`, same as the pending node returned by `create()` itself — previously `close()`
   was only reachable before awaiting the node.

@@ -513,9 +513,12 @@ export function listParser(_options: ListFieldOptions): (raw: unknown, path: str
  * themselves are stripped and commas inside them are literal) and a backslash immediately before
  * any character outside quotes (`a\,b,c` → `["a,b", "c"]`, the backslash itself is stripped). Each
  * unquoted field is trimmed of surrounding whitespace; a quoted field is not, so its content is kept
- * verbatim.
+ * verbatim. A raw value that's empty, or only whitespace, splits to `[]` rather than a
+ * single-element `[""]` — an empty raw string means "no items", not "one empty item".
  */
 export function splitList(raw: string): string[] {
+  if (raw.trim() === "") return [];
+
   const fields: string[] = [];
   let current = "";
   let inQuotes = false;

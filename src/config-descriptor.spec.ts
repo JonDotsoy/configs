@@ -190,6 +190,19 @@ describe("list() field builder", () => {
   test("required: true alone does not change parsing — a missing value still resolves to null at this point; create()'s own requiredChecks sweep is what escalates it (see config-node.spec.ts)", () => {
     expect(runStart(list({ required: true }), undefined).last()).toBeNull();
   });
+
+  test("an empty (or whitespace-only) raw string splits to [], not a single-element [\"\"]", () => {
+    expect(runStart(list(), "", ["values"]).last()).toEqual([]);
+    expect(runStart(list(), "   ", ["values"]).last()).toEqual([]);
+  });
+
+  test("required: true does not reject an empty raw string — [] is a real resolved value, not the null the requiredChecks sweep looks for; use pattern-level validation if an empty list must be rejected", () => {
+    expect(runStart(list({ required: true }), "", ["values"]).last()).toEqual([]);
+  });
+
+  test("a comma with nothing around it still yields empty fields — only a wholly empty/whitespace raw string collapses to []", () => {
+    expect(runStart(list(), ",", ["values"]).last()).toEqual(["", ""]);
+  });
 });
 
 describe("shape() field builder", () => {
