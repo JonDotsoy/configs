@@ -92,6 +92,14 @@ describe("httpFetch", () => {
     expect(error.message).not.toContain("s3cr3t-value");
   });
 
+  test("a rejected status's error message masks a Basic-auth password embedded in the URL", async () => {
+    globalThis.fetch = (async () => jsonResponse(JSON.stringify({ message: "boom" }), { status: 500 })) as unknown as typeof fetch;
+
+    const error = await httpFetch({ url: "https://user:s3cr3t-password@example.com/config" }).catch((err) => err);
+    expect(error.message).toContain("user:****@example.com");
+    expect(error.message).not.toContain("s3cr3t-password");
+  });
+
   test("a custom bodyParser is used instead of the default JSON parsing", async () => {
     globalThis.fetch = (async () => jsonResponse(JSON.stringify({ port: 3000 }))) as unknown as typeof fetch;
 

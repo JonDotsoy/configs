@@ -70,4 +70,25 @@ describe("maskSensitiveUrl", () => {
   test("returns an unparseable url as-is instead of throwing", () => {
     expect(maskSensitiveUrl("not a url")).toBe("not a url");
   });
+
+  test("masks a Basic-auth password embedded in the URL's own userinfo", () => {
+    expect(maskSensitiveUrl("https://user:pass@sample.com/api/resource")).toBe(
+      "https://user:****@sample.com/api/resource",
+    );
+  });
+
+  test("leaves the username untouched when masking a Basic-auth password", () => {
+    const masked = maskSensitiveUrl("https://user:pass@sample.com/api/resource");
+    expect(new URL(masked).username).toBe("user");
+  });
+
+  test("masks a userinfo password alongside a sensitive query parameter", () => {
+    expect(maskSensitiveUrl("https://user:pass@sample.com/api?token=abcd1234")).toBe(
+      "https://user:****@sample.com/api?token=****",
+    );
+  });
+
+  test("a URL with no userinfo is untouched by the password-masking step", () => {
+    expect(maskSensitiveUrl("https://sample.com/api/resource")).toBe("https://sample.com/api/resource");
+  });
 });

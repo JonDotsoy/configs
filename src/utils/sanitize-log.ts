@@ -64,12 +64,18 @@ export function maskSensitiveArgs(args: readonly string[]): string[] {
 }
 
 /**
- * Masks sensitive query parameter values out of `url` before it's logged (`fetchSource`'s own
- * `console.error` calls) — every parameter whose name matches `SENSITIVE_WORDS` (`./sensitive.js`,
- * case-insensitive, e.g. `token`, `api_key`) has its value replaced with `"****"`; every other
- * parameter, and the rest of the URL, passes through unchanged. `url` that fails to parse as a
- * `URL` (a relative path with no base, say) is returned as `String(url)`, unmodified — there's no
- * query string to inspect.
+ * Masks sensitive parts of `url` before it's logged (`fetchSource`'s own `console.error` calls):
+ *
+ * - Every query parameter whose name matches `SENSITIVE_WORDS` (`./sensitive.js`, case-insensitive,
+ *   e.g. `token`, `api_key`) has its value replaced with `"****"`.
+ * - A Basic-auth password embedded in the URL's own userinfo (`https://user:pass@host/...`) is
+ *   always masked, regardless of name — there's no parameter name to check it against, and a
+ *   password sitting right in the URL is exactly the kind of thing this function exists to hide.
+ *   The username is left as-is: it's routing/identity information, not the secret itself.
+ *
+ * Every other part of the URL passes through unchanged. `url` that fails to parse as a `URL` (a
+ * relative path with no base, say) is returned as `String(url)`, unmodified — there's nothing here
+ * to inspect.
  */
 export function maskSensitiveUrl(url: string | URL): string {
   let parsed: URL;
@@ -78,6 +84,8 @@ export function maskSensitiveUrl(url: string | URL): string {
   } catch {
     return String(url);
   }
+
+  if (parsed.password) parsed.password = MASK;
 
   const keys = new Set(parsed.searchParams.keys());
   for (const key of keys) {

@@ -35,8 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--key=****`) and a sensitive header-style argument's value, keeping any scheme prefix
   (`"Authorization: Bearer xxx"` → `"Authorization: Bearer ****"`, `"token: xxx"` → `"token:
   ****"`); `fetchSource` (and `httpFetch`'s own rejected-status error) masks a sensitive query
-  parameter's value in a logged URL. Neither affects `onRun`/`onFetched`, which are still handed the
-  real, unmasked `args`/`url` — the caller already has whatever secret they put there.
+  parameter's value, and a Basic-auth password embedded in the URL's own userinfo
+  (`https://user:pass@host/...` → `https://user:****@host/...`), in a logged URL. Neither affects
+  `onRun`/`onFetched`, which are still handed the real, unmasked `args`/`url` — the caller already
+  has whatever secret they put there.
 
 ## [1.0.2] - 2026-09-28
 
