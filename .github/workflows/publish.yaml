@@ -132,7 +132,7 @@ jobs:
         if: steps.check-release.outputs.exists == 'false'
         run: |
           npm stage publish ./dist --access public --tag ${{ steps.dist-tag.outputs.tag }} --provenance --json | tee stage-result.json
-          stage_id="$(node -p "(() => { const r = require('./stage-result.json'); return r.id ?? r.stageId ?? r.stage_id ?? ''; })()")"
+          stage_id="$(node -p "(() => { const r = require('./stage-result.json'); const entry = Object.values(r)[0] ?? {}; return entry.stageId ?? entry.id ?? ''; })()")"
           staged_url="https://www.npmjs.com/settings/${NPM_OWNER}/staged-packages/?page=0&perPage=10&filterPackage=${{ steps.pkg.outputs.name }}"
           echo "stage_id=$stage_id" >> "$GITHUB_OUTPUT"
           echo "staged_url=$staged_url" >> "$GITHUB_OUTPUT"
