@@ -100,6 +100,12 @@ jobs:
       - if: steps.check-release.outputs.exists == 'false'
         run: bun test
 
+      # `npm stage publish` needs npm 11.15.0+; the version bundled with
+      # actions/setup-node's `node-version: latest` isn't guaranteed to be
+      # that recent yet.
+      - if: steps.check-release.outputs.exists == 'false'
+        run: npm install -g npm@latest
+
       - name: Determine npm dist-tag
         id: dist-tag
         if: steps.check-release.outputs.exists == 'false'
@@ -116,15 +122,28 @@ jobs:
             fi
           fi
 
-      - name: Stage npm publish (dry run)
-        id: npm-publish-stage
+      - name: Dry-run the staged publish
+        id: npm-publish-dry-run
         if: steps.check-release.outputs.exists == 'false'
-        run: npm publish ./dist --access public --tag ${{ steps.dist-tag.outputs.tag }} --dry-run
+        run: npm stage publish ./dist --access public --tag ${{ steps.dist-tag.outputs.tag }} --provenance --dry-run
 
-      - name: Publish to npm (signed provenance)
+      - name: Stage npm publish (signed provenance)
         id: npm-publish
         if: steps.check-release.outputs.exists == 'false'
-        run: npm publish ./dist --access public --tag ${{ steps.dist-tag.outputs.tag }} --provenance
+        run: |
+          npm stage publish ./dist --access public --tag ${{ steps.dist-tag.outputs.tag }} --provenance --json | tee stage-result.json
+          stage_id="$(node -p "(() => { const r = require('./stage-result.json'); return r.id ?? r.stageId ?? r.stage_id ?? ''; })()")"
+          echo "stage_id=$stage_id" >> "$GITHUB_OUTPUT"
+          {
+            echo "### npm package staged, awaiting approval"
+            echo ""
+            echo "\`${{ steps.pkg.outputs.name }}@${{ steps.pkg.outputs.version }}\` is staged under tag \`${{ steps.dist-tag.outputs.tag }}\` but not yet live."
+            echo "A maintainer with publish access must approve it (2FA required) to release it:"
+            echo ""
+            echo '```'
+            echo "npm stage approve $stage_id"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Extract changelog notes for this version
         id: changelog
@@ -151,8 +170,8 @@ jobs:
           version="${{ steps.pkg.outputs.version }}"
           pkg_name="${{ steps.pkg.outputs.name }}"
           notes_file="$(mktemp)"
-          printf '%s\n\n[View %s@%s on npm](https://www.npmjs.com/package/%s/v/%s)\n' \
-            "$NOTES" "$pkg_name" "$version" "$pkg_name" "$version" > "$notes_file"
+          printf '%s\n\n%s@%s is staged (id `%s`) and pending a maintainer'"'"'s approval (`npm stage approve %s`) before it goes live at https://www.npmjs.com/package/%s/v/%s\n' \
+            "$NOTES" "$pkg_name" "$version" "${{ steps.npm-publish.outputs.stage_id }}" "${{ steps.npm-publish.outputs.stage_id }}" "$pkg_name" "$version" > "$notes_file"
           release_url="$(gh release create "v$version" \
             --repo "${{ github.repository }}" \
             --title "v$version" \
