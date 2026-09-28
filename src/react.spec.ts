@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
-import { create } from "./configs";
-import { Source } from "./sources/source";
+import { create, Source } from "./configs";
 import { boolean } from "./config-descriptor";
 import { Store } from "./utils/store";
 import { useConfig } from "./react";

@@ -23,6 +23,7 @@ export type { DataType, DataTypeName } from "./utils/data-types.js";
 export type { EnvSourceOptions, EnvKeyMapper } from "./sources/env.js";
 
 export { envSource, mapKey } from "./sources/env.js";
+export { Source } from "./sources/source.js";
 export { boolean, choice, Descriptor, list, numeric, shape, string, url, isConfigDescriptor } from "./config-descriptor.js";
 export { isConfigsNode } from "./config-node.js";
 export { Store } from "./utils/store.js";

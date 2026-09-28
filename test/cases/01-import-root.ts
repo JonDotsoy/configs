@@ -1,11 +1,12 @@
 // Case: importing the root entry point (`hotconfigs`) exposes every
 // documented top-level export, under every supported engine. `envSource` is
-// the only source re-exported from root — every other source (`fetchSource`,
-// `sseSource`, `fileSource`, `literalSource`, `pullSource`, the `Source` base
-// class) lives only under its own `hotconfigs/sources/*` subpath (see case
-// 02), so importing the root entry point never pulls in code a consumer
-// didn't ask for.
-import { create, load, envSource, mapKey, Store, ConfigError } from "hotconfigs";
+// the only source *factory* re-exported from root — every other source
+// factory (`fetchSource`, `sseSource`, `fileSource`, `literalSource`,
+// `pullSource`) lives only under its own `hotconfigs/sources/*` subpath (see
+// case 02), so importing the root entry point never pulls in code a consumer
+// didn't ask for. The `Source` base class itself (for hand-rolling a custom
+// source) stays exported from root alongside it.
+import { create, load, envSource, mapKey, Source, Store, ConfigError } from "hotconfigs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -15,6 +16,7 @@ function assert(cond: unknown, message: string): void {
 assert(typeof create === "function", "create is exported from root");
 assert(typeof load === "function", "load is exported from root");
 assert(typeof envSource === "function", "envSource is exported from root");
+assert(typeof Source === "function", "Source is exported from root");
 assert(typeof Store === "function", "Store is exported from root");
 assert(typeof ConfigError === "function", "ConfigError is exported from root");
 assert(typeof mapKey.snakeCase === "function", "mapKey.snakeCase is exported from root");

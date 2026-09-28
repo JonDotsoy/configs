@@ -7,7 +7,6 @@ import { fetchSource } from "hotconfigs/sources/fetch";
 import { sseSource } from "hotconfigs/sources/sse";
 import { literalSource } from "hotconfigs/sources/literal";
 import { pullSource } from "hotconfigs/sources/pull";
-import { Source } from "hotconfigs/sources/source";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -19,6 +18,5 @@ assert(typeof fetchSource === "function", "fetchSource exported from sources/fet
 assert(typeof sseSource === "function", "sseSource exported from sources/sse");
 assert(typeof literalSource === "function", "literalSource exported from sources/literal");
 assert(typeof pullSource === "function", "pullSource exported from sources/pull");
-assert(typeof Source === "function", "Source exported from sources/source");
 
 console.log("ALL_CHECKS_PASSED");

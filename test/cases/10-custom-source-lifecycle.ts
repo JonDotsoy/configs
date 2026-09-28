@@ -1,6 +1,6 @@
 // Case: a hand-rolled `Source` — `start(control)` pushing more than one
 // snapshot, and `close()` releasing what `start` set up.
-import { Source } from "hotconfigs/sources/source";
+import { Source } from "hotconfigs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

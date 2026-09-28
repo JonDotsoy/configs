@@ -37,7 +37,6 @@
   "_buildEntripoint": {
     ".": "./src/configs.ts",
     "./sources/env": "./src/sources/env.ts",
-    "./sources/source": "./src/sources/source.ts",
     "./sources/fetch": "./src/sources/fetch.ts",
     "./sources/sse": "./src/sources/sse.ts",
     "./sources/file": "./src/sources/file.ts",

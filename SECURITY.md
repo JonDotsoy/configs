@@ -15,7 +15,7 @@ actually intentional.
 
 | Subpath                    | Capability                                 | Notes |
 | --------------------------- | ------------------------------------------- | ----- |
-| `hotconfigs` (root)          | none                                        | `create()`, `load()`, descriptors (`string()`, `numeric()`, ...), `Store`, `envSource`, `ConfigError`. The only `Source` re-exported from root is `envSource`; every other source lives only under its own subpath below. |
+| `hotconfigs` (root)          | none                                        | `create()`, `load()`, descriptors (`string()`, `numeric()`, ...), `Store`, `Source`, `envSource`, `ConfigError`. The only source *factory* re-exported from root is `envSource`; every other source factory lives only under its own subpath below. |
 | `hotconfigs/sources/fetch`   | **Network** (outbound HTTP via `fetch()`)    | `fetchSource()` polls/fetches a URL. |
 | `hotconfigs/sources/sse`     | **Network** (outbound HTTP via `EventSource`/SSE) | `sseSource()` opens a long-lived Server-Sent Events connection. |
 | `hotconfigs/sources/file`    | **File system** (`node:fs`, `fs.watch`)      | `fileSource()` reads and watches a local `.json`/`.env` file. |
@@ -23,16 +23,17 @@ actually intentional.
 | `hotconfigs/sources/env`     | none beyond `process.env`/a passed-in object | `envSource()` reads environment variables already available to the process. |
 | `hotconfigs/sources/literal` | none                                         | `literalSource()` publishes a static, in-memory value. |
 | `hotconfigs/sources/pull`    | whatever the caller's `pull` function does   | `pullSource()` is a thin polling wrapper around a caller-supplied async function (e.g. a secrets-manager SDK call); the capability is the caller's, not the library's. |
-| `hotconfigs/sources/source`  | none                                         | `Source`, the base class every built-in source is built on; for writing a custom source. |
 | `hotconfigs/node`            | **File system** (`node:fs`)                  | `file()`/`FileBlob` read a file's contents from disk. |
 | `hotconfigs/react`           | none                                         | React bindings over the reactive `Store` primitive. |
 | `hotconfigs/utils/metrics`   | none                                         | In-memory counters/histograms only. |
 
 **Why the root entry point has no capability beyond the above:** `hotconfigs`
-re-exports only `envSource` among all its sources; every other source —
-including ones with a real external-access capability, like network
-(`fetchSource`, `sseSource`), the file system (`fileSource`), and subprocess
-execution (`shellSource`) — is re-exported only from its own
+re-exports only `envSource` among all its source factories (the `Source`
+base class itself stays exported from root too, but it has no capability on
+its own — it's just the building block for a custom source); every other
+source factory — including ones with a real external-access capability, like
+network (`fetchSource`, `sseSource`), the file system (`fileSource`), and
+subprocess execution (`shellSource`) — is re-exported only from its own
 `hotconfigs/sources/*` subpath, not from the root. Importing `hotconfigs`
 therefore never pulls in `fetch()`/`EventSource`/`node:fs`/
 `node:child_process` usage unless the consumer also imports one of those
