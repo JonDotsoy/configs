@@ -25,6 +25,7 @@
     "paths": {
       "hotconfigs": ["./dist/configs.d.ts"],
       "hotconfigs/sources/env": ["./dist/sources/env.d.ts"],
+      "hotconfigs/sources/source": ["./dist/sources/source.d.ts"],
       "hotconfigs/sources/fetch": ["./dist/sources/fetch.d.ts"],
       "hotconfigs/sources/sse": ["./dist/sources/sse.d.ts"],
       "hotconfigs/sources/file": ["./dist/sources/file.d.ts"],

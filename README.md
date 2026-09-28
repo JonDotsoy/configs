@@ -605,7 +605,7 @@ object with `start(control)` and an optional `close()`, mirroring `ReadableStrea
 `close()` — is where you release whatever `start` set up, like a timer or an in-flight request.
 
 ```ts
-import { Source } from "hotconfigs";
+import { Source } from "hotconfigs/sources/source";
 
 function pollingSource(url: string, intervalMs: number): Source<{ port: number }> {
   let timer: ReturnType<typeof setInterval>;
@@ -630,7 +630,7 @@ hands `control.set` one SSE message at a time) can publish the merged result wit
 own accumulator variable around:
 
 ```ts
-import { Source } from "hotconfigs";
+import { Source } from "hotconfigs/sources/source";
 
 const source = new Source<{ port?: number; host?: string }>({
   start(control) {
@@ -1221,13 +1221,17 @@ Further guides live under [`docs/`](./docs):
 `hotconfigs` is a pluggable configuration library, and some of its `Source`s
 read from outside the process by design — that's the point of `fetchSource`,
 `sseSource`, `fileSource`, and `shellSource`. The root entry point
-(`hotconfigs`) itself carries none of that: only `envSource`, `fileSource`,
-`literalSource`, and `pullSource` are re-exported from it. `fetchSource`
-(network, via `fetch()`) and `sseSource` (network, via `EventSource`) are
-re-exported only from their own `hotconfigs/sources/fetch`/
-`hotconfigs/sources/sse` subpaths, and `shellSource` (spawns a subprocess via
-`node:child_process`) only from `hotconfigs/sources/shell`. So importing
-`hotconfigs` never pulls in network- or shell-capable code unless you also
+(`hotconfigs`) itself carries none of that: only `envSource` is re-exported
+from it. Every other `Source` — `fetchSource` (network, via `fetch()`),
+`sseSource` (network, via `EventSource`), `fileSource` (filesystem, via
+`node:fs`), `pullSource`, `literalSource`, the `Source` base class itself,
+and `shellSource` (spawns a subprocess via `node:child_process`) — is
+re-exported only from its own `hotconfigs/sources/*` subpath
+(`hotconfigs/sources/fetch`, `hotconfigs/sources/sse`,
+`hotconfigs/sources/file`, `hotconfigs/sources/pull`,
+`hotconfigs/sources/literal`, `hotconfigs/sources/source`,
+`hotconfigs/sources/shell`). So importing `hotconfigs` never pulls in any
+source's code — network-, filesystem-, or shell-capable — unless you also
 import one of those subpaths directly.
 
 See [`SECURITY.md`](./SECURITY.md) for the full per-subpath capability table
