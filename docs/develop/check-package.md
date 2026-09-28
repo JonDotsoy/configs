@@ -89,7 +89,7 @@ tipo de retorno de `.get()` se infiera correctamente (`number` porque hay `defau
 import { create, envSource, mapKey, numeric, string } from "hotconfigs";
 import { envSource as envSourceFromSubpath } from "hotconfigs/sources/env";
 
-const cfg = await create(
+const configs = await create(
   {
     server: {
       port: numeric({ default: 3000 }),
@@ -99,8 +99,8 @@ const cfg = await create(
   { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
 );
 
-const port: number = cfg.server.port.get();
-const host: string | null = cfg.server.host.get();
+const port: number = configs.server.port.get();
+const host: string | null = configs.server.host.get();
 console.log(port, host, typeof envSourceFromSubpath);
 ```
 
@@ -137,12 +137,12 @@ assert(typeof fetchSource === "function", "fetchSource exported from /sources/fe
 assert(typeof sseSource === "function", "sseSource exported from /sources/sse");
 
 const source = envSource({ mapKey: mapKey.snakeCase() });
-const cfg = await create(
+const configs = await create(
   { server: { port: numeric({ summary: "HTTP port", default: 3000 }) } },
   { sources: [source] },
 );
 
-assert(cfg.server.port.get() === 4000, "cfg.server.port.get() reads SERVER_PORT=4000 via envSource");
+assert(configs.server.port.get() === 4000, "configs.server.port.get() reads SERVER_PORT=4000 via envSource");
 
 await source.close();
 console.log("ALL_CHECKS_PASSED");
@@ -270,11 +270,11 @@ toque Node) — `entry.ts`:
 ```ts
 import { create, literalSource, numeric } from "hotconfigs";
 
-const cfg = await create(
+const configs = await create(
   { server: { port: numeric({ default: 3000 }) } },
   { sources: [literalSource({ server: { port: 9090 } })] },
 );
-console.log(cfg.server.port.get());
+console.log(configs.server.port.get());
 ```
 
 ```sh
@@ -298,7 +298,7 @@ porque `node:fs` está en el mismo archivo bundleado, tree-shaking aparte.
 ```ts
 import { create, fileSource, numeric } from "hotconfigs";
 
-const cfg = await create(
+const configs = await create(
   { server: { port: numeric({ default: 3000 }) } },
   { sources: [fileSource({ path: "./config.json" })] },
 );
@@ -323,11 +323,11 @@ en el navegador. Probado importando desde la raíz y desde el subpath dedicado:
 // (a) desde la raíz
 import { create, fetchSource, numeric } from "hotconfigs";
 
-const cfg = await create(
+const configs = await create(
   { server: { port: numeric({ default: 3000 }) } },
   { sources: [fetchSource({ url: "https://example.com/config.json" })] },
 );
-console.log(cfg.server.port.get());
+console.log(configs.server.port.get());
 ```
 
 ```ts

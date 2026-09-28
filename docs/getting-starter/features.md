@@ -61,12 +61,12 @@ npm install hotconfigs
 import { create, numeric } from "hotconfigs";
 import { envSource, mapKey } from "hotconfigs/sources/env";
 
-const cfg = await create(
+const configs = await create(
   { server: { port: numeric({ default: 3000 }) } },
   { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
 );
 
-console.log(cfg.server.port.get());
+console.log(configs.server.port.get());
 ```
 
 The types published in `dist/**/*.d.ts` are meant for `nodenext`
@@ -94,12 +94,12 @@ bun add hotconfigs
 import { create, numeric } from "hotconfigs";
 import { envSource, mapKey } from "hotconfigs/sources/env";
 
-const cfg = await create(
+const configs = await create(
   { server: { port: numeric({ default: 3000 }) } },
   { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
 );
 
-console.log(cfg.server.port.get());
+console.log(configs.server.port.get());
 ```
 
 With a typical Bun project `tsconfig.json` (`moduleResolution: "bundler"`,

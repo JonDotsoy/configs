@@ -11,7 +11,7 @@ the moment a source pushes a new value.
 
 - **Reactive configs** — every field is a live `Store`; subscribe to it and get notified whenever an upstream source changes.
 - **Lightweight** — no dependencies, just a thin layer over plain objects and stores.
-- **Typed with TS check** — schemas are statically checked, so `cfg.port.get()` is inferred as `number | null` (or `number` when a `default` is set), not `any`.
+- **Typed with TS check** — schemas are statically checked, so `configs.port.get()` is inferred as `number | null` (or `number` when a `default` is set), not `any`.
 
 ```ts
 import { create, choice, numeric, string, boolean } from "hotconfigs";
@@ -30,7 +30,7 @@ import { file } from "hotconfigs/node";
 //   ui: { menuOrientation: "vertical", sidebarCollapsed: true } } (polled every 30s)
 // secretsManager.getSecretValue("prod/db") → { host, port, user, password } — your AWS/GCP/Vault
 // SDK client of choice, re-pulled every 5m so a rotated secret reaches the config tree
-const cfg = await create(
+const configs = await create(
   {
     logLevel: choice({
       summary: "app log verbosity",
@@ -77,29 +77,29 @@ const cfg = await create(
   { sources: [envSource(), fileSource(".env")] },
 );
 
-console.log(`listening on ${cfg.server.host.get()}:${cfg.server.port.get()}`);
+console.log(`listening on ${configs.server.host.get()}:${configs.server.port.get()}`);
 // listening on localhost:3000
 
-console.log(`log level: ${cfg.logLevel.get()}`);
+console.log(`log level: ${configs.logLevel.get()}`);
 // log level: info
 
 // React to changes
-cfg.features.experimental.home.promotionalDialog.subscribe((enabled) => {
+configs.features.experimental.home.promotionalDialog.subscribe((enabled) => {
   console.log(`promotional dialog ${enabled ? "enabled" : "disabled"}`);
 });
 
-cfg.features.ui.menuOrientation.subscribe((orientation) => {
-  renderMenu({ orientation, collapsed: cfg.features.ui.sidebarCollapsed.get() });
+configs.features.ui.menuOrientation.subscribe((orientation) => {
+  renderMenu({ orientation, collapsed: configs.features.ui.sidebarCollapsed.get() });
 });
 
 // secretsManager rotates prod/db periodically; each pull's fresh password
 // reopens the connection pool instead of silently swapping credentials
 // underneath one already open.
-cfg.database.password.subscribe((password) => {
-  reconnectPool({ host: cfg.database.host.get(), port: cfg.database.port.get(), user: cfg.database.user.get(), password });
+configs.database.password.subscribe((password) => {
+  reconnectPool({ host: configs.database.host.get(), port: configs.database.port.get(), user: configs.database.user.get(), password });
 });
 
-console.log(await cfg.server.tls.cert.get()?.text());
+console.log(await configs.server.tls.cert.get()?.text());
 // -----BEGIN CERTIFICATE-----...
 ```
 
@@ -147,7 +147,7 @@ import { create, numeric, string } from "hotconfigs";
 import { envSource, mapKey } from "hotconfigs/sources/env";
 
 // SERVER_PORT=3000 SERVER_HOST=localhost
-const cfg = await create(
+const configs = await create(
   {
     server: {
       port: numeric({ summary: "HTTP port", default: 3000 }),
@@ -157,7 +157,7 @@ const cfg = await create(
   { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
 );
 
-cfg.server.port.get();
+configs.server.port.get();
 // 3000
 ```
 
@@ -174,7 +174,7 @@ const database = create(
   { sources: [envSource({ prefix: "DATABASE_" })] },
 );
 
-const cfg = await create(
+const configs = await create(
   {
     database,
     features: { promoService: numeric({ default: 0 }) },
@@ -183,7 +183,7 @@ const cfg = await create(
 );
 
 // database's own DATABASE_HOST/DATABASE_PORT env vars — never features.js's response body
-cfg.database.host.get();
+configs.database.host.get();
 ```
 
 `await create(...)` on the outer call also waits for every embedded `create()`'s own sources to
@@ -211,7 +211,7 @@ specific one:
 import { create, boolean, choice, numeric, shape, string, url } from "hotconfigs";
 import { z } from "zod";
 
-const cfg = await create(
+const configs = await create(
   {
     port: numeric({ summary: "HTTP port", default: 3000 }),
     host: string({ summary: "bind host", pattern: /^[\w.-]+$/, default: "localhost" }),
@@ -223,11 +223,11 @@ const cfg = await create(
   { sources: [/* ... */] },
 );
 
-// cfg.databaseUrl.get() is typed as URL | null — a valid URL string is parsed into an instance,
+// configs.databaseUrl.get() is typed as URL | null — a valid URL string is parsed into an instance,
 // an invalid one throws a ConfigError.
-// cfg.logLevel.get() is typed as "debug" | "info" | "warn" | "error" — narrowed by the `default`,
+// configs.logLevel.get() is typed as "debug" | "info" | "warn" | "error" — narrowed by the `default`,
 // and rejecting (via ConfigError) any value outside `options`.
-// cfg.jwt.get() is typed as { issuer: string; ttl: number } | null — inferred from `schema.parse`'s
+// configs.jwt.get() is typed as { issuer: string; ttl: number } | null — inferred from `schema.parse`'s
 // return type.
 ```
 
@@ -243,7 +243,7 @@ that simply doesn't have it. Set `required: true` to escalate that failure into 
 `ConfigError` instead:
 
 ```ts
-const cfg = await create(
+const configs = await create(
   { jwt: shape({ schema: z.object({ issuer: z.string() }), required: true }) },
   { sources: [/* a source publishing an invalid jwt throws instead of logging */] },
 );
@@ -253,8 +253,8 @@ const cfg = await create(
 as-is, rejecting (per the same log-or-throw rule above) anything that isn't an object:
 
 ```ts
-const cfg = await create({ metadata: shape() }, { sources: [/* ... */] });
-// cfg.metadata.get() is typed as unknown
+const configs = await create({ metadata: shape() }, { sources: [/* ... */] });
+// configs.metadata.get() is typed as unknown
 ```
 
 #### Writing a custom `Descriptor`
@@ -330,12 +330,12 @@ function port<const O extends { key?: string | string[]; default?: number } = {}
 }
 
 // PORT=3000
-const cfg = await create({ port: port({ key: "PORT", default: 8080 }) }, { sources: [envSource()] });
+const configs = await create({ port: port({ key: "PORT", default: 8080 }) }, { sources: [envSource()] });
 
-cfg.port.get();
+configs.port.get();
 // 3000
-// ^? Descriptor<WithDefault<O, number>, number> resolves cfg.port to Store<number> here (a
-// default was given) — omit it and cfg.port.get() would be typed number | null instead.
+// ^? Descriptor<WithDefault<O, number>, number> resolves configs.port to Store<number> here (a
+// default was given) — omit it and configs.port.get() would be typed number | null instead.
 ```
 
 `WithDefault<O, T>` (also exported from the package root) is the same helper every built-in
@@ -368,12 +368,12 @@ function csv(options: { key?: string | string[]; default?: string[] } = {}) {
 }
 
 // ALLOWED_ORIGINS=a.com, b.com, c.com
-const cfg = await create(
+const configs = await create(
   { allowedOrigins: csv({ key: "ALLOWED_ORIGINS", default: [] }) },
   { sources: [envSource()] },
 );
 
-cfg.allowedOrigins.get();
+configs.allowedOrigins.get();
 // ["a.com", "b.com", "c.com"]
 ```
 
@@ -401,15 +401,15 @@ function pollingDescriptor() {
 
 If `start` opens something that needs releasing (a connection, a timer, ...), give the constructor
 a `close(): Promise<void>` hook too, same as above — `create()`'s own returned node is itself
-`close()`able (alongside `then()`): calling `cfg.close()` runs every field's own `close`, every
+`close()`able (alongside `then()`): calling `configs.close()` runs every field's own `close`, every
 embedded `create()` result's own `close()`, and every one of the node's own `options.sources`
 (`Source.close()`), all in one call:
 
 ```ts
-const cfg = create({ ticks: pollingDescriptor() }, { sources: [envSource()] });
-await cfg;
+const configs = create({ ticks: pollingDescriptor() }, { sources: [envSource()] });
+await configs;
 // ... later
-await cfg.close();
+await configs.close();
 ```
 
 #### `key` — reading a field from an explicit path
@@ -424,7 +424,7 @@ import { create, numeric, string } from "hotconfigs";
 import { envSource } from "hotconfigs/sources/env";
 
 // PORT=3000 HOST=localhost
-const cfg = await create(
+const configs = await create(
   {
     server: {
       port: numeric({ summary: "HTTP port", default: 3000, key: "PORT" }),
@@ -434,7 +434,7 @@ const cfg = await create(
   { sources: [envSource()] },
 );
 
-cfg.server.port.get();
+configs.server.port.get();
 // 3000 — read from the source's top-level "PORT", not "server.port"
 ```
 
@@ -447,7 +447,7 @@ import { create, url } from "hotconfigs";
 import { envSource } from "hotconfigs/sources/env";
 
 // DATABASE_URL=postgres://user:pass@localhost:5432/app
-const cfg = await create(
+const configs = await create(
   {
     datasource: {
       uri: url({ key: "DATABASE_URL" }),
@@ -456,7 +456,7 @@ const cfg = await create(
   { sources: [envSource()] },
 );
 
-cfg.datasource.uri.get()?.hostname;
+configs.datasource.uri.get()?.hostname;
 // "localhost"
 ```
 
@@ -468,12 +468,12 @@ annotation. The only thing that changes whether `null` is in the type is **wheth
 `default`**:
 
 ```ts
-const cfg = await create({ port: numeric() }, { sources: [/* ... */] });
-const port = cfg.port.get();
+const configs = await create({ port: numeric() }, { sources: [/* ... */] });
+const port = configs.port.get();
 //    ^? const port: number | null
 
-const cfg2 = await create({ port: numeric({ default: 3000 }) }, { sources: [/* ... */] });
-const port2 = cfg2.port.get();
+const configs2 = await create({ port: numeric({ default: 3000 }) }, { sources: [/* ... */] });
+const port2 = configs2.port.get();
 //    ^? const port2: number
 ```
 
@@ -499,8 +499,8 @@ control, so a `required` field with no `default` can still end up with nothing f
 resolve to `null` — the type stays `T | null` to reflect that honestly, `required` or not:
 
 ```ts
-const cfg = await create({ port: numeric({ required: true }) }, { sources: [/* ... */] });
-const port = cfg.port.get();
+const configs = await create({ port: numeric({ required: true }) }, { sources: [/* ... */] });
+const port = configs.port.get();
 //    ^? const port: number | null   (required doesn't remove `null` — only `default` does)
 ```
 
@@ -508,11 +508,11 @@ Combine `required: true` with a `default` to get a non-`null` type *and* a hard 
 data instead of a silent fallback:
 
 ```ts
-const cfg = await create(
+const configs = await create(
   { port: numeric({ required: true, default: 3000 }) },
   { sources: [/* a source publishing an invalid port throws instead of falling back */] },
 );
-const port = cfg.port.get();
+const port = configs.port.get();
 //    ^? const port: number
 ```
 
@@ -526,13 +526,13 @@ const pending = create({ port: numeric({ default: 3000 }) }, { sources: [/* ... 
 pending.port.get();
 //      ^? number  (already available before awaiting)
 
-const cfg = await pending;
-cfg.port.get();
+const configs = await pending;
+configs.port.get();
 //  ^? number  (same type, now backed by the first resolved snapshot)
 ```
 
 A nested group (whether a plain object, or a separate `create()` call embedded in the parent
-shape) infers the same way, recursively — `cfg.server.port.get()` is `number | null` unless
+shape) infers the same way, recursively — `configs.server.port.get()` is `number | null` unless
 `server`'s `port` has a `default`.
 
 ##### Shape fields
@@ -546,14 +546,14 @@ runtime — see [Field types](#field-types)), a `default` means the type is `T`:
 import { create, shape } from "hotconfigs";
 import { z } from "zod";
 
-const cfg = await create(
+const configs = await create(
   { jwt: shape({ schema: z.object({ issuer: z.string(), ttl: z.number() }) }) },
   { sources: [/* ... */] },
 );
-const jwt = cfg.jwt.get();
+const jwt = configs.jwt.get();
 //    ^? const jwt: { issuer: string; ttl: number } | null
 
-const cfg2 = await create(
+const configs2 = await create(
   {
     jwt: shape({
       schema: z.object({ issuer: z.string(), ttl: z.number() }),
@@ -562,7 +562,7 @@ const cfg2 = await create(
   },
   { sources: [/* ... */] },
 );
-const jwt2 = cfg2.jwt.get();
+const jwt2 = configs2.jwt.get();
 //    ^? const jwt2: { issuer: string; ttl: number }
 ```
 
@@ -574,8 +574,8 @@ is inferred as its output type:
 
 ```ts
 const parity = { parse: (value: unknown) => (Number(value) % 2 === 0 ? "even" : "odd") };
-const cfg = await create({ n: shape({ schema: parity }) }, { sources: [/* ... */] });
-const n = cfg.n.get();
+const configs = await create({ n: shape({ schema: parity }) }, { sources: [/* ... */] });
+const n = configs.n.get();
 //    ^? const n: "even" | "odd" | null
 ```
 
@@ -584,8 +584,8 @@ Omitting `schema` entirely (`shape()` alone) passes the raw value through untype
 TypeScript, so there's no `| null` to see in the type here, unlike every other field:
 
 ```ts
-const cfg = await create({ metadata: shape() }, { sources: [/* ... */] });
-const metadata = cfg.metadata.get();
+const configs = await create({ metadata: shape() }, { sources: [/* ... */] });
+const metadata = configs.metadata.get();
 //    ^? const metadata: unknown
 ```
 
@@ -1050,7 +1050,7 @@ import { create, numeric, string } from "hotconfigs";
 import { envSource, mapKey } from "hotconfigs/sources/env";
 import { literalSource } from "hotconfigs/sources/literal";
 
-const cfg = await create(
+const configs = await create(
   {
     port: numeric({ required: true }),
     host: string({ required: true }),
@@ -1074,13 +1074,13 @@ defaults to `[envSource()]` instead of `[]`. Reaching for env vars is common eno
 import { load, numeric } from "hotconfigs";
 
 // PORT=8080
-const cfg = await load({
+const configs = await load({
   server: {
     port: numeric({ key: "PORT" }),
   },
 });
 
-cfg.server.port.get();
+configs.server.port.get();
 // 8080
 ```
 
@@ -1091,7 +1091,7 @@ with it — so `load()` then behaves exactly like `create()`:
 import { load, numeric } from "hotconfigs";
 import { fetchSource } from "hotconfigs/sources/fetch";
 
-const cfg = await load(
+const configs = await load(
   { promoService: numeric({ default: 0 }) },
   { sources: [fetchSource({ url: "https://example.com/features" })] },
 );
@@ -1120,7 +1120,7 @@ With several sources, close each one you opened — `Promise.all` if they can cl
 
 ```ts
 const sources = [envSource(), sseSource({ url: "https://config-service.internal/app/events" })];
-const cfg = await create({ port: numeric() }, { sources });
+const configs = await create({ port: numeric() }, { sources });
 
 await Promise.all(sources.map((source) => source.close()));
 ```
@@ -1140,7 +1140,7 @@ async function cleanupTempFiles() {
   // ...
 }
 
-const cfg = await create(
+const configs = await create(
   {
     service: {
       cleanupIntervalMs: numeric({ summary: "cleanup interval", default: 60_000 }),
@@ -1151,7 +1151,7 @@ const cfg = await create(
 
 let timer: ReturnType<typeof setInterval> | undefined;
 
-const unsubscribe = cfg.service.cleanupIntervalMs.subscribe((intervalMs) => {
+const unsubscribe = configs.service.cleanupIntervalMs.subscribe((intervalMs) => {
   clearInterval(timer);
   timer = setInterval(cleanupTempFiles, intervalMs);
   return () => clearInterval(timer); // runs when `unsubscribe()` is called, not on the next change
@@ -1175,10 +1175,10 @@ React:
 import { create, boolean } from "hotconfigs";
 import { useConfig } from "hotconfigs/react";
 
-const cfg = create({ bannerIsActive: boolean({ default: false }) });
+const configs = create({ bannerIsActive: boolean({ default: false }) });
 
 function App() {
-  const bannerIsActive = useConfig(cfg.bannerIsActive);
+  const bannerIsActive = useConfig(configs.bannerIsActive);
 
   return bannerIsActive ? <Banner /> : null;
 }
