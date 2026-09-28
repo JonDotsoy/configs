@@ -600,9 +600,18 @@ array. This section covers every built-in `Source` and how to write your own fro
 The building block behind `envSource`, `fetchSource`, `sseSource`, `fileSource`, `pullSource`,
 `shellSource`, and `literalSource`. It takes an
 object with `start(control)` and an optional `close()`, mirroring `ReadableStream`'s
-`UnderlyingSource`: `start` runs once and pushes snapshots via `control.set(value)`, while `close`
-— called from within `start` via `control.close()`, or from the outside via the `Source`'s own
-`close()` — is where you release whatever `start` set up, like a timer or an in-flight request.
+`UnderlyingSource`: `start` runs once, the first time the `Source` is `open()`ed (directly, or by
+`create()`/`load()` opening it as one of `options.sources`), and pushes snapshots via
+`control.set(value)`, while `close` — called from within `start` via `control.close()`, or from the
+outside via the `Source`'s own `close()` — is where you release whatever `start` set up, like a
+timer or an in-flight request.
+
+`control.keys` lists every field path the source is being opened for — e.g.
+`[["server", "port"], ["HOST"]]` for `create({ server: { port: numeric() }, host: string({ key:
+"HOST" }) })` — computed from the whole shape before any source opens, so `start()` can read it to
+decide what to fetch or subscribe to instead of always pulling everything (e.g. an env source that
+only reads the specific variables the shape actually declares). It's `[]` when the source is opened
+directly, with no `create()` shape behind it.
 
 ```ts
 import { Source } from "hotconfigs";

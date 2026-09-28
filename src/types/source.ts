@@ -2,6 +2,16 @@ import type { Metric } from "../utils/metric.js";
 
 /** Passed to `start()`, mirroring a `ReadableStreamDefaultController`. */
 export interface SourceControl<T> {
+  /**
+   * Every field path this source is being opened for, e.g. `[["server", "port"], ["HOST"]]` for
+   * `create({ server: { port: numeric() }, host: string({ key: "HOST" }) })` — the same paths
+   * `create()` itself resolves each field against (a field's explicit `key`, or its position in
+   * the shape tree). Known up front because `create()` computes the whole shape's field paths
+   * before opening any of its `options.sources`, so `start()` can read `control.keys` to decide
+   * what to fetch/subscribe to instead of always pulling everything. Empty when the source is
+   * opened directly (`source.open()`, with no `create()` shape behind it).
+   */
+  keys: string[][];
   /** Publishes a new full-tree snapshot. */
   set(value: T): void;
   /** Marks the source as done; no further `set()` calls are expected. */

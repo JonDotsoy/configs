@@ -63,6 +63,55 @@ describe("Source reduce", () => {
   });
 });
 
+describe("Source keys", () => {
+  test("defaults to [] when open() is called with no keys", async () => {
+    let received: string[][] | undefined;
+    const source = new Source<number>({
+      start(control) {
+        received = control.keys;
+        control.set(1);
+        control.close();
+      },
+    });
+    await source.open();
+
+    expect(received).toEqual([]);
+  });
+
+  test("open(keys) hands the same keys to control.keys inside start()", async () => {
+    let received: string[][] | undefined;
+    const source = new Source<number>({
+      start(control) {
+        received = control.keys;
+        control.set(1);
+        control.close();
+      },
+    });
+    await source.open([["server", "port"], ["HOST"]]);
+
+    expect(received).toEqual([["server", "port"], ["HOST"]]);
+  });
+
+  test("start() only runs once open() is first called, not at construction", async () => {
+    let started = false;
+    const source = new Source<number>({
+      start(control) {
+        started = true;
+        control.set(1);
+        control.close();
+      },
+    });
+
+    // Give any eagerly-scheduled microtask a chance to run before open() is ever called.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(started).toBe(false);
+
+    await source.open();
+    expect(started).toBe(true);
+  });
+});
+
 describe("Source metrics", () => {
   test("defaults to an empty object when no metrics are given", () => {
     const source = new Source<number>({

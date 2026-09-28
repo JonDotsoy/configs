@@ -273,6 +273,56 @@ describe("create — key: reading a field from an explicit path", () => {
   });
 });
 
+describe("create — control.keys: a source sees every field path before its start() runs", () => {
+  test("lists each field's resolved path — nested groups joined, an explicit key taken as its own absolute path", async () => {
+    let receivedKeys: string[][] | undefined;
+    const source = new Source<Record<string, unknown>>({
+      start(control) {
+        receivedKeys = control.keys;
+        control.set({});
+        control.close();
+      },
+    });
+
+    await create({ server: { port: numeric() }, host: string({ key: "HOST" }) }, { sources: [source] });
+
+    expect(receivedKeys).toEqual([["server", "port"], ["HOST"]]);
+  });
+
+  test("every source in options.sources sees the same shape-wide keys", async () => {
+    const seen: string[][][] = [];
+    const record = (): Source<unknown> =>
+      new Source({
+        start(control) {
+          seen.push(control.keys);
+          control.close();
+        },
+      });
+
+    await create({ a: numeric(), b: string() }, { sources: [record(), record()] });
+
+    expect(seen).toEqual([
+      [["a"], ["b"]],
+      [["a"], ["b"]],
+    ]);
+  });
+
+  test("defaults to [] when a source is opened directly, without a create() shape behind it", async () => {
+    let receivedKeys: string[][] | undefined;
+    const source = new Source<number>({
+      start(control) {
+        receivedKeys = control.keys;
+        control.set(1);
+        control.close();
+      },
+    });
+
+    await source.open();
+
+    expect(receivedKeys).toEqual([]);
+  });
+});
+
 describe("types — every field builder", () => {
   test("without a default, every builder's field is Store<T | null>", () => {
     const cfg = create({
