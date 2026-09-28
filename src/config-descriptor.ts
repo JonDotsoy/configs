@@ -8,7 +8,7 @@ import { ConfigError } from "./errors.js";
  * purely informational once a `start` is supplied directly (see the README's "Writing a
  * custom `Descriptor`" section), so a custom field type isn't restricted to this package's own set.
  */
-export type FieldType = "string" | "number" | "boolean" | "url" | "shape" | "file" | "choice" | (string & {});
+export type FieldType = "string" | "number" | "boolean" | "url" | "shape" | "file" | "choice" | "list" | (string & {});
 
 interface BaseFieldOptions {
   summary?: string;
@@ -34,6 +34,10 @@ export interface Parseable<T> {
 }
 
 export type StringFieldOptions = BaseFieldOptions & { pattern?: RegExp; default?: string };
+/**
+ * `list()`'s own options — `default` is a plain `string[]`, same rule as every other field type.
+ */
+export type ListFieldOptions = BaseFieldOptions & { default?: string[] };
 export type NumberFieldOptions = BaseFieldOptions & { default?: number };
 export type BooleanFieldOptions = BaseFieldOptions & { default?: boolean };
 /**
@@ -314,6 +318,30 @@ export function url<const O extends UrlFieldOptions = {}>(options?: O): Descript
 }
 
 /**
+ * Builds a `"list"` field descriptor, returned as `Descriptor<Pending, Awaited>` where both are
+ * computed from `O` up front and passed in explicitly: `Descriptor<string[] | null, string[] | null>`
+ * with neither `default` nor `required`, `Descriptor<string[], string[]>` with a `default`, or
+ * `Descriptor<string[] | null, string[]>` with `required: true` alone (see `WithDefault`/`Settled`).
+ * Parses a comma-separated string into a `string[]`: a field wrapped in double quotes may contain
+ * literal commas (`"a,b",c` → `["a,b", "c"]`), and a backslash escapes a single character outside
+ * quotes (`a\,b,c` → `["a,b", "c"]`). An already-`string[]` raw value (e.g. from `shape()`-like JSON
+ * sources) passes through as-is (each element coerced with `String(...)`).
+ */
+export function list<const O extends ListFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, string[]>, Settled<O, string[]>> {
+  const opts = (options ?? {}) as O;
+  const parse = listParser(opts);
+  const defaultValue = opts.default !== undefined ? opts.default : (null as unknown as string[]);
+
+  return new Descriptor<string[], string[], O>({
+    type: "list",
+    options: opts,
+    start(control) {
+      subscribeParsed(control, defaultValue, parse);
+    },
+  }) as Descriptor<WithDefault<O, string[]>, Settled<O, string[]>>;
+}
+
+/**
  * Extracts a `shape()` call's value type straight off the caller's own `options` (its `schema`'s
  * `parse` return type) rather than from a separately-inferred type parameter, since `O` alone
  * (captured via the `const` type parameter on `shape()`) already carries the caller's literal
@@ -461,6 +489,50 @@ export function choiceParser<T extends string>(options: { options: readonly T[] 
     }
     return raw as T;
   };
+}
+
+/** `list()`'s own parser — an array value passes through (each element coerced via `String(...)`); a string is split via `splitList`. */
+export function listParser(_options: ListFieldOptions): (raw: unknown, path: string[]) => string[] {
+  return (raw, path) => {
+    if (Array.isArray(raw)) return raw.map(String);
+    if (typeof raw !== "string") typeMismatch("list", raw, path);
+    return splitList(raw);
+  };
+}
+
+/**
+ * Splits a comma-separated string into fields, honoring two escape mechanisms so a literal comma
+ * can appear inside a field: a double-quoted span (`"a,b",c` → `["a,b", "c"]`, the quotes
+ * themselves are stripped and commas inside them are literal) and a backslash immediately before
+ * any character outside quotes (`a\,b,c` → `["a,b", "c"]`, the backslash itself is stripped). Each
+ * unquoted field is trimmed of surrounding whitespace; a quoted field is not, so its content is kept
+ * verbatim.
+ */
+export function splitList(raw: string): string[] {
+  const fields: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    const char = raw[i];
+    if (char === "\\" && i + 1 < raw.length) {
+      current += raw[i + 1];
+      i++;
+      continue;
+    }
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (char === "," && !inQuotes) {
+      fields.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  fields.push(current.trim());
+  return fields;
 }
 
 /**

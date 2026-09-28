@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New `list()` field descriptor: parses a comma-separated string into a `string[]`. A field wrapped
+  in double quotes may contain literal commas (`"a,b",c` → `["a,b", "c"]`), and a backslash escapes
+  a single character outside quotes (`a\,b,c` → `["a,b", "c"]`). An already-`string[]` raw value
+  passes through as-is.
 - The object a `create()` node's `await`/`then()` resolves to (`ConfigsNodeReady<T>`) now also
   exposes `close()`, same as the pending node returned by `create()` itself — previously `close()`
   was only reachable before awaiting the node.

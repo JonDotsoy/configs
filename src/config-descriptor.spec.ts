@@ -4,6 +4,7 @@ import {
   choice,
   Descriptor,
   isConfigDescriptor,
+  list,
   numeric,
   shape,
   string,
@@ -124,6 +125,51 @@ describe("choice() field builder", () => {
     expect(runStart(descriptor, "warn", ["logLevel"]).last()).toBe("warn");
     const { errors } = runStart(descriptor, "verbose", ["logLevel"]);
     expect(errors[0]).toBeInstanceOf(ConfigError);
+  });
+});
+
+describe("list() field builder", () => {
+  test('list() builds a Descriptor carrying a { type: "list" } schema', () => {
+    expectDescriptor(list(), "list", {});
+    expectDescriptor(list({ summary: "allowed origins", default: ["a.com"] }), "list", {
+      summary: "allowed origins",
+      default: ["a.com"],
+    });
+  });
+
+  test("splits a plain comma-separated string", () => {
+    expect(runStart(list(), "1,2,3,4,5", ["ids"]).last()).toEqual(["1", "2", "3", "4", "5"]);
+  });
+
+  test("a double-quoted field may contain literal commas", () => {
+    expect(runStart(list(), '"Foo tar , bios did",tar,1234', ["values"]).last()).toEqual([
+      "Foo tar , bios did",
+      "tar",
+      "1234",
+    ]);
+  });
+
+  test("a backslash escapes a literal comma outside quotes", () => {
+    expect(runStart(list(), "Foo\\,tar,biz", ["values"]).last()).toEqual(["Foo,tar", "biz"]);
+  });
+
+  test("passes an already-array raw value through, coercing each element to a string", () => {
+    expect(runStart(list(), ["a", "b"], ["values"]).last()).toEqual(["a", "b"]);
+  });
+
+  test("falls back to options.default when raw is undefined/null", () => {
+    expect(runStart(list({ default: ["x"] }), undefined).last()).toEqual(["x"]);
+    expect(runStart(list({ default: ["x"] }), null).last()).toEqual(["x"]);
+  });
+
+  test("resolves to null when raw is missing and there is no default", () => {
+    expect(runStart(list(), undefined).last()).toBeNull();
+  });
+
+  test("rejects a non-string, non-array value by reporting it via control.error()", () => {
+    const { errors, values } = runStart(list(), 42, ["values"]);
+    expect(errors[0]).toBeInstanceOf(ConfigError);
+    expect(values).toEqual([]);
   });
 });
 
@@ -259,6 +305,7 @@ describe("isConfigDescriptor()", () => {
     expect(isConfigDescriptor(url())).toBe(true);
     expect(isConfigDescriptor(choice({ options: ["a", "b"] }))).toBe(true);
     expect(isConfigDescriptor(shape())).toBe(true);
+    expect(isConfigDescriptor(list())).toBe(true);
   });
 
   test("recognizes a directly-constructed Descriptor instance", () => {
