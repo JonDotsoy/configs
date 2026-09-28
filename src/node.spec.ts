@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -219,6 +219,43 @@ describe("file()", () => {
       expect(await readFile(blob.location!, "utf-8")).toBe("hello");
     });
 
+    test.skipIf(process.platform === "win32")(
+      "the temp file/directory are locked down to owner-only, read-only access",
+      async () => {
+        const cfg = await create({ key: file() }, { sources: [literalSource({ key: "s3cr3t" })] });
+
+        const blob = cfg.key.get()!;
+        const filePath = new URL(blob.location!);
+        const fileStat = await stat(filePath);
+        const dirStat = await stat(join(filePath.pathname, ".."));
+
+        expect(fileStat.mode & 0o777).toBe(0o400);
+        expect(dirStat.mode & 0o777).toBe(0o700);
+      },
+    );
+
+    test.skipIf(process.platform === "win32")("mode overrides the temp file's default permissions", async () => {
+      const cfg = await create({ key: file({ mode: 0o600 }) }, { sources: [literalSource({ key: "s3cr3t" })] });
+
+      const fileStat = await stat(new URL(cfg.key.get()!.location!));
+      expect(fileStat.mode & 0o777).toBe(0o600);
+    });
+
+    test("tempDir overrides where the temp file/directory is created, instead of the OS temp directory", async () => {
+      const customBase = await mkdtemp(join(tmpdir(), "configs-file-tempdir-"));
+      try {
+        const cfg = await create({ key: file({ tempDir: customBase }) }, { sources: [literalSource({ key: "hello" })] });
+
+        const filePath = new URL(cfg.key.get()!.location!);
+        expect(filePath.pathname.startsWith(customBase)).toBe(true);
+        expect(await readFile(filePath, "utf-8")).toBe("hello");
+
+        await cfg.close();
+      } finally {
+        await rm(customBase, { recursive: true, force: true });
+      }
+    });
+
     test(".location is the same URL given as a URL default", async () => {
       const dir = await mkdtemp(join(tmpdir(), "configs-file-field-"));
       try {
@@ -230,6 +267,56 @@ describe("file()", () => {
         expect(cfg.key.get().location?.toString()).toBe(pathToFileURL(path).toString());
       } finally {
         await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    test("close() removes the temp file and its temp directory from disk", async () => {
+      const cfg = await create({ key: file() }, { sources: [literalSource({ key: "s3cr3t" })] });
+
+      const filePath = new URL(cfg.key.get()!.location!);
+      const dirPath = join(filePath.pathname, "..");
+      expect(await stat(filePath).then(() => true, () => false)).toBe(true);
+
+      await cfg.close();
+
+      expect(await stat(filePath).then(() => true, () => false)).toBe(false);
+      expect(await stat(dirPath).then(() => true, () => false)).toBe(false);
+    });
+
+    test("close() also removes a string default's own temp file", async () => {
+      const cfg = await create({ key: file({ default: "hello", format: "text" }) }, { sources: [] });
+
+      const filePath = new URL(cfg.key.get()!.location!);
+      await cfg.close();
+
+      expect(await stat(filePath).then(() => true, () => false)).toBe(false);
+    });
+
+    test("close() leaves a URL default's own file on disk untouched — file() never created it", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "configs-file-field-"));
+      try {
+        const path = join(dir, "cert.pem");
+        await Bun.write(path, "-----BEGIN CERTIFICATE-----");
+
+        const cfg = await create({ key: file({ default: pathToFileURL(path) }) }, { sources: [] });
+        await cfg.close();
+
+        expect(await stat(path).then(() => true, () => false)).toBe(true);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    test("avoidCleanup: true leaves the temp file/directory on disk after close()", async () => {
+      const cfg = await create({ key: file({ avoidCleanup: true }) }, { sources: [literalSource({ key: "s3cr3t" })] });
+
+      const filePath = new URL(cfg.key.get()!.location!);
+      try {
+        await cfg.close();
+
+        expect(await stat(filePath).then(() => true, () => false)).toBe(true);
+      } finally {
+        await rm(join(filePath.pathname, ".."), { recursive: true, force: true });
       }
     });
   });

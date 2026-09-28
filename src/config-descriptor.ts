@@ -1,3 +1,4 @@
+import { containsSensitiveWord } from "./utils/sensitive.js";
 import { Store, type ReadOnlyStore } from "./utils/store.js";
 import { tSync } from "./utils/t.js";
 import { ConfigError } from "./errors.js";
@@ -430,8 +431,20 @@ export function isConfigDescriptor(node: unknown): node is Descriptor<unknown> {
   return node instanceof Descriptor;
 }
 
+const MASKED_VALUE = "***";
+
+/**
+ * Renders `value` for a field-error message: masked (`"***"`) when `path` looks sensitive — its
+ * full dotted path contains one of `SENSITIVE_WORDS` (`./utils/sensitive.js`), case-insensitive —
+ * `JSON.stringify`'d as usual otherwise. Every built-in parser that embeds a field's raw value in a
+ * thrown `ConfigError` message goes through this instead of calling `JSON.stringify` directly.
+ */
+export function describeValue(value: unknown, path: string[]): string {
+  return containsSensitiveWord(path.join(".")) ? MASKED_VALUE : JSON.stringify(value);
+}
+
 function typeMismatch(type: FieldType, value: unknown, path: string[]): never {
-  throw new ConfigError(`Expected ${type} at "${path.join(".")}", got ${JSON.stringify(value)}`);
+  throw new ConfigError(`Expected ${type} at "${path.join(".")}", got ${describeValue(value, path)}`);
 }
 
 /**
@@ -486,7 +499,7 @@ export function urlParser(options: UrlFieldOptions): (raw: unknown, path: string
     if (raw instanceof URL) return raw;
     if (typeof raw !== "string") typeMismatch("url", raw, path);
     if (!URL.canParse(raw, base?.toString())) {
-      throw new ConfigError(`Value at "${path.join(".")}" is not a valid URL: ${JSON.stringify(raw)}`);
+      throw new ConfigError(`Value at "${path.join(".")}" is not a valid URL: ${describeValue(raw, path)}`);
     }
     return new URL(raw, base);
   };
@@ -497,7 +510,7 @@ export function choiceParser<T extends string>(options: { options: readonly T[] 
   return (raw, path) => {
     if (typeof raw !== "string" || !options.options.includes(raw as T)) {
       throw new ConfigError(
-        `Expected one of ${JSON.stringify(options.options)} at "${path.join(".")}", got ${JSON.stringify(raw)}`,
+        `Expected one of ${JSON.stringify(options.options)} at "${path.join(".")}", got ${describeValue(raw, path)}`,
       );
     }
     return raw as T;
@@ -585,7 +598,7 @@ export function shapeParser<T>(options: { schema?: Parseable<T>; required?: bool
       if (typeof raw !== "object" || raw === null) {
         return shapeFailure(
           options.required,
-          new ConfigError(`Expected ${typeLabel} at "${path.join(".")}", got ${JSON.stringify(raw)}`),
+          new ConfigError(`Expected ${typeLabel} at "${path.join(".")}", got ${describeValue(raw, path)}`),
         ) as T;
       }
       return raw as T;

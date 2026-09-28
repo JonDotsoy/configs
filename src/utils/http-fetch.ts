@@ -1,3 +1,5 @@
+import { maskSensitiveUrl } from "./sanitize-log.js";
+
 /**
  * Authenticates the request by setting the `Authorization` header up front.
  * `{ basic: { username, password } }` sends `Basic <base64>`; `{ bearer: { token } }` sends
@@ -96,7 +98,7 @@ async function download(
   const response = await fetch(url, init);
   if (!acceptStatus(response.status)) {
     throw new UnacceptedStatusError(
-      `httpFetch: received unexpected status ${response.status} ${response.statusText} from "${url}"`,
+      `httpFetch: received unexpected status ${response.status} ${response.statusText} from "${maskSensitiveUrl(url)}"`,
     );
   }
   return response;

@@ -117,6 +117,18 @@ describe("shellSource", () => {
     expect(store.get()).toEqual({ port: 3000 });
   });
 
+  test("masks a sensitive flag's value in the console.error log for a failed run", async () => {
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+
+    const source = shellSource([bun, "-e", "process.exit(1)", "--api-key", "s3cr3t-value"]);
+    await source.open();
+
+    const logged = errorSpy.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(logged).toContain("****");
+    expect(logged).not.toContain("s3cr3t-value");
+    errorSpy.mockRestore();
+  });
+
   test("a custom acceptExitCode rejects an exit code the default would accept", async () => {
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});
 

@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`file()`'s `mode`/`avoidCleanup`/`tempDir` options** — `mode` (default `0o400`) overrides the
+  permission bits applied to a temp file `file()` writes out to disk; `avoidCleanup` (default
+  `false`) can be set to `true` to leave the field's temp file/directory on disk instead of removing
+  them on `close()`; `tempDir` overrides the base directory the temp file/directory is created under
+  (defaulting to the OS temp directory) — mainly a debugging knob, for pointing it somewhere easy to
+  find and inspect by hand. None of the three affect a `file:` `URL` default, since `file()` never
+  created that file.
+
+### Fixed
+
+- A field whose path contains a sensitive word (`key`, `secret`, `password`, `token`,
+  `credential`, `auth` — case-insensitive) now has its raw value masked (`***`) in the
+  `ConfigError` thrown/reported when it fails to parse, instead of embedding the unparseable value
+  verbatim in the error message.
+- `file()`'s temp file/directory (used for any value that didn't already come from a real file on
+  disk) are now created with minimal privileges — the directory `chmod`'d `0o700` and the file
+  written `0o400` — so a secret handed to `file()` isn't left world/group-readable on disk.
+- `file()`'s own `close()` now deletes every temp file/directory it created (its resolved default's,
+  and one per raw value a live source published over the field's lifetime) instead of leaking them
+  on disk indefinitely. A `file:` `URL` default — a real file `file()` didn't create — is left
+  untouched.
+- `shellSource`/`fetchSource` no longer leak full commands/URLs into their own `console.error` logs.
+  `shellSource` masks a sensitive flag's value (`--key value` → `--key ****`, `--key=value` →
+  `--key=****`) and a sensitive header-style argument's value, keeping any scheme prefix
+  (`"Authorization: Bearer xxx"` → `"Authorization: Bearer ****"`, `"token: xxx"` → `"token:
+  ****"`); `fetchSource` (and `httpFetch`'s own rejected-status error) masks a sensitive query
+  parameter's value, and a Basic-auth password embedded in the URL's own userinfo
+  (`https://user:pass@host/...` → `https://user:****@host/...`), in a logged URL. Neither affects
+  `onRun`/`onFetched`, which are still handed the real, unmasked `args`/`url` — the caller already
+  has whatever secret they put there.
+
 ## [1.0.2] - 2026-09-28
 
 ## [1.0.0]

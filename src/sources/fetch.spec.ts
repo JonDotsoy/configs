@@ -90,6 +90,54 @@ describe("fetchSource", () => {
     errorSpy.mockRestore();
   });
 
+  test("masks a sensitive query parameter's value in the console.error log for a failed fetch", async () => {
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    globalThis.fetch = (async () => {
+      throw new Error("network down");
+    }) as unknown as typeof fetch;
+
+    const source = fetchSource({ url: "https://example.com/config?token=s3cr3t-value" });
+    await source.open();
+
+    const logged = errorSpy.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(logged).toContain("****");
+    expect(logged).not.toContain("s3cr3t-value");
+    errorSpy.mockRestore();
+  });
+
+  test("never leaks a sensitive header's value into the console.error log for a failed fetch", async () => {
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    globalThis.fetch = (async () => {
+      throw new Error("network down");
+    }) as unknown as typeof fetch;
+
+    const source = fetchSource({
+      url: "https://example.com/config",
+      headers: { authorization: "Bearer s3cr3t-header-value" },
+    });
+    await source.open();
+
+    const logged = errorSpy.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(logged).not.toContain("s3cr3t-header-value");
+    errorSpy.mockRestore();
+  });
+
+  test("masks a Basic-auth password embedded in the URL in the console.error log for a failed fetch", async () => {
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    globalThis.fetch = (async () => {
+      throw new Error("network down");
+    }) as unknown as typeof fetch;
+
+    const source = fetchSource({ url: "https://user:s3cr3t-password@example.com/api/resource" });
+    await source.open();
+
+    const logged = errorSpy.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(logged).toContain("****");
+    expect(logged).toContain("user:****@example.com");
+    expect(logged).not.toContain("s3cr3t-password");
+    errorSpy.mockRestore();
+  });
+
   test("a custom acceptStatus can accept a status the default would reject", async () => {
     globalThis.fetch = (async () =>
       jsonResponse(JSON.stringify({ found: false }), { status: 404 })) as unknown as typeof fetch;
