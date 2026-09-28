@@ -1,5 +1,7 @@
 # hotconfigs
 
+<img src="docs/assets/octopus-logo.png" align="right" width="180" alt="hotconfigs logo" />
+
 Ship your config to your apps, fast. Configuration isn't just static values
 read once at boot anymore — feature flags, remote toggles, and settings
 served over HTTP or SSE change at runtime to turn features on and off or
