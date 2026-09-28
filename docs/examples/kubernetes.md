@@ -15,7 +15,7 @@ runtime (Node, Bun) — see
 import { create, boolean } from "hotconfigs";
 import { fileSource } from "hotconfigs/sources/file";
 
-const cfg = await create(
+const configs = await create(
   {
     features: {
       promoService: boolean({ summary: "enable the promo service", default: false }),
@@ -25,7 +25,7 @@ const cfg = await create(
   { sources: [fileSource("/etc/config/configs.json")] },
 );
 
-cfg.features.promoService.subscribe((enabled) => {
+configs.features.promoService.subscribe((enabled) => {
   console.log(`promo service ${enabled ? "enabled" : "disabled"}`);
 });
 ```
@@ -79,7 +79,7 @@ kubectl create configmap app-config \
 Kubernetes propagates the new file to the mounted volume within its usual
 sync period (kubelet's `--sync-frequency`, plus the kubelet's ConfigMap
 cache TTL — up to ~1 minute by default), `fileSource`'s `fs.watch` picks up
-the change, and `cfg.features.promoService.subscribe(...)` fires again with
+the change, and `configs.features.promoService.subscribe(...)` fires again with
 the new value.
 
 ## See also

@@ -100,7 +100,7 @@ new Source<T>(underlying: UnderlyingSource<T>): Source<T>
   que la fuente ya tenga datos: un `start` que solo arma un `setInterval` y
   retorna de inmediato hace que `open()` resuelva casi al instante, con el
   `Store` interno todavía en `null` hasta el primer `control.set()`. Para
-  que `open()` (y por lo tanto `await cfg` en el nodo) espere a tener el
+  que `open()` (y por lo tanto `await configs` en el nodo) espere a tener el
   primer valor real, `start` debe quedarse en un `await` hasta que ese
   primer `control.set()` haya corrido — así lo hace `sseSource`, con una
   `Promise` que solo se resuelve tras el primer mensaje (ver
@@ -186,7 +186,7 @@ function pollingSource(url: string, intervalMs: number): Source<{ port: number }
 ```
 
 El `await poll()` antes de armar el `setInterval` es lo que hace que
-`source.open()` (y por lo tanto `await cfg`) esperen a tener el primer
+`source.open()` (y por lo tanto `await configs`) esperen a tener el primer
 valor real en vez de resolver con el `Store` todavía vacío. `fetchSource`
 hace lo mismo con su propio `pollingInterval`/`followCacheControl`, más
 reintentos y `Cache-Control`/condicionales — ver `src/sources/fetch.ts`
@@ -386,8 +386,8 @@ function port<const O extends { key?: string | string[]; default?: number; requi
 }
 
 // PORT=3000
-const cfg = await create({ port: port({ key: "PORT", default: 8080 }) }, { sources: [envSource()] });
-cfg.port.get(); // 3000
+const configs = await create({ port: port({ key: "PORT", default: 8080 }) }, { sources: [envSource()] });
+configs.port.get(); // 3000
 ```
 
 ### Campo cuyo tipo no es un escalar plano
@@ -537,7 +537,7 @@ módulo importado por referencia en todo el paquete publicado, así que
   `rawSources[i].set()` → `keyStore` → `subscribe()` → `parse()` lanza, la
   cual, para la primera publicación de una fuente, corre dentro del
   `.then()` que arma `ownReady` — así que ahí se convierte en un **rechazo
-  de promesa**, que rechaza `await cfg`, no en una excepción que salga de
+  de promesa**, que rechaza `await configs`, no en una excepción que salga de
   `create()`. Una actualización *posterior* de una fuente en vivo, en
   cambio, lanza como excepción síncrona real desde quien haya llamado
   `control.set()` en esa fuente. Ver la sección "Errores durante el ciclo
@@ -570,5 +570,5 @@ módulo importado por referencia en todo el paquete publicado, así que
   interno todavía en `null` — no es necesariamente un bug (`fileSource`,
   `pollingSource` arriba, evitan esto con un `await primeraLectura()` antes
   de armar el timer), pero es una decisión consciente: si el consumidor
-  necesita que `await cfg` espere al primer valor real, `start` tiene que
+  necesita que `await configs` espere al primer valor real, `start` tiene que
   quedarse en un `await` hasta que ese primer `control.set()` corra.

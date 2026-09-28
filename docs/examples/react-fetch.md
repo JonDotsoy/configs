@@ -18,7 +18,7 @@ import { fetchSource } from "hotconfigs/sources/fetch";
 import { useConfig } from "hotconfigs/react";
 import { Temporal } from "temporal-polyfill";
 
-const cfg = await create(
+const configs = await create(
   {
     features: {
       promoService: boolean({ summary: "enable the promo service", default: false }),
@@ -35,7 +35,7 @@ const cfg = await create(
 );
 
 export default function App() {
-  const promoService = useConfig(cfg.features.promoService);
+  const promoService = useConfig(configs.features.promoService);
 
   return <p>Promo service is {promoService ? "on" : "off"}</p>;
 }
@@ -57,7 +57,7 @@ Content-Type: application/json
 `create(...)` is awaited once, at module scope — the initial fetch
 resolves before the first render, so `App` never has to render a loading
 state for the config itself. Every fetch after that (once a minute here)
-just republishes `cfg.features.promoService` in place.
+just republishes `configs.features.promoService` in place.
 
 ## See also
 

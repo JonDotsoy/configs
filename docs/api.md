@@ -10,7 +10,7 @@ support and a `close()` method.
 import { create, string, numeric } from "hotconfigs";
 import { envSource } from "hotconfigs/sources/env";
 
-const cfg = create(
+const configs = create(
   {
     host: string({ default: "localhost" }),
     port: numeric({ default: 3000 }),
@@ -43,7 +43,7 @@ fields. Every returned node is:
   later snapshots.
 - **`Store`-shaped.** Read a field with `.get()`, react to changes with
   `.subscribe()`/`.listen()` — see [`Store`](#store) below.
-- **Thenable.** `await cfg` (or `cfg.then(...)`) resolves once every source —
+- **Thenable.** `await configs` (or `configs.then(...)`) resolves once every source —
   the node's own, and every embedded node's own — has published its first
   snapshot and every `required` field is confirmed to hold a real value.
   Awaiting narrows each field's type: a `required` field (or one with a
@@ -51,19 +51,19 @@ fields. Every returned node is:
   `required` field is still missing, or a field's `start()` reported an error,
   the promise rejects with a `ConfigValidationError` collecting every failure
   across the tree by path.
-- **Closable.** `cfg.close()` closes every one of the node's own `sources`,
+- **Closable.** `configs.close()` closes every one of the node's own `sources`,
   every field descriptor's own `close` hook, and every embedded node's own
   `close()`, in one call. Safe to call any number of times, whether or not the
   node has finished opening yet.
 
 ```ts
-const cfg = create({ port: numeric({ default: 3000, required: true }) }, { sources: [envSource()] });
+const configs = create({ port: numeric({ default: 3000, required: true }) }, { sources: [envSource()] });
 
-cfg.port.get(); // number | null — live, right now
-const ready = await cfg; // waits for envSource() to open and required checks to pass
+configs.port.get(); // number | null — live, right now
+const ready = await configs; // waits for envSource() to open and required checks to pass
 ready.port.get(); // number — narrowed, guaranteed
 
-await cfg.close(); // releases envSource() and anything else this node opened
+await configs.close(); // releases envSource() and anything else this node opened
 ```
 
 ### `Store`
@@ -104,7 +104,7 @@ per descriptor below):
 | Option | Type | Description |
 | --- | --- | --- |
 | `summary` | `string` | Free-form description of the field, for documentation purposes. Not enforced or validated. |
-| `required` | `boolean` | Once every source has settled, a `required` field still resolved to `null` is reported as a missing-value error — surfaced through `create()`'s returned node rejecting with a `ConfigValidationError`. Also narrows the field's *awaited* type (after `await cfg`) to exclude `null`. |
+| `required` | `boolean` | Once every source has settled, a `required` field still resolved to `null` is reported as a missing-value error — surfaced through `create()`'s returned node rejecting with a `ConfigValidationError`. Also narrows the field's *awaited* type (after `await configs`) to exclude `null`. |
 | `freeze` | `boolean` | Declared, but currently unused by any engine in this package. |
 | `key` | `string \| string[]` | Overrides where this field reads from in each source's snapshot: an explicit path, checked instead of the field's own position in the shape tree (its key, prefixed by every ancestor group's own key). A single string is a one-segment path — `key: "PORT"` reads the source snapshot's top-level `PORT`, regardless of how deeply the field is nested. |
 
@@ -586,7 +586,7 @@ function pollingSource(url: string, intervalMs: number): Source<{ port: number }
   this source into the tree — resolves once `start()` itself finishes
   running, **not** once the first `control.set()` has fired: a `start` that
   only arms a timer and returns immediately makes `open()` resolve with the
-  store still empty. To make `await cfg` wait for a real first value (as
+  store still empty. To make `await configs` wait for a real first value (as
   `pollingSource` above and every built-in polling/watching source do),
   `start` has to stay in an `await` until that first `control.set()` has run.
 - **`close()`** (optional) releases whatever `start` set up — a timer, an

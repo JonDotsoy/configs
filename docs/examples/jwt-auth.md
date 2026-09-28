@@ -31,7 +31,7 @@ const googleJwkSchema = z.object({
 });
 const googleJwksSchema = z.array(googleJwkSchema);
 
-const cfg = await create(
+const configs = await create(
   {
     keys: shape({ schema: googleJwksSchema, required: true }),
   },
@@ -48,7 +48,7 @@ const cfg = await create(
 
 export async function verifyGoogleIdToken(idToken: string) {
   const { kid, alg } = decodeProtectedHeader(idToken);
-  const jwk = cfg.keys.get()?.find((key) => key.kid === kid);
+  const jwk = configs.keys.get()?.find((key) => key.kid === kid);
   if (!jwk) throw new Error(`no matching Google signing key for kid "${kid}"`);
   const key = await importJWK(jwk, alg);
 
@@ -90,15 +90,15 @@ Cache-Control: public, max-age=21600, must-revalidate, no-transform
 }
 ```
 
-`await create(...)` waits for the first fetch round before `cfg` is used.
+`await create(...)` waits for the first fetch round before `configs` is used.
 Without `required: true`, a response `googleJwksSchema` can't parse would
 just resolve `keys` to `null` and log a `console.error`; `required: true`
 escalates that into a thrown `ConfigError` instead — thrown as soon as the
 bad response is parsed (the initial fetch, or any later poll), not deferred
-to whenever `cfg.keys.get()` is next called, so `verifyGoogleIdToken` never
+to whenever `configs.keys.get()` is next called, so `verifyGoogleIdToken` never
 silently treats a broken JWKS as "no keys": either the first `await
 create(...)` itself rejects, or (on a later poll) the rejection surfaces
-wherever that update was being awaited/subscribed to. `cfg.keys.get()`
+wherever that update was being awaited/subscribed to. `configs.keys.get()`
 comes back typed as `z.infer<typeof googleJwksSchema>`, inferred straight
 from the schema. Every subsequent poll (hourly here) re-validates the
 response and republishes `keys` in place.

@@ -53,7 +53,7 @@ El punto de entrada público (`src/config-node.ts`, re-exportado desde
   `key: "PORT"` (o `key: ["a", "b"]`) para leer desde un path absoluto en
   el snapshot de cada fuente, en vez de su propia posición de anidamiento
   en el shape.
-- **Tipado derivado del shape** — `cfg.port.get()` se infiere como
+- **Tipado derivado del shape** — `configs.port.get()` se infiere como
   `number | null` sin `default`, o `number` con uno — sin anotación
   manual, ni para grupos anidados ni para campos embebidos.
 

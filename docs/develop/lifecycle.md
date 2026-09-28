@@ -42,7 +42,7 @@ empezar a leer `.get()`.
 | `keyStore(rawSources, path)` | `config-node.ts` | Por cada campo: mira `path` en cada `rawSources[i]` **en orden de prioridad** (el primero que tenga el valor gana) y expone eso como un `Store<unknown>` — el "raw" del campo. |
 | `Descriptor<Pending, Awaited>` | `config-descriptor.ts` | Un único hook, `start(control): void \| Promise<void>` — **exactamente el mismo contrato que `Source`'s propio `start(control)`** — más un `close(): Promise<void>` opcional. `Pending` es lo que `.get()` devuelve antes de que el nodo termine de resolver (`T` o `T \| null` sin `default`, ver `WithDefault`); `Awaited` es lo que `.get()` devuelve una vez el nodo se resuelve (`T` con `default` **o** `required: true`, ver `Settled`). |
 | `DescriptorControl<T>` | `config-descriptor.ts` | Lo que `start` recibe: `.rawStore` (el raw en vivo de ese campo, solo lectura), `.path` (para mensajes de error) y `.set(value)` (publica el siguiente valor del campo — síncrono en tick 0, o cualquier cantidad de veces después). |
-| `FieldStore` | `config-node.ts` (`buildField`) | El `Store<T>` que el consumidor lee vía `cfg.campo.get()`. Lo crea y posee `buildField()` — el `Descriptor` nunca guarda un `Store` propio; solo escribe en él a través de `control.set()`. |
+| `FieldStore` | `config-node.ts` (`buildField`) | El `Store<T>` que el consumidor lee vía `configs.campo.get()`. Lo crea y posee `buildField()` — el `Descriptor` nunca guarda un `Store` propio; solo escribe en él a través de `control.set()`. |
 | `ConfigsNodePending<T>` | `config-node.ts` | Lo que `create()` devuelve: el nodo ya usable + `.then()` + `.close()`. |
 
 ## Fase 1 — Construcción síncrona (`buildNode`/`buildField`)
@@ -149,13 +149,13 @@ vez por campo, siempre**. Todo lo que pasa después es código que ese mismo
 const ready = Promise.all([ownReady, ...embeddedReady]).then(() => node);
 ```
 
-`await cfg` (o `cfg.then(...)`) resuelve cuando **cada `Source` propia
+`await configs` (o `configs.then(...)`) resuelve cuando **cada `Source` propia
 abrió** (Fase 2) **y cada nodo `create()` embebido abrió las suyas** (ver
 "Grupos anidados..." más abajo) — `embeddedReady` ya no incluye nada por
 campo: `start(control)` no tiene ninguna promesa de "listo" que el nodo
 pueda esperar, a propósito (ver el resumen: "sin esperar a nadie"). Por eso,
 si `start()` de un campo hace algo asíncrono y llama `control.set()` recién
-más tarde, `await cfg` puede resolver **antes** de que ese campo tenga su
+más tarde, `await configs` puede resolver **antes** de que ese campo tenga su
 valor "real" — el campo sigue siendo legible en todo momento (parte en
 `null` o lo que `start` haya puesto síncronamente), simplemente puede seguir
 cambiando después de que `then()` ya resolvió.
@@ -172,7 +172,7 @@ close(): Promise<void> {
 }
 ```
 
-`cfg.close()` corre, todo en paralelo, en una sola llamada:
+`configs.close()` corre, todo en paralelo, en una sola llamada:
 
 - El `close()` de cada `Descriptor` de campo (`closers`, armados en la Fase
   1) — no-op si ese `Descriptor` no dio uno. Es responsabilidad de `start`
@@ -255,13 +255,13 @@ const source = new Source<{ value?: string }>({
   },
 });
 
-const cfg = create({ value: delayed(3000, 40, 4000) }, { sources: [source] });
+const configs = create({ value: delayed(3000, 40, 4000) }, { sources: [source] });
 
-cfg.value.get(); // 3000 — Fase 1: start() corrió, subscribe() disparó de inmediato con rawStore.get() === null
+configs.value.get(); // 3000 — Fase 1: start() corrió, subscribe() disparó de inmediato con rawStore.get() === null
 // ... ~30ms después
-cfg.value.get(); // 2000 — Fase 3: la fuente publicó, el subscribe() de start() lo propagó
+configs.value.get(); // 2000 — Fase 3: la fuente publicó, el subscribe() de start() lo propagó
 // ... ~50ms después
-cfg.value.get(); // 4000 — Fase 3: el setTimeout propio de start() disparó su propio control.set()
+configs.value.get(); // 4000 — Fase 3: el setTimeout propio de start() disparó su propio control.set()
 ```
 
 Línea de tiempo:
@@ -288,7 +288,7 @@ t=40ms   el setTimeout propio de start() dispara → control.set(4000) → value
   → `parse()` lanza), la cual — para la primera publicación de una fuente —
   ocurre dentro del `.then()` de `source.open()` que arma `ownReady` (Fase
   2). Eso convierte ese `.then()` en una promesa rechazada, lo que rechaza
-  `ownReady`, `ready`, y por lo tanto `await cfg` — con el mismo
+  `ownReady`, `ready`, y por lo tanto `await configs` — con el mismo
   `ConfigError` que `parse` lanzó. Ver "`create()` — parser failures" en
   `config-node.spec.ts`.
 - Para una publicación **posterior** (una fuente que actualiza en vivo,
@@ -297,6 +297,6 @@ t=40ms   el setTimeout propio de start() dispara → control.set(4000) → value
   `push()` de un test) — no como un rechazo de promesa, sino como una
   excepción síncrona real desde ese punto de la pila.
 - Un `Store` que sí llegó a resolver (`.get()` ya devuelve el valor
-  esperado) sigue siendo legible aunque `await cfg` termine rechazando: el
+  esperado) sigue siendo legible aunque `await configs` termine rechazando: el
   rechazo afecta al `then()` del nodo completo, no a los `Store`s
   individuales ya construidos.
