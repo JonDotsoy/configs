@@ -1,9 +1,9 @@
-# @jondotsoy/configs
+# hotconfigs
 
 Ship your config to your apps, fast. Configuration isn't just static values
 read once at boot anymore — feature flags, remote toggles, and settings
 served over HTTP or SSE change at runtime to turn features on and off or
-adjust app behavior without a redeploy. `@jondotsoy/configs` is built for
+adjust app behavior without a redeploy. `hotconfigs` is built for
 that: every field is a live `Store` you subscribe to, so your app reacts
 the moment a source pushes a new value.
 
@@ -12,12 +12,12 @@ the moment a source pushes a new value.
 - **Typed with TS check** — schemas are statically checked, so `cfg.port.get()` is inferred as `number | null` (or `number` when a `default` is set), not `any`.
 
 ```ts
-import { create, choice, numeric, string, boolean } from "@jondotsoy/configs";
-import { envSource } from "@jondotsoy/configs/sources/env";
-import { fetchSource } from "@jondotsoy/configs/sources/fetch";
-import { fileSource } from "@jondotsoy/configs/sources/file";
-import { pullSource } from "@jondotsoy/configs/sources/pull";
-import { file } from "@jondotsoy/configs/node";
+import { create, choice, numeric, string, boolean } from "hotconfigs";
+import { envSource } from "hotconfigs/sources/env";
+import { fetchSource } from "hotconfigs/sources/fetch";
+import { fileSource } from "hotconfigs/sources/file";
+import { pullSource } from "hotconfigs/sources/pull";
+import { file } from "hotconfigs/node";
 
 // HOST=localhost PORT=3000 → { server: { host: "localhost", port: "3000" } }
 // server.tls.cert/.key are read eagerly from disk, decoded into FileBlobs
@@ -130,7 +130,7 @@ console.log(await cfg.server.tls.cert.get()?.text());
 ## Install
 
 ```sh
-npm install @jondotsoy/configs
+npm install hotconfigs
 ```
 
 ## Guide
@@ -141,8 +141,8 @@ A shape property can be a plain object — it's an implicit nested group, sharin
 `create()` call's own `sources`:
 
 ```ts
-import { create, numeric, string } from "@jondotsoy/configs";
-import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
+import { create, numeric, string } from "hotconfigs";
+import { envSource, mapKey } from "hotconfigs/sources/env";
 
 // SERVER_PORT=3000 SERVER_HOST=localhost
 const cfg = await create(
@@ -163,9 +163,9 @@ A shape property can also be **another, separate `create()` call** — with its 
 resolving completely independently of the tree it's embedded in:
 
 ```ts
-import { create, numeric, string } from "@jondotsoy/configs";
-import { envSource } from "@jondotsoy/configs/sources/env";
-import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+import { create, numeric, string } from "hotconfigs";
+import { envSource } from "hotconfigs/sources/env";
+import { fetchSource } from "hotconfigs/sources/fetch";
 
 const database = create(
   { host: string(), port: numeric({ default: 5432 }) },
@@ -206,7 +206,7 @@ provide — anything with a `parse(value: unknown): T` method, which is exactly 
 specific one:
 
 ```ts
-import { create, boolean, choice, numeric, shape, string, url } from "@jondotsoy/configs";
+import { create, boolean, choice, numeric, shape, string, url } from "hotconfigs";
 import { z } from "zod";
 
 const cfg = await create(
@@ -300,8 +300,8 @@ A basic custom descriptor is just that shape, filled in — `parse` and `default
 like `string()`/`numeric()` do it internally:
 
 ```ts
-import { Descriptor, create, type WithDefault } from "@jondotsoy/configs";
-import { envSource } from "@jondotsoy/configs/sources/env";
+import { Descriptor, create, type WithDefault } from "hotconfigs";
+import { envSource } from "hotconfigs/sources/env";
 
 function port<const O extends { key?: string | string[]; default?: number } = {}>(
   options?: O,
@@ -418,8 +418,8 @@ explicit path instead, bypassing the field's nesting entirely. This is what lets
 (the identity mapping, `"PORT" => ["PORT"]`) feed a nested shape directly:
 
 ```ts
-import { create, numeric, string } from "@jondotsoy/configs";
-import { envSource } from "@jondotsoy/configs/sources/env";
+import { create, numeric, string } from "hotconfigs";
+import { envSource } from "hotconfigs/sources/env";
 
 // PORT=3000 HOST=localhost
 const cfg = await create(
@@ -441,8 +441,8 @@ differently-named source key. Combined with `url()`, this is a common way to pul
 string straight out of an env var into a nested group:
 
 ```ts
-import { create, url } from "@jondotsoy/configs";
-import { envSource } from "@jondotsoy/configs/sources/env";
+import { create, url } from "hotconfigs";
+import { envSource } from "hotconfigs/sources/env";
 
 // DATABASE_URL=postgres://user:pass@localhost:5432/app
 const cfg = await create(
@@ -482,7 +482,7 @@ without a `default`, `T` with one), and `B` is its *resolved* type once it has a
 or `Descriptor<number, number>` with a `default`:
 
 ```ts
-import { numeric, type Descriptor } from "@jondotsoy/configs";
+import { numeric, type Descriptor } from "hotconfigs";
 
 const withoutDefault: Descriptor<number | null, number> = numeric();
 const withDefault: Descriptor<number, number> = numeric({ default: 3000 });
@@ -541,7 +541,7 @@ applies: no `default` means the type is `T | null` (a bad or missing value resol
 runtime — see [Field types](#field-types)), a `default` means the type is `T`:
 
 ```ts
-import { create, shape } from "@jondotsoy/configs";
+import { create, shape } from "hotconfigs";
 import { z } from "zod";
 
 const cfg = await create(
@@ -602,7 +602,7 @@ object with `start(control)` and an optional `close()`, mirroring `ReadableStrea
 `close()` — is where you release whatever `start` set up, like a timer or an in-flight request.
 
 ```ts
-import { Source } from "@jondotsoy/configs";
+import { Source } from "hotconfigs";
 
 function pollingSource(url: string, intervalMs: number): Source<{ port: number }> {
   let timer: ReturnType<typeof setInterval>;
@@ -627,7 +627,7 @@ hands `control.set` one SSE message at a time) can publish the merged result wit
 own accumulator variable around:
 
 ```ts
-import { Source } from "@jondotsoy/configs";
+import { Source } from "hotconfigs";
 
 const source = new Source<{ port?: number; host?: string }>({
   start(control) {
@@ -654,7 +654,7 @@ each key maps to a path; the default is the identity mapping, `"FOO_TAR" => ["FO
 | `mapKey` | `EnvKeyMapper` | identity mapping (`"FOO_TAR" => ["FOO_TAR"]`) | Maps each (already prefix/suffix-trimmed) key to a path into the config tree. |
 
 ```ts
-import { envSource } from "@jondotsoy/configs/sources/env";
+import { envSource } from "hotconfigs/sources/env";
 
 // APP_PORT=3000 OTHER_VAR=x → { port: "3000" } (prefix stripped, OTHER_VAR excluded)
 const source = envSource({ prefix: "APP_", mapKey: (key) => [key.toLowerCase()] });
@@ -677,7 +677,7 @@ Built-in strategies live under the `mapKey` namespace, each a factory returning 
   exception to whatever strategy the rest use.
 
 ```ts
-import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
+import { envSource, mapKey } from "hotconfigs/sources/env";
 
 // SERVER_PORT=3000 SERVER_HOST=localhost → { server: { port: "3000", host: "localhost" } }
 const source = envSource({ mapKey: mapKey.snakeCase() });
@@ -690,7 +690,7 @@ You can also pass your own `EnvKeyMapper` instead of a built-in strategy — it'
 `(key: string) => string[]` function:
 
 ```ts
-import { envSource } from "@jondotsoy/configs/sources/env";
+import { envSource } from "hotconfigs/sources/env";
 
 const source = envSource({
   mapKey: (key) => (key === "PORT" ? ["server", "port"] : [key]),
@@ -750,7 +750,7 @@ They combine: a `304`'s own `Cache-Control` header still drives `followCacheCont
 | `reduce` | `(incoming: T, previous: T \| null) => T` | publishes `incoming` as-is (full replace) | Combines each successful fetch with the previously published value instead of replacing it outright. Especially useful with `pollingInterval`, when a later round's response is a partial update. Receives the `treePath`-selected body. |
 
 ```ts
-import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+import { fetchSource } from "hotconfigs/sources/fetch";
 import { Temporal } from "temporal-polyfill";
 
 const source = fetchSource<{ port: number }>({
@@ -764,7 +764,7 @@ const source = fetchSource<{ port: number }>({
 ```
 
 ```ts
-import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+import { fetchSource } from "hotconfigs/sources/fetch";
 
 // each round only returns the fields that changed — merge into what's already there
 const source = fetchSource<Record<string, unknown>>({
@@ -775,7 +775,7 @@ const source = fetchSource<Record<string, unknown>>({
 ```
 
 ```ts
-import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+import { fetchSource } from "hotconfigs/sources/fetch";
 
 const source = fetchSource<{ port: number }>({
   url: "https://config-service.internal/app",
@@ -785,7 +785,7 @@ const source = fetchSource<{ port: number }>({
 ```
 
 ```ts
-import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+import { fetchSource } from "hotconfigs/sources/fetch";
 
 // let the server drive the polling cadence instead of a fixed interval; useConditionalRequests
 // is on by default, so a 304 costs no bandwidth and doesn't touch the store
@@ -825,7 +825,7 @@ closes the source rather than reconnecting.
 | `overwrite` | `boolean` | `false` | Replaces the tree wholesale with each parsed message instead of shallow patch-merging it. Ignored when `reduce` is set. |
 
 ```ts
-import { sseSource } from "@jondotsoy/configs/sources/sse";
+import { sseSource } from "hotconfigs/sources/sse";
 
 const source = sseSource<{ port?: number; host?: string }>({
   url: "https://config-service.internal/app/events",
@@ -836,7 +836,7 @@ const source = sseSource<{ port?: number; host?: string }>({
 ```
 
 ```ts
-import { sseSource } from "@jondotsoy/configs/sources/sse";
+import { sseSource } from "hotconfigs/sources/sse";
 
 // each message is a full snapshot, not a patch — replace instead of merging
 const source = sseSource<{ port: number }>({
@@ -849,7 +849,7 @@ const source = sseSource<{ port: number }>({
 ```
 
 ```ts
-import { sseSource } from "@jondotsoy/configs/sources/sse";
+import { sseSource } from "hotconfigs/sources/sse";
 
 const source = sseSource<{ port?: number; host?: string }>({
   url: "https://config-service.internal/app/events",
@@ -891,7 +891,7 @@ second (`FileSourceOptions`):
 | `reduce` | `(incoming: T, previous: T \| null) => T` | publishes `incoming` as-is (full replace) | Combines each read with the previously published value instead of replacing it outright. Especially useful with `watch`, when a later read is a partial update. Receives the `treePath`-selected tree. |
 
 ```ts
-import { fileSource } from "@jondotsoy/configs/sources/file";
+import { fileSource } from "hotconfigs/sources/file";
 
 const source = fileSource<{ port: number; host: string }>("./config.json");
 // config.json: { "port": 3000, "host": "localhost" }
@@ -908,7 +908,7 @@ const source = fileSource("./config", { format: "env" });
 network mounts) where `fs.watch` doesn't fire reliably:
 
 ```ts
-import { fileSource } from "@jondotsoy/configs/sources/file";
+import { fileSource } from "hotconfigs/sources/file";
 
 const source = fileSource<{ port: number }>("./config.json", {
   watch: { interval: 2000 },
@@ -920,7 +920,7 @@ value is used as the parsed tree, so `fileSource` can support formats it doesn't
 (like YAML) without a hard dependency on a YAML library. `format` is ignored once `parser` is set:
 
 ```ts
-import { fileSource } from "@jondotsoy/configs/sources/file";
+import { fileSource } from "hotconfigs/sources/file";
 import YAML from "yaml";
 
 const source = fileSource("./config.yaml", {
@@ -932,7 +932,7 @@ const source = fileSource("./config.yaml", {
 thing, e.g. to pull just `containers.settings` out of a larger file shared with other tools:
 
 ```ts
-import { fileSource } from "@jondotsoy/configs/sources/file";
+import { fileSource } from "hotconfigs/sources/file";
 
 // file.json: { "containers": { "settings": { "port": 3000 } }, "metadata": {...} }
 const source = fileSource<{ port: number }>("./file.json", {
@@ -945,7 +945,7 @@ outright — handy with `watch` (the default) when the file is only ever appende
 updates rather than rewritten as a full snapshot each time:
 
 ```ts
-import { fileSource } from "@jondotsoy/configs/sources/file";
+import { fileSource } from "hotconfigs/sources/file";
 
 const source = fileSource<Record<string, unknown>>("./config.json", {
   reduce: (incoming, previous) => ({ ...(previous ?? {}), ...incoming }),
@@ -970,7 +970,7 @@ running.
 | `interval` | `number` | *required* | Milliseconds between calls to `pull`. |
 
 ```ts
-import { pullSource } from "@jondotsoy/configs/sources/pull";
+import { pullSource } from "hotconfigs/sources/pull";
 import { Temporal } from "temporal-polyfill";
 
 const source = pullSource<{ port: number }>({
@@ -1003,7 +1003,7 @@ once, and closes; a rejected exit code or a stdout that fails to parse is logged
 | `onRun` | `(event: ShellRunEvent) => void` | — | Called once per run (including every polled run) with timing and outcome data. |
 
 ```ts
-import { shellSource } from "@jondotsoy/configs/sources/shell";
+import { shellSource } from "hotconfigs/sources/shell";
 
 const source = shellSource<{ token: string; expires_at: string }>([
   "gh",
@@ -1017,7 +1017,7 @@ const source = shellSource<{ token: string; expires_at: string }>([
 `pollingInterval` keeps re-running `args` — useful for a token that needs periodic refreshing:
 
 ```ts
-import { shellSource } from "@jondotsoy/configs/sources/shell";
+import { shellSource } from "hotconfigs/sources/shell";
 
 const source = shellSource<{ token: string }>(["gh", "auth", "token", "--format", "json"], {
   pollingInterval: 5 * 60_000, // refresh every 5 minutes
@@ -1027,7 +1027,7 @@ const source = shellSource<{ token: string }>(["gh", "auth", "token", "--format"
 `stdoutParser` overrides the default JSON parsing — for a command that prints a bare value:
 
 ```ts
-import { shellSource } from "@jondotsoy/configs/sources/shell";
+import { shellSource } from "hotconfigs/sources/shell";
 
 const source = shellSource<string>(["git", "rev-parse", "HEAD"], {
   stdoutParser: (stdout) => stdout.trim(),
@@ -1044,9 +1044,9 @@ single environment, or a stand-in source in a test.
 **Options:** none — `literalSource(value)` takes only the value to publish, as its single argument.
 
 ```ts
-import { create, numeric, string } from "@jondotsoy/configs";
-import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
-import { literalSource } from "@jondotsoy/configs/sources/literal";
+import { create, numeric, string } from "hotconfigs";
+import { envSource, mapKey } from "hotconfigs/sources/env";
+import { literalSource } from "hotconfigs/sources/literal";
 
 const cfg = await create(
   {
@@ -1069,7 +1069,7 @@ defaults to `[envSource()]` instead of `[]`. Reaching for env vars is common eno
 `load(shape)` alone — no `options` at all — reads straight from `process.env`:
 
 ```ts
-import { load, numeric } from "@jondotsoy/configs";
+import { load, numeric } from "hotconfigs";
 
 // PORT=8080
 const cfg = await load({
@@ -1086,8 +1086,8 @@ Passing an explicit `sources` array overrides the `envSource()` default entirely
 with it — so `load()` then behaves exactly like `create()`:
 
 ```ts
-import { load, numeric } from "@jondotsoy/configs";
-import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+import { load, numeric } from "hotconfigs";
+import { fetchSource } from "hotconfigs/sources/fetch";
 
 const cfg = await load(
   { promoService: numeric({ default: 0 }) },
@@ -1104,8 +1104,8 @@ reference to a `Source` you'll need to close later (e.g. `sseSource`, to abort i
 connection instead of leaving it open in the background) and call its own `.close()` directly:
 
 ```ts
-import { create, numeric } from "@jondotsoy/configs";
-import { sseSource } from "@jondotsoy/configs/sources/sse";
+import { create, numeric } from "hotconfigs";
+import { sseSource } from "hotconfigs/sources/sse";
 
 const source = sseSource({ url: "https://config-service.internal/app/events" });
 const serverConfigs = await create({ port: numeric() }, { sources: [source] });
@@ -1131,8 +1131,8 @@ changes. This only really happens at runtime with a live source like `sseSource`
 `envSource` resolves once and never changes:
 
 ```ts
-import { create, numeric } from "@jondotsoy/configs";
-import { sseSource } from "@jondotsoy/configs/sources/sse";
+import { create, numeric } from "hotconfigs";
+import { sseSource } from "hotconfigs/sources/sse";
 
 async function cleanupTempFiles() {
   // ...
@@ -1164,14 +1164,14 @@ last timer for good — it's not a substitute for the `clearInterval` at the top
 
 ### `useConfig` — reading a field in React
 
-`@jondotsoy/configs/react` exports a `useConfig(store)` hook that subscribes a component to any
+`hotconfigs/react` exports a `useConfig(store)` hook that subscribes a component to any
 field (or nested group) and re-renders it on every update. React is a peer dependency — the hook
 only needs it if you actually import this subpath, so it's never pulled into apps that don't use
 React:
 
 ```tsx
-import { create, boolean } from "@jondotsoy/configs";
-import { useConfig } from "@jondotsoy/configs/react";
+import { create, boolean } from "hotconfigs";
+import { useConfig } from "hotconfigs/react";
 
 const cfg = create({ bannerIsActive: boolean({ default: false }) });
 
@@ -1196,7 +1196,7 @@ Further guides live under [`docs/`](./docs):
 - [`docs/getting-starter/features.md`](./docs/getting-starter/features.md) —
   portability: isomorphism, and browser/Node.js/Bun support notes.
 - [`docs/examples/`](./docs/examples) — runnable-shaped snippets for common
-  ways to wire up `@jondotsoy/configs`: a Kubernetes `ConfigMap` reload, a
+  ways to wire up `hotconfigs`: a Kubernetes `ConfigMap` reload, a
   `.env`-plus-JSON overlay, a React feature-flag poll, and verifying
   Google-signed JWTs against rotating keys.
 - [`docs/develop/check-package.md`](./docs/develop/check-package.md) —

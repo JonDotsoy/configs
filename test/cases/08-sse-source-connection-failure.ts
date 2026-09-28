@@ -2,7 +2,7 @@
 // via console.error and leave the store empty (null) instead of throwing.
 // Exercised without a live SSE server so it runs identically under every
 // engine, including a browser page.
-import { create, sseSource, numeric } from "@jondotsoy/configs";
+import { create, sseSource, numeric } from "hotconfigs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

@@ -1,7 +1,7 @@
 # Probar el paquete publicado
 
 Esta guía es una prueba sobre **el paquete ya publicado en npm**, no sobre el código
-fuente del repo: valida que `@jondotsoy/configs` se instala e importa correctamente
+fuente del repo: valida que `hotconfigs` se instala e importa correctamente
 desde **procesos reales de Node, Bun y Deno** — no solo desde `bun test` con
 resolución por código fuente — y que el tipado publicado (`dist/**/*.d.ts`) resuelve
 correctamente con `tsc --noEmit`. Se usa después de cada `npm publish` (smoke test de
@@ -28,10 +28,10 @@ publicarlos.
 
 Casos a probar en cada entorno:
 
-- **Instalación real** de la última versión publicada en npm (`npm add @jondotsoy/configs`
-  / `bun add @jondotsoy/configs` / `deno add npm:@jondotsoy/configs`), tal como lo haría
+- **Instalación real** de la última versión publicada en npm (`npm add hotconfigs`
+  / `bun add hotconfigs` / `deno add npm:hotconfigs`), tal como lo haría
   un consumidor — no resolución desde `src/` ni desde el workspace del monorepo.
-- **Import del core**: `import { create, envSource, ... } from "@jondotsoy/configs"`.
+- **Import del core**: `import { create, envSource, ... } from "hotconfigs"`.
 - **Import de subpaths de `sources/*`**: cada entrada pública del mapa `exports` de
   `package.json` — hoy `./sources/env`, `./sources/fetch`, `./sources/sse`,
   `./sources/file`, `./sources/literal` — resuelve de forma independiente.
@@ -55,13 +55,13 @@ Para un smoke test express (por ejemplo justo después de un `npm publish`), sin
 copiar cada snippet a mano — usar el [snippet base](#caso-de-uso-base-core--subpath-sourcesenv--tipado-inferido)
 como `test.ts` en cada paso que lo pida:
 
-- [ ] **Node** — `npm add @jondotsoy/configs` en un proyecto limpio, correr el
+- [ ] **Node** — `npm add hotconfigs` en un proyecto limpio, correr el
       snippet base con `node --experimental-strip-types test.ts` y tipar con
       [`tsc --noEmit --module nodenext --moduleResolution nodenext`](#comando-de-tipado-el-que-realmente-ejercita-dist)
       ([detalle](#node)).
-- [ ] **Bun** — `bun add @jondotsoy/configs`, `bun run test.ts` y `bunx tsc --noEmit`
+- [ ] **Bun** — `bun add hotconfigs`, `bun run test.ts` y `bunx tsc --noEmit`
       con el `tsconfig.json` de Bun ([detalle](#bun)).
-- [ ] **Deno** — `deno add npm:@jondotsoy/configs`, `deno check test.ts` y
+- [ ] **Deno** — `deno add npm:hotconfigs`, `deno check test.ts` y
       `deno run --allow-env test.ts` ([detalle](#deno)).
 - [ ] **Bundler de navegador** — `bun build entry.ts --outdir out --target browser`
       y `vite build` sobre el caso limpio (`create` + `literalSource`, sin
@@ -86,8 +86,8 @@ tipo de retorno de `.get()` se infiera correctamente (`number` porque hay `defau
 `string | null` porque no lo hay):
 
 ```ts
-import { create, envSource, mapKey, numeric, string } from "@jondotsoy/configs";
-import { envSource as envSourceFromSubpath } from "@jondotsoy/configs/sources/env";
+import { create, envSource, mapKey, numeric, string } from "hotconfigs";
+import { envSource as envSourceFromSubpath } from "hotconfigs/sources/env";
 
 const cfg = await create(
   {
@@ -116,10 +116,10 @@ en cualquier entorno:
 
 ```js
 // check-imports.mjs
-import { create, envSource, literalSource, mapKey, numeric, Source, ConfigError } from "@jondotsoy/configs";
-import { envSource as envSourceFromSubpath } from "@jondotsoy/configs/sources/env";
-import { fetchSource } from "@jondotsoy/configs/sources/fetch";
-import { sseSource } from "@jondotsoy/configs/sources/sse";
+import { create, envSource, literalSource, mapKey, numeric, Source, ConfigError } from "hotconfigs";
+import { envSource as envSourceFromSubpath } from "hotconfigs/sources/env";
+import { fetchSource } from "hotconfigs/sources/fetch";
+import { sseSource } from "hotconfigs/sources/sse";
 
 function assert(cond, message) {
   if (!cond) throw new Error("FAIL: " + message);
@@ -172,7 +172,7 @@ recibe un consumidor nuevo, y lo que hay que validar después de cada `npm publi
 > ```
 >
 > y usar `npm i /tmp/jondotsoy-configs-<version>.tgz` / `bun add /tmp/....tgz` en vez
-> de `npm add @jondotsoy/configs` / `bun add @jondotsoy/configs` en los pasos de abajo.
+> de `npm add hotconfigs` / `bun add hotconfigs` en los pasos de abajo.
 > Deno no soporta instalar un tarball local como paquete `npm:`; para probar un cambio
 > sin publicar, usar `deno run` apuntando directo a un archivo `.js` de `dist/`.
 
@@ -183,7 +183,7 @@ recibe un consumidor nuevo, y lo que hay que validar después de cada `npm publi
    ```sh
    mkdir -p /tmp/check-node && cd /tmp/check-node
    npm init -y
-   npm add @jondotsoy/configs
+   npm add hotconfigs
    npm i -D typescript
    ```
 
@@ -204,7 +204,7 @@ Cubierto parcialmente en el repo vía `bun run test:cases` (engine `node`) — e
    ```sh
    mkdir -p /tmp/check-bun && cd /tmp/check-bun
    bun init -y
-   bun add @jondotsoy/configs
+   bun add hotconfigs
    bun add -d @types/bun typescript
    ```
 
@@ -238,10 +238,10 @@ Cubierto parcialmente en el repo vía `bun run test:cases` (engine `bun`) — mi
 
    ```sh
    mkdir -p /tmp/check-deno && cd /tmp/check-deno
-   deno add npm:@jondotsoy/configs
+   deno add npm:hotconfigs
    ```
 
-2. Guardar el snippet base como `test.ts`, ajustando los imports a `npm:@jondotsoy/configs` / `npm:@jondotsoy/configs/sources/env` si no se usa un import map.
+2. Guardar el snippet base como `test.ts`, ajustando los imports a `npm:hotconfigs` / `npm:hotconfigs/sources/env` si no se usa un import map.
 3. Tipar y ejecutar:
 
    ```sh
@@ -261,14 +261,14 @@ pero conviene saber qué hacen exactamente:
 
 ```sh
 mkdir -p /tmp/check-browser && cd /tmp/check-browser
-npm add @jondotsoy/configs
+npm add hotconfigs
 ```
 
 **Caso limpio** (`create` + `literalSource`, sin ningún import de `sources/*` que
 toque Node) — `entry.ts`:
 
 ```ts
-import { create, literalSource, numeric } from "@jondotsoy/configs";
+import { create, literalSource, numeric } from "hotconfigs";
 
 const cfg = await create(
   { server: { port: numeric({ default: 3000 }) } },
@@ -296,7 +296,7 @@ porque `node:fs` está en el mismo archivo bundleado, tree-shaking aparte.
 **Caso con `fileSource`** — mismo `entry.ts` pero importando y usando `fileSource`:
 
 ```ts
-import { create, fileSource, numeric } from "@jondotsoy/configs";
+import { create, fileSource, numeric } from "hotconfigs";
 
 const cfg = await create(
   { server: { port: numeric({ default: 3000 }) } },
@@ -321,7 +321,7 @@ en el navegador. Probado importando desde la raíz y desde el subpath dedicado:
 
 ```ts
 // (a) desde la raíz
-import { create, fetchSource, numeric } from "@jondotsoy/configs";
+import { create, fetchSource, numeric } from "hotconfigs";
 
 const cfg = await create(
   { server: { port: numeric({ default: 3000 }) } },
@@ -332,7 +332,7 @@ console.log(cfg.server.port.get());
 
 ```ts
 // (b) desde el subpath, sin pasar por dist/configs.js
-import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+import { fetchSource } from "hotconfigs/sources/fetch";
 
 const source = fetchSource({ url: "https://example.com/config.json" });
 ```
@@ -354,7 +354,7 @@ Conclusión práctica: **`fileSource`/`DotEnv` son Node-only**, `fetchSource` (y
 misma razón `sseSource`, `envSource`, `literalSource`) son igual de seguros en el
 navegador — ningún bundler de navegador impide usar `fileSource` en build-time; la
 señal más temprana es el warning de Vite, y ese warning sale igual se use o no
-`fileSource` mientras se importe algo desde la raíz `@jondotsoy/configs` (es
+`fileSource` mientras se importe algo desde la raíz `hotconfigs` (es
 por-módulo, sobre `dist/configs.js` entero, no por lo que el consumidor realmente
 use de ahí); Bun no avisa en ningún caso, solo deja el shim muerto. Dos formas de
 evitarlo en código de navegador:

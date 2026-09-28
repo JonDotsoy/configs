@@ -12,8 +12,8 @@ runtime (Node, Bun) — see
 ## `server.ts`
 
 ```ts
-import { create, boolean } from "@jondotsoy/configs";
-import { fileSource } from "@jondotsoy/configs/sources/file";
+import { create, boolean } from "hotconfigs";
+import { fileSource } from "hotconfigs/sources/file";
 
 const cfg = await create(
   {

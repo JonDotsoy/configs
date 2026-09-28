@@ -5,7 +5,7 @@
 // on `required: false` is logged (via console.error) and swallowed into
 // `null` instead. No validation library needed: `Parseable<T>` is just
 // duck-typed as `{ parse(value: unknown): T }`.
-import { create, literalSource, shape } from "@jondotsoy/configs";
+import { create, literalSource, shape } from "hotconfigs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

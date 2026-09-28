@@ -1,7 +1,7 @@
 // Case: a `Source` with `reduce` — `start` hands partial patches to
 // `control.set`, and `reduce(incoming, previous)`'s return value is what
 // actually gets published (`previous` is `null` before the first call).
-import { Source } from "@jondotsoy/configs";
+import { Source } from "hotconfigs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

@@ -1,6 +1,6 @@
 # Metric types: Counter, Gauge, Histogram, Summary
 
-`@jondotsoy/configs` ships a small, dependency-free metrics utility
+`hotconfigs` ships a small, dependency-free metrics utility
 (`src/utils/metric.ts`) alongside the config system. It's the same shape
 you'd expect from a Prometheus client: four metric types, each backed by
 one or more labeled **series**, with flexible call syntaxes for recording a
@@ -10,7 +10,7 @@ All four classes — `CounterMetric`, `GaugeMetric`, `HistogramMetric`,
 `SummaryMetric` — plus the `Metric` base class they extend, and every
 related type (`MetricOptions`, `MetricLabels`, `HistogramMetricOptions`,
 `SummaryMetricOptions`, and the four `*MetricSample` types), are exported
-from the `@jondotsoy/configs/utils/metrics` subpath — not from the package
+from the `hotconfigs/utils/metrics` subpath — not from the package
 root:
 
 ```ts
@@ -20,7 +20,7 @@ import {
   GaugeMetric,
   HistogramMetric,
   SummaryMetric,
-} from "@jondotsoy/configs/utils/metrics";
+} from "hotconfigs/utils/metrics";
 ```
 
 ## Table of contents

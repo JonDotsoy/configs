@@ -1,6 +1,6 @@
 # Portability: isomorphism and per-runtime support
 
-`@jondotsoy/configs` is built to run wherever your app runs — no
+`hotconfigs` is built to run wherever your app runs — no
 dependencies, distributed as pure ESM. This guide summarizes which parts of
 the package are isomorphic and what to expect when using it from the
 browser, Node.js, and Bun.
@@ -42,7 +42,7 @@ or the dead shim Bun leaves behind) even if you don't use `fileSource`,
 import by subpath instead of the root:
 
 ```ts
-import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+import { fetchSource } from "hotconfigs/sources/fetch";
 
 const source = fetchSource({ url: "https://example.com/config.json" });
 ```
@@ -54,12 +54,12 @@ Each subpath (`./sources/env`, `./sources/fetch`, `./sources/sse`,
 ## Node.js support
 
 ```sh
-npm install @jondotsoy/configs
+npm install hotconfigs
 ```
 
 ```ts
-import { create, numeric } from "@jondotsoy/configs";
-import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
+import { create, numeric } from "hotconfigs";
+import { envSource, mapKey } from "hotconfigs/sources/env";
 
 const cfg = await create(
   { server: { port: numeric({ default: 3000 }) } },
@@ -87,12 +87,12 @@ Bun is the runtime the package itself is developed and tested on (see
 `CLAUDE.md`), so support is first-class.
 
 ```sh
-bun add @jondotsoy/configs
+bun add hotconfigs
 ```
 
 ```ts
-import { create, numeric } from "@jondotsoy/configs";
-import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
+import { create, numeric } from "hotconfigs";
+import { envSource, mapKey } from "hotconfigs/sources/env";
 
 const cfg = await create(
   { server: { port: numeric({ default: 3000 }) } },

@@ -42,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Awaited` (via the exported `Settled<O, T>` type) is `T` once a `default` **or** `required: true`
   is set, `T | null` otherwise.
 - **`string()`, `numeric()`, `boolean()`, `url()`, `choice(options)`, `shape(options)`, `list(options)`**
-  — the built-in field-schema builders exported from `@jondotsoy/configs`, each returning a
+  — the built-in field-schema builders exported from `hotconfigs`, each returning a
   `Descriptor` instance:
   - `string()`/`numeric()`/`boolean()` parse a source's raw value into that primitive type.
   - `url()` parses a string into a `URL` instance, throwing a `ConfigError` on an invalid URL; its
@@ -68,7 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     shape). `required: true` is enforced at runtime for every built-in type: a required field still
     resolved to `null` once every source has settled is reported as a missing-value error at its own
     path.
-- **`@jondotsoy/configs/node`'s `file()`/`FileBlob`** — a field-schema builder for reading a field's
+- **`hotconfigs/node`'s `file()`/`FileBlob`** — a field-schema builder for reading a field's
   value as a file. A source's raw string value is decoded (as base64 or plain text, inferred
   automatically, or forced via `format: "text" | "base64"`) into a `FileBlob`, exposing `.text()`,
   `.json()`, `.formData()`, `.arrayBuffer()`, `.bytes()`, `.stream()`, `.exists()`, plus the
@@ -133,15 +133,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`fetchSource`**, **`sseSource`**, and **`fileSource`** all accept a `reduce?: (incoming: T,
   previous: T | null) => T` option, so a later snapshot can be combined with the previously
   published value instead of always replacing it outright.
-- **`@jondotsoy/configs/react`'s `useConfig(store)`** — a hook built on `useSyncExternalStore` that
+- **`hotconfigs/react`'s `useConfig(store)`** — a hook built on `useSyncExternalStore` that
   subscribes a component to any config field or nested group's `Store`/`ReadOnlyStore` and
   re-renders it on updates. React is an optional peer dependency, externalized from the build.
 - **`ConfigError`** for schema/config-level errors, and `DataTypes`/`DataTypeName` for the field type
   and coercion helpers backing schema fields.
-- **`DotEnv`** — a `.env`-file parser (exported from `@jondotsoy/configs`) matching the quoting,
+- **`DotEnv`** — a `.env`-file parser (exported from `hotconfigs`) matching the quoting,
   escaping, and multi-line value rules of the common `.env` format, used internally by `fileSource`
   and available standalone.
-- **`@jondotsoy/configs/utils/metrics`** — Prometheus-style metric helpers (counters, gauges,
+- **`hotconfigs/utils/metrics`** — Prometheus-style metric helpers (counters, gauges,
   histograms, and summaries with configurable quantiles and a sliding time window), for
   instrumenting a config tree's own sources and fields.
 

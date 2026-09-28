@@ -12,8 +12,8 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, choice, numeric, string, boolean, envSource, fetchSource, fileSource, pullSource } from "@jondotsoy/configs";
-import { file, FileBlob } from "@jondotsoy/configs/node";
+import { create, choice, numeric, string, boolean, envSource, fetchSource, fileSource, pullSource } from "hotconfigs";
+import { file, FileBlob } from "hotconfigs/node";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

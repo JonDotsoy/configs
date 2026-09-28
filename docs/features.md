@@ -1,6 +1,6 @@
 # Features
 
-Lista de features de `@jondotsoy/configs`, agrupadas por área. Para una
+Lista de features de `hotconfigs`, agrupadas por área. Para una
 guía de uso ver el [`README.md`](../README.md); para el detalle interno de
 cada pieza, el código fuente en `src/` está fuertemente comentado.
 
@@ -170,7 +170,7 @@ reservado):
 
 ## `file()` — campo respaldado por disco
 
-`src/node.ts`, subpath `@jondotsoy/configs/node` (Node-only, usa
+`src/node.ts`, subpath `hotconfigs/node` (Node-only, usa
 `node:fs`):
 
 - **`file(options?)`** — decodifica el valor crudo de una fuente (o un
@@ -187,7 +187,7 @@ reservado):
 
 ## React
 
-`src/react.ts`, subpath `@jondotsoy/configs/react` (React como peer
+`src/react.ts`, subpath `hotconfigs/react` (React como peer
 dependency — solo se necesita si se importa este subpath):
 
 - **`useConfig(store)`** — hook que suscribe un componente a cualquier

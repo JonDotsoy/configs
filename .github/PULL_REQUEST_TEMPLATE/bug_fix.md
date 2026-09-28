@@ -6,7 +6,7 @@
 Minimal code snippet or steps that reproduced the bug before this fix:
 
 ```ts
-import { configs } from "@jondotsoy/configs";
+import { configs } from "hotconfigs";
 
 // ...
 ```

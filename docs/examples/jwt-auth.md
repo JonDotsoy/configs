@@ -15,8 +15,8 @@ needed.
 ## `auth.ts`
 
 ```ts
-import { create, shape } from "@jondotsoy/configs";
-import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+import { create, shape } from "hotconfigs";
+import { fetchSource } from "hotconfigs/sources/fetch";
 import { decodeProtectedHeader, importJWK, jwtVerify } from "jose";
 import { Temporal } from "temporal-polyfill";
 import { z } from "zod";

@@ -1,7 +1,7 @@
 // Case: every built-in `mapKey` strategy, exercised directly as pure
 // functions — no I/O, so this doubles as a baseline "does plain JS run here"
 // sanity check across engines.
-import { mapKey } from "@jondotsoy/configs";
+import { mapKey } from "hotconfigs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

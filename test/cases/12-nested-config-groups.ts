@@ -1,6 +1,6 @@
 // Case: nested config groups — plain nested objects in create()'s shape,
 // several levels deep — resolve fields at every depth from the same source.
-import { create, literalSource, string } from "@jondotsoy/configs";
+import { create, literalSource, string } from "hotconfigs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

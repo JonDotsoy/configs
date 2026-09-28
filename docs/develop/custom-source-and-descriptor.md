@@ -167,7 +167,7 @@ El del README, con la forma real de la sección
 ["`Source` — building a custom source"](../../README.md#source--building-a-custom-source):
 
 ```ts
-import { Source } from "@jondotsoy/configs";
+import { Source } from "hotconfigs";
 
 function pollingSource(url: string, intervalMs: number): Source<{ port: number }> {
   let timer: ReturnType<typeof setInterval>;
@@ -358,8 +358,8 @@ una sola vez desde el único `control.rawStore.subscribe(...)`, igual que
 `string()`/`numeric()` por dentro:
 
 ```ts
-import { Descriptor, create, type Settled, type WithDefault } from "@jondotsoy/configs";
-import { envSource } from "@jondotsoy/configs/sources/env";
+import { Descriptor, create, type Settled, type WithDefault } from "hotconfigs";
+import { envSource } from "hotconfigs/sources/env";
 
 function port<const O extends { key?: string | string[]; default?: number; required?: boolean } = {}>(
   options?: O,

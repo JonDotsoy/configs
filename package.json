@@ -1,5 +1,5 @@
 {
-  "name": "@jondotsoy/configs",
+  "name": "hotconfigs",
   "version": "1.0.0",
   "description": "A reactive, typed configuration library backed by pluggable sources (env, fetch, sse, file, literal).",
   "keywords": [

@@ -1,4 +1,4 @@
-// Case: `@jondotsoy/configs/node`'s file() field decodes a source's raw
+// Case: `hotconfigs/node`'s file() field decodes a source's raw
 // value into a FileBlob, and a URL default is read from disk eagerly.
 // node:fs-backed, so a browser bundle stubs it out (see manifest.ts's
 // tolerateFailureEngines for this case) — run there anyway to document the
@@ -6,8 +6,8 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, literalSource } from "@jondotsoy/configs";
-import { FileBlob, file } from "@jondotsoy/configs/node";
+import { create, literalSource } from "hotconfigs";
+import { FileBlob, file } from "hotconfigs/node";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

@@ -1,4 +1,4 @@
-// Case: importing the root entry point (`@jondotsoy/configs`) exposes every
+// Case: importing the root entry point (`hotconfigs`) exposes every
 // documented top-level export, under every supported engine.
 import {
   create,
@@ -13,7 +13,7 @@ import {
   Source,
   Store,
   ConfigError,
-} from "@jondotsoy/configs";
+} from "hotconfigs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

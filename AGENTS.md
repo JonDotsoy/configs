@@ -6,7 +6,7 @@ alwaysApply: false
 
 ## Project
 
-`@jondotsoy/configs` — a reactive, typed configuration library. No runtime
+`hotconfigs` — a reactive, typed configuration library. No runtime
 dependencies; every field is a live `Store` backed by pluggable
 `Source`s (`env`, `fetch`, `sse`).
 
@@ -175,13 +175,13 @@ script and its manifest entry together.
 with `npm pack` run *inside* `dist/` — the same tarball `npm publish ./dist`
 would produce — and installs it with `npm install` into a scratch directory
 unrelated to this repo's own `package.json`. Each case is copied into that
-directory before running, so its `@jondotsoy/configs` imports can only
+directory before running, so its `hotconfigs` imports can only
 resolve through the installed `node_modules`, never through Node/Bun's own
 self-reference (which would silently mask a packaging mistake — a missing
 export, a stray or omitted file — by falling back to the workspace source).
 node/bun/deno run the copied script directly with each runtime's own
 binary; the browser engine bundles it with `Bun.build`, resolving
-`@jondotsoy/configs` from that same scratch `node_modules`, into a small
+`hotconfigs` from that same scratch `node_modules`, into a small
 page driven by Playwright's Chromium. A missing `node`/`bun`/`deno` binary
 skips that engine's row instead of failing the run (override with
 `NODE_BIN` / `BUN_BIN` / `DENO_BIN`).
@@ -293,7 +293,7 @@ make the file count as a test:
 
 ```ts
 import { expectTypeOf, test } from "bun:test";
-import { create, numeric } from "@jondotsoy/configs";
+import { create, numeric } from "hotconfigs";
 
 test("port narrows to number when a default is set", () => {
   const cfg = create({ port: numeric({ default: 3000 }) });

@@ -1,7 +1,7 @@
 // Case: envSource + mapKey.snakeCase, against an explicit `env` object
 // (rather than process.env) so the same script runs unmodified in a browser,
 // which has no process.env.
-import { create, envSource, mapKey, numeric, string } from "@jondotsoy/configs";
+import { create, envSource, mapKey, numeric, string } from "hotconfigs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

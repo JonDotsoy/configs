@@ -10,9 +10,9 @@ republishes.
 ## `configs.ts`
 
 ```ts
-import { create, boolean, numeric, string } from "@jondotsoy/configs";
-import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
-import { fileSource } from "@jondotsoy/configs/sources/file";
+import { create, boolean, numeric, string } from "hotconfigs";
+import { envSource, mapKey } from "hotconfigs/sources/env";
+import { fileSource } from "hotconfigs/sources/file";
 
 export default await create(
   {
