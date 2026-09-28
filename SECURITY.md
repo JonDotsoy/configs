@@ -15,7 +15,7 @@ actually intentional.
 
 | Subpath                    | Capability                                 | Notes |
 | --------------------------- | ------------------------------------------- | ----- |
-| `hotconfigs` (root)          | none                                        | `create()`, `load()`, descriptors (`string()`, `numeric()`, ...), `Store`, `Source`, `envSource`, `fileSource`, `literalSource`, `pullSource`, `shellSource`, `ConfigError`. |
+| `hotconfigs` (root)          | none                                        | `create()`, `load()`, descriptors (`string()`, `numeric()`, ...), `Store`, `Source`, `envSource`, `fileSource`, `literalSource`, `pullSource`, `ConfigError`. |
 | `hotconfigs/sources/fetch`   | **Network** (outbound HTTP via `fetch()`)    | `fetchSource()` polls/fetches a URL. |
 | `hotconfigs/sources/sse`     | **Network** (outbound HTTP via `EventSource`/SSE) | `sseSource()` opens a long-lived Server-Sent Events connection. |
 | `hotconfigs/sources/file`    | **File system** (`node:fs`, `fs.watch`)      | `fileSource()` reads and watches a local `.json`/`.env` file. |
@@ -28,16 +28,18 @@ actually intentional.
 | `hotconfigs/utils/metrics`   | none                                         | In-memory counters/histograms only. |
 
 **Why the root entry point has no capability beyond the above:** `hotconfigs`
-re-exports each source's factory function individually, and network-capable
-sources (`fetchSource`, `sseSource`) are re-exported only from their own
-`hotconfigs/sources/fetch`/`hotconfigs/sources/sse` subpaths — not from the
-root. Importing `hotconfigs` therefore never pulls in `fetch()`/`EventSource`
-usage unless the consumer also imports one of those subpaths directly. This
-mirrors the project's existing per-module build (see `CLAUDE.md`'s "Build:
-`tsc`, not a bundler"): `dist/` ships one file per `src/*.ts` module, so a
-scanner that reads the published tarball as a whole will still see
-`fetch.ts`/`sse.ts` in the package — but a scanner or bundler that follows
-only the root entry point's actual import graph will not.
+re-exports each source's factory function individually, and the sources with
+a real external-access capability — network (`fetchSource`, `sseSource`) and
+subprocess execution (`shellSource`) — are re-exported only from their own
+`hotconfigs/sources/fetch`/`hotconfigs/sources/sse`/`hotconfigs/sources/shell`
+subpaths, not from the root. Importing `hotconfigs` therefore never pulls in
+`fetch()`/`EventSource`/`node:child_process` usage unless the consumer also
+imports one of those subpaths directly. This mirrors the project's existing
+per-module build (see `CLAUDE.md`'s "Build: `tsc`, not a bundler"): `dist/`
+ships one file per `src/*.ts` module, so a scanner that reads the published
+tarball as a whole will still see `fetch.ts`/`sse.ts`/`shell.ts` in the
+package — but a scanner or bundler that follows only the root entry point's
+actual import graph will not.
 
 ## Supply-chain scanner findings
 
