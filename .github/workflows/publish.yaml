@@ -116,10 +116,15 @@ jobs:
             fi
           fi
 
-      - name: Publish to npm
+      - name: Stage npm publish (dry run)
+        id: npm-publish-stage
+        if: steps.check-release.outputs.exists == 'false'
+        run: npm publish ./dist --access public --tag ${{ steps.dist-tag.outputs.tag }} --dry-run
+
+      - name: Publish to npm (signed provenance)
         id: npm-publish
         if: steps.check-release.outputs.exists == 'false'
-        run: npm publish ./dist --access public --tag ${{ steps.dist-tag.outputs.tag }}
+        run: npm publish ./dist --access public --tag ${{ steps.dist-tag.outputs.tag }} --provenance
 
       - name: Extract changelog notes for this version
         id: changelog
