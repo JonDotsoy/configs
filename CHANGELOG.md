@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING**: the root entry point (`hotconfigs`) no longer re-exports `fetchSource`,
+  `sseSource`, or their `FetchSourceOptions`/`FetchedEvent`/`SseSourceOptions` types. Importing
+  `hotconfigs` previously pulled in `fetch.ts`/`sse.ts` (network-capable code, using the global
+  `fetch`/`EventSource`) even for consumers who never construct a `fetchSource`/`sseSource`, which
+  supply-chain scanners (e.g. Socket.dev) flag as a "network access" capability on the whole
+  package. `fetchSource`/`sseSource` remain available, unchanged, from their dedicated subpaths —
+  `hotconfigs/sources/fetch` and `hotconfigs/sources/sse` — so only consumers who actually import
+  those subpaths pull in network-capable code. Every other source (`envSource`, `fileSource`,
+  `literalSource`, `pullSource`, `shellSource`) keeps re-exporting from the root as before.
+
 ## [1.0.4] - 2026-09-28
 
 ### Added

@@ -1,7 +1,8 @@
 // Case: fetchSource against a `data:` URL — no server needed, so the exact
 // same script exercises a real HTTP round trip (fetch + JSON parsing +
 // treePath selection) under node, bun, deno, and a real browser alike.
-import { create, fetchSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { fetchSource } from "hotconfigs/sources/fetch";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

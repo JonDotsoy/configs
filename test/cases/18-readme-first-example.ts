@@ -12,7 +12,8 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, choice, numeric, string, boolean, envSource, fetchSource, fileSource, pullSource } from "hotconfigs";
+import { create, choice, numeric, string, boolean, envSource, fileSource, pullSource } from "hotconfigs";
+import { fetchSource } from "hotconfigs/sources/fetch";
 import { file, FileBlob } from "hotconfigs/node";
 
 function assert(cond: unknown, message: string): void {

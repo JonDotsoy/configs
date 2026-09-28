@@ -1,15 +1,17 @@
 // Case: importing the root entry point (`hotconfigs`) exposes every
-// documented top-level export, under every supported engine.
+// documented top-level export, under every supported engine. `fetchSource`
+// and `sseSource` are deliberately NOT re-exported here — they only live
+// under `hotconfigs/sources/fetch` and `hotconfigs/sources/sse` (see case
+// 02), so importing the root entry point never pulls in network-capable
+// code (fetch/EventSource) that a consumer didn't ask for.
 import {
   create,
   load,
   envSource,
-  fetchSource,
   fileSource,
   literalSource,
   mapKey,
   pullSource,
-  sseSource,
   Source,
   Store,
   ConfigError,
@@ -23,11 +25,9 @@ function assert(cond: unknown, message: string): void {
 assert(typeof create === "function", "create is exported from root");
 assert(typeof load === "function", "load is exported from root");
 assert(typeof envSource === "function", "envSource is exported from root");
-assert(typeof fetchSource === "function", "fetchSource is exported from root");
 assert(typeof fileSource === "function", "fileSource is exported from root");
 assert(typeof literalSource === "function", "literalSource is exported from root");
 assert(typeof pullSource === "function", "pullSource is exported from root");
-assert(typeof sseSource === "function", "sseSource is exported from root");
 assert(typeof Source === "function", "Source is exported from root");
 assert(typeof Store === "function", "Store is exported from root");
 assert(typeof ConfigError === "function", "ConfigError is exported from root");
