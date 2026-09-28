@@ -1,6 +1,6 @@
 // Case: create() + literalSource — the simplest end-to-end path:
 // a source that publishes once, a leaf field reading it, then a clean close.
-import { create, literalSource, numeric, string } from "@jondotsoy/configs";
+import { create, literalSource, numeric, string } from "hotconfigs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

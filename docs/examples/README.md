@@ -1,6 +1,6 @@
 # Examples
 
-Runnable-shaped snippets for common ways to wire up `@jondotsoy/configs`.
+Runnable-shaped snippets for common ways to wire up `hotconfigs`.
 Each one is self-contained: the source file(s), the config input(s) it
 reads, and a short note on why it's put together that way.
 

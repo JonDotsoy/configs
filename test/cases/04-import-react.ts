@@ -1,6 +1,6 @@
 // Case: the `/react` subpath resolves and exports `useConfig`, with the
 // `react` peer dependency itself resolvable alongside it.
-import { useConfig } from "@jondotsoy/configs/react";
+import { useConfig } from "hotconfigs/react";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

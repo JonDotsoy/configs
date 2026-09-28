@@ -39,7 +39,7 @@ jobs:
           echo "fail=$fail" >> "$GITHUB_OUTPUT"
           echo "total=$total" >> "$GITHUB_OUTPUT"
 
-      # test/cases/*.ts imports the package by its own name (e.g. "@jondotsoy/configs"),
+      # test/cases/*.ts imports the package by its own name (e.g. "hotconfigs"),
       # resolved via package.json's self-reference — which only works once dist/ exists.
       - run: bun run build
 

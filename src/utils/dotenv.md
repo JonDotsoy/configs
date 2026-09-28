@@ -84,7 +84,7 @@ than you might expect (per the rules above) or is skipped outright, never an err
 ## API
 
 ```ts
-import { DotEnv } from "@jondotsoy/configs";
+import { DotEnv } from "hotconfigs";
 
 DotEnv.parse("FOO = true # comment\nBAR=baz\n");
 // => { FOO: "true", BAR: "baz" }

@@ -12,13 +12,13 @@
  * resulting tarball is installed with `npm install` into a scratch
  * directory that has no relation to this repo's own package.json. Each case
  * file is copied into that scratch directory before running it, so its bare
- * `@jondotsoy/configs` (and subpath) imports can only resolve through the
+ * `hotconfigs` (and subpath) imports can only resolve through the
  * installed `node_modules` — not through Node/Bun's own-package
  * self-reference, which would silently mask a packaging mistake (a missing
  * export, a stray/omitted file) by falling back to the workspace source.
  *
  * The browser case bundles that same copied file with `Bun.build` (target:
- * "browser"), letting it resolve `@jondotsoy/configs` from the scratch
+ * "browser"), letting it resolve `hotconfigs` from the scratch
  * directory's `node_modules` too — so the browser bundle is built from the
  * same packed `dist/**` output as the CLI engines, not from `src/*.ts`.
  * The bundle is inlined into a small HTML page and driven with Playwright's
@@ -88,7 +88,7 @@ interface CaseResult {
  * dist/ so dist/package.json (not the repo's root package.json) is the tarball's manifest and
  * dist/ itself is the tarball's root — exactly the artifact `npm publish` would produce from
  * dist/ directly. Installs the tarball with `npm install` into a fresh scratch directory
- * unrelated to this repo's own package.json, so nothing in it can resolve `@jondotsoy/configs`
+ * unrelated to this repo's own package.json, so nothing in it can resolve `hotconfigs`
  * via workspace self-reference. Returns that directory; the caller is responsible for cleaning
  * it up.
  */
@@ -122,7 +122,7 @@ async function packAndInstall(): Promise<string> {
     const reactVersion = JSON.parse(await readFile(join(scratchDir, "node_modules/react/package.json"), "utf8")).version;
     const manifestPath = join(scratchDir, "package.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    // `npm install` only records @jondotsoy/configs itself in "dependencies"; declaring react there
+    // `npm install` only records hotconfigs itself in "dependencies"; declaring react there
     // too (even though it was copied in by hand, not installed) is what lets Deno's node_modules-dir
     // resolution recognize it as a real dependency instead of stray content in node_modules/.
     manifest.dependencies = { ...manifest.dependencies, react: reactVersion };
@@ -162,8 +162,8 @@ async function runCli(engine: CliEngine, scratchDir: string, caseFile: string): 
 
 /**
  * Reads the installed package's own package.json "exports" map and resolves each subpath to its
- * real file under the scratch directory's node_modules — e.g. "@jondotsoy/configs/sources/env" ->
- * ".../node_modules/@jondotsoy/configs/sources/env.js" (dist/ was packed as the tarball's own
+ * real file under the scratch directory's node_modules — e.g. "hotconfigs/sources/env" ->
+ * ".../node_modules/hotconfigs/sources/env.js" (dist/ was packed as the tarball's own
  * root, so there's no "dist/" segment in the installed layout). Bundling against these resolved paths
  * directly (rather than leaving `Bun.build` to walk node_modules and match exports conditions on
  * its own for a `target: "browser"` build) sidesteps bundler-version quirks in that matching for a
@@ -171,7 +171,7 @@ async function runCli(engine: CliEngine, scratchDir: string, caseFile: string): 
  * points at.
  */
 async function loadConfigsExportsMap(scratchDir: string): Promise<Record<string, string>> {
-  const pkgDir = join(scratchDir, "node_modules/@jondotsoy/configs");
+  const pkgDir = join(scratchDir, "node_modules/hotconfigs");
   const pkg = JSON.parse(await readFile(join(pkgDir, "package.json"), "utf8")) as {
     exports: Record<string, { import?: string; default?: string }>;
   };
@@ -179,7 +179,7 @@ async function loadConfigsExportsMap(scratchDir: string): Promise<Record<string,
   for (const [subpath, conditions] of Object.entries(pkg.exports)) {
     const target = conditions.import ?? conditions.default;
     if (!target) continue;
-    const specifier = subpath === "." ? "@jondotsoy/configs" : `@jondotsoy/configs/${subpath.replace(/^\.\//, "")}`;
+    const specifier = subpath === "." ? "hotconfigs" : `hotconfigs/${subpath.replace(/^\.\//, "")}`;
     map[specifier] = join(pkgDir, target);
   }
   return map;
@@ -189,7 +189,7 @@ function configsExportsPlugin(exportsMap: Record<string, string>) {
   return {
     name: "configs-exports",
     setup(build: Parameters<NonNullable<Parameters<typeof Bun.build>[0]["plugins"]>[number]["setup"]>[0]) {
-      build.onResolve({ filter: /^@jondotsoy\/configs(\/.*)?$/ }, (args: { path: string }) => {
+      build.onResolve({ filter: /^hotconfigs(\/.*)?$/ }, (args: { path: string }) => {
         const resolved = exportsMap[args.path];
         if (!resolved) throw new Error(`configs-exports: "${args.path}" isn't in the installed package's exports map`);
         return { path: resolved };
@@ -205,7 +205,7 @@ async function runBrowser(
   exportsMap: Record<string, string>,
 ): Promise<{ compileCommand: string; output: string; passed: boolean; skippedReason?: string }> {
   const relPath = `test/cases/${caseFile}`;
-  const compileCommand = `$ bun build ${relPath} --target browser --format esm (resolving @jondotsoy/configs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`;
+  const compileCommand = `$ bun build ${relPath} --target browser --format esm (resolving hotconfigs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`;
 
   const buildResult = await Bun.build({
     entrypoints: [join(scratchDir, caseFile)],
@@ -344,7 +344,7 @@ async function renderReport(results: CaseResult[]): Promise<string> {
     "self-reference, so a packaging mistake (a missing export, a stray or",
     "omitted file) actually surfaces here. node/bun/deno run the copied script",
     "directly; the browser engine bundles it with `Bun.build`, resolving",
-    "`@jondotsoy/configs` from that same installed tarball, into a small page",
+    "`hotconfigs` from that same installed tarball, into a small page",
     "driven by Playwright's Chromium. A case listed in its manifest",
     "entry's `tolerateFailureEngines` still runs on that engine, but a failure",
     "there is reported as a WARNING instead of a FAILED, and doesn't fail the run",

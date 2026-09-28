@@ -7,8 +7,8 @@ live [`Store`](#store) per field in the shape you pass in, plus `then()`/`await`
 support and a `close()` method.
 
 ```ts
-import { create, string, numeric } from "@jondotsoy/configs";
-import { envSource } from "@jondotsoy/configs/sources/env";
+import { create, string, numeric } from "hotconfigs";
+import { envSource } from "hotconfigs/sources/env";
 
 const cfg = create(
   {
@@ -242,10 +242,10 @@ failure into a thrown `ConfigError`.
 ### `file(options?)`
 
 Loads a field's value as a file, decoded into a `FileBlob`. Imported from
-`@jondotsoy/configs/node` (not the root entry point).
+`hotconfigs/node` (not the root entry point).
 
 ```ts
-import { file } from "@jondotsoy/configs/node";
+import { file } from "hotconfigs/node";
 
 file({ default: new URL("file:///etc/ssl/certs/server.pem") });
 ```
@@ -269,11 +269,11 @@ thrown `ConfigError` — same "log unless required" rule as `shape()`.
 Every source is created by its own factory function (`envSource()`,
 `fetchSource()`, ...) and passed into `create()`/`load()`'s `options.sources`
 array. Each one is importable from its own subpath, e.g.
-`@jondotsoy/configs/sources/env`.
+`hotconfigs/sources/env`.
 
 A `Source` created this way exposes `source.metrics` — a plain object of
 built-in `Metric`s (`CounterMetric`, `HistogramMetric`, `GaugeMetric` from
-`@jondotsoy/configs/utils/metrics`) that record request/read counts and
+`hotconfigs/utils/metrics`) that record request/read counts and
 durations, documented per source below.
 
 ### `envSource(options?)`
@@ -281,7 +281,7 @@ durations, documented per source below.
 Snapshots environment variables into a config tree, one field per key.
 
 ```ts
-import { envSource, mapKey } from "@jondotsoy/configs/sources/env";
+import { envSource, mapKey } from "hotconfigs/sources/env";
 
 envSource({ prefix: "APP_", mapKey: mapKey.snakeCase() });
 ```
@@ -314,7 +314,7 @@ filtering.
 Fetches a snapshot from a URL.
 
 ```ts
-import { fetchSource } from "@jondotsoy/configs/sources/fetch";
+import { fetchSource } from "hotconfigs/sources/fetch";
 
 fetchSource({ url: "https://example.com/features", pollingInterval: 30_000 });
 ```
@@ -353,7 +353,7 @@ Connects to a Server-Sent Events endpoint; every JSON-object message is
 applied as a patch onto the accumulated config tree.
 
 ```ts
-import { sseSource } from "@jondotsoy/configs/sources/sse";
+import { sseSource } from "hotconfigs/sources/sse";
 
 sseSource({ url: "https://example.com/events" });
 ```
@@ -388,7 +388,7 @@ Reads a config tree from a local file — `.json` or `.env` by default (matched
 by extension, or a bare `.env` filename), live via `fs.watch`.
 
 ```ts
-import { fileSource } from "@jondotsoy/configs/sources/file";
+import { fileSource } from "hotconfigs/sources/file";
 
 fileSource(".env");
 fileSource("./config.json", { treePath: ["server"] });
@@ -414,7 +414,7 @@ Runs `args` as a child process and publishes its parsed stdout as the config
 tree.
 
 ```ts
-import { shellSource } from "@jondotsoy/configs/sources/shell";
+import { shellSource } from "hotconfigs/sources/shell";
 
 shellSource(["gh", "auth", "token", "--format", "json"]);
 ```
@@ -443,7 +443,7 @@ both labeled `ok`.
 Calls a callback on a fixed interval and publishes whatever it returns.
 
 ```ts
-import { pullSource } from "@jondotsoy/configs/sources/pull";
+import { pullSource } from "hotconfigs/sources/pull";
 
 pullSource({ pull: () => secretsManager.getSecretValue("prod/db"), interval: 5 * 60_000 });
 ```
@@ -466,7 +466,7 @@ Publishes a single static `value` immediately, then closes. Useful for
 hardcoded defaults, a static fallback tree, or tests.
 
 ```ts
-import { literalSource } from "@jondotsoy/configs/sources/literal";
+import { literalSource } from "hotconfigs/sources/literal";
 
 literalSource({ host: "localhost", port: 3000 });
 ```
@@ -481,7 +481,7 @@ instead, so a hand-written field type has to go through `new Descriptor(...)`,
 same as every built-in builder does.
 
 ```ts
-import { Descriptor, type Settled, type WithDefault } from "@jondotsoy/configs";
+import { Descriptor, type Settled, type WithDefault } from "hotconfigs";
 
 interface PortFieldOptions {
   key?: string | string[];
@@ -561,7 +561,7 @@ a descriptor, but for a whole config tree instead of a single field, plus an
 optional `reduce` for sources that only ever produce partial patches.
 
 ```ts
-import { Source } from "@jondotsoy/configs";
+import { Source } from "hotconfigs";
 
 function pollingSource(url: string, intervalMs: number): Source<{ port: number }> {
   let timer: ReturnType<typeof setInterval>;
@@ -603,7 +603,7 @@ function pollingSource(url: string, intervalMs: number): Source<{ port: number }
   for a worked example.
 - **`metrics`** (optional) is a plain `Record<string, Metric>`
   (`CounterMetric`/`HistogramMetric`/`GaugeMetric`, from
-  `@jondotsoy/configs/utils/metrics`) bumped from inside `start`/`close` and
+  `hotconfigs/utils/metrics`) bumped from inside `start`/`close` and
   exposed as-is on the returned `Source` via `source.metrics` — the same
   pattern every built-in source (`envSource`, `fetchSource`, ...) uses for
   its own request/read counters.

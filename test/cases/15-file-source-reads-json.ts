@@ -6,7 +6,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, fileSource, numeric } from "@jondotsoy/configs";
+import { create, fileSource, numeric } from "hotconfigs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

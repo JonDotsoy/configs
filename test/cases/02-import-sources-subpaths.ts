@@ -2,11 +2,11 @@
 // factory function. `sources/file` and `sources/shell` are excluded here —
 // they need `node:fs`/`node:child_process`, so each has its own case (03,
 // 16) that exercises real behavior instead of just an import check.
-import { envSource } from "@jondotsoy/configs/sources/env";
-import { fetchSource } from "@jondotsoy/configs/sources/fetch";
-import { sseSource } from "@jondotsoy/configs/sources/sse";
-import { literalSource } from "@jondotsoy/configs/sources/literal";
-import { pullSource } from "@jondotsoy/configs/sources/pull";
+import { envSource } from "hotconfigs/sources/env";
+import { fetchSource } from "hotconfigs/sources/fetch";
+import { sseSource } from "hotconfigs/sources/sse";
+import { literalSource } from "hotconfigs/sources/literal";
+import { pullSource } from "hotconfigs/sources/pull";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

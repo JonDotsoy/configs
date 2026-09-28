@@ -3,7 +3,7 @@
 // so a browser bundle stubs it out (see manifest.ts's tolerateFailureEngines
 // for this case) — run there anyway to document the breakage instead of
 // skipping it, same as fileSource's node:fs case (15).
-import { create, shellSource, numeric } from "@jondotsoy/configs";
+import { create, shellSource, numeric } from "hotconfigs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

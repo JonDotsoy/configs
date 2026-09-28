@@ -2,7 +2,7 @@
 
 `fetchSource` with `pollingInterval` keeps refetching a URL on an interval
 and republishes the store on every successful round. `useConfig` (from
-`@jondotsoy/configs/react`) subscribes a component to that store via
+`hotconfigs/react`) subscribes a component to that store via
 `useSyncExternalStore`, so the component re-renders whenever the flag
 changes — no manual polling or state wiring in the component itself.
 
@@ -13,9 +13,9 @@ the browser — see
 ## `App.tsx`
 
 ```tsx
-import { create, boolean } from "@jondotsoy/configs";
-import { fetchSource } from "@jondotsoy/configs/sources/fetch";
-import { useConfig } from "@jondotsoy/configs/react";
+import { create, boolean } from "hotconfigs";
+import { fetchSource } from "hotconfigs/sources/fetch";
+import { useConfig } from "hotconfigs/react";
 import { Temporal } from "temporal-polyfill";
 
 const cfg = await create(

@@ -1,6 +1,6 @@
 // Case: pullSource calls `pull` immediately, then again every `interval` ms,
 // until the source is closed.
-import { create, pullSource, numeric } from "@jondotsoy/configs";
+import { create, pullSource, numeric } from "hotconfigs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

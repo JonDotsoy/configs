@@ -2,7 +2,7 @@
 // bundle stubs it out (see manifest.ts's tolerateFailureEngines for this
 // case) — but this case only checks the import shape, which doesn't touch
 // the stub, so it actually still passes there.
-import { fileSource } from "@jondotsoy/configs/sources/file";
+import { fileSource } from "hotconfigs/sources/file";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);

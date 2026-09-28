@@ -15,7 +15,7 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
 
-    // test/cases/*.ts import "@jondotsoy/configs" (and its subpaths) like a real
+    // test/cases/*.ts import "hotconfigs" (and its subpaths) like a real
     // consumer would, to type-check against the actual published .d.ts shape —
     // the root package.json is "private" and carries no "exports" for Node/tsc
     // self-reference to resolve that bare specifier against, so map it here
@@ -23,17 +23,17 @@
     // "_buildEntripoint").
     "baseUrl": ".",
     "paths": {
-      "@jondotsoy/configs": ["./dist/configs.d.ts"],
-      "@jondotsoy/configs/sources/env": ["./dist/sources/env.d.ts"],
-      "@jondotsoy/configs/sources/fetch": ["./dist/sources/fetch.d.ts"],
-      "@jondotsoy/configs/sources/sse": ["./dist/sources/sse.d.ts"],
-      "@jondotsoy/configs/sources/file": ["./dist/sources/file.d.ts"],
-      "@jondotsoy/configs/sources/literal": ["./dist/sources/literal.d.ts"],
-      "@jondotsoy/configs/sources/pull": ["./dist/sources/pull.d.ts"],
-      "@jondotsoy/configs/sources/shell": ["./dist/sources/shell.d.ts"],
-      "@jondotsoy/configs/react": ["./dist/react.d.ts"],
-      "@jondotsoy/configs/node": ["./dist/node.d.ts"],
-      "@jondotsoy/configs/utils/metrics": ["./dist/utils/metric.d.ts"]
+      "hotconfigs": ["./dist/configs.d.ts"],
+      "hotconfigs/sources/env": ["./dist/sources/env.d.ts"],
+      "hotconfigs/sources/fetch": ["./dist/sources/fetch.d.ts"],
+      "hotconfigs/sources/sse": ["./dist/sources/sse.d.ts"],
+      "hotconfigs/sources/file": ["./dist/sources/file.d.ts"],
+      "hotconfigs/sources/literal": ["./dist/sources/literal.d.ts"],
+      "hotconfigs/sources/pull": ["./dist/sources/pull.d.ts"],
+      "hotconfigs/sources/shell": ["./dist/sources/shell.d.ts"],
+      "hotconfigs/react": ["./dist/react.d.ts"],
+      "hotconfigs/node": ["./dist/node.d.ts"],
+      "hotconfigs/utils/metrics": ["./dist/utils/metric.d.ts"]
     },
 
     // Best practices

@@ -9,7 +9,7 @@ import { Store } from "./utils/store.js";
  * another's — a registry symbol survives that duplication (same reason `isConfigDescriptor()`, in
  * `./config-descriptor.js`, checks structurally instead of `instanceof Descriptor`).
  */
-const CONFIGS_NODE_TAG = Symbol.for("@jondotsoy/configs/ConfigsNode");
+const CONFIGS_NODE_TAG = Symbol.for("hotconfigs/ConfigsNode");
 
 /**
  * Non-generic stand-in for `ConfigsNodePending<S>` inside the `ConfigsShape` union — a generic
