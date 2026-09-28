@@ -128,6 +128,7 @@ console.log(await configs.server.tls.cert.get()?.text());
   - [Reacting to changes — restarting a periodic task](#reacting-to-changes--restarting-a-periodic-task)
   - [`useConfig` — reading a field in React](#useconfig--reading-a-field-in-react)
 - [Documentation](#documentation)
+- [Security](#security)
 
 ## Install
 
@@ -1214,3 +1215,23 @@ Further guides live under [`docs/`](./docs):
   `Descriptor`: the full `start`/`close`/`reduce` contract of each, real
   patterns (polling, cleanup on `close()`, partial-patch `reduce`, a
   non-scalar field, `WithDefault<O, T>`), and common mistakes.
+
+## Security
+
+`hotconfigs` is a pluggable configuration library, and some of its `Source`s
+read from outside the process by design — that's the point of `fetchSource`,
+`sseSource`, `fileSource`, and `shellSource`. The root entry point
+(`hotconfigs`) itself carries none of that: only `envSource`, `fileSource`,
+`literalSource`, and `pullSource` are re-exported from it. `fetchSource`
+(network, via `fetch()`) and `sseSource` (network, via `EventSource`) are
+re-exported only from their own `hotconfigs/sources/fetch`/
+`hotconfigs/sources/sse` subpaths, and `shellSource` (spawns a subprocess via
+`node:child_process`) only from `hotconfigs/sources/shell`. So importing
+`hotconfigs` never pulls in network- or shell-capable code unless you also
+import one of those subpaths directly.
+
+See [`SECURITY.md`](./SECURITY.md) for the full per-subpath capability table
+and how to report a vulnerability. If a supply-chain scanner (e.g. Socket.dev)
+flags "Network access", "File system access", or "Shell access" against this
+package, check that table first — it's almost certainly one of the documented
+sources above, not a vulnerability.
