@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New `list()` field descriptor: parses a comma-separated string into a `string[]`. A field wrapped
+  in double quotes may contain literal commas (`"a,b",c` → `["a,b", "c"]`), and a backslash escapes
+  a single character outside quotes (`a\,b,c` → `["a,b", "c"]`). An already-`string[]` raw value
+  passes through as-is, and a raw `number`/`boolean` is wrapped into a single-element array
+  (`1` → `["1"]`, `true` → `["true"]`) instead of being rejected. An empty (or whitespace-only) raw
+  string splits to `[]` rather than a single-element `[""]`; note `required: true` only guards
+  against a missing value (`null`) — `[]` is a real resolved value, so a required list field fed an
+  empty string resolves to `[]` instead of rejecting.
+- `list()` gained two more options: `delimiter` overrides the split character (`,` by default, e.g.
+  `delimiter: ";"`), or (`delimiter: false`) skips splitting altogether — a string raw value then
+  resolves to a single-element array holding it verbatim (`"a,b,c"` → `["a,b,c"]`) — for a field
+  whose value happens to contain the delimiter but was never meant to be split into a list.
+  `avoidTrim` keeps each unquoted field's surrounding whitespace instead of trimming it.
 - The object a `create()` node's `await`/`then()` resolves to (`ConfigsNodeReady<T>`) now also
   exposes `close()`, same as the pending node returned by `create()` itself — previously `close()`
   was only reachable before awaiting the node.

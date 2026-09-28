@@ -1160,15 +1160,15 @@ ok - a failed sseSource connection leaves the field null instead of throwing
 ALL_CHECKS_PASSED
 
 sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): fetch failed
-    at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-STUSJX/node_modules/@jondotsoy/configs/utils/http-fetch.js:68:11)
-    at async t (file:///tmp/jondotsoy-configs-test-cases-STUSJX/node_modules/@jondotsoy/configs/utils/t.js:8:24)
-    at async Object.start (file:///tmp/jondotsoy-configs-test-cases-STUSJX/node_modules/@jondotsoy/configs/sources/sse.js:102:57) {
+    at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-sAIYBR/node_modules/@jondotsoy/configs/utils/http-fetch.js:68:11)
+    at async t (file:///tmp/jondotsoy-configs-test-cases-sAIYBR/node_modules/@jondotsoy/configs/utils/t.js:8:24)
+    at async Object.start (file:///tmp/jondotsoy-configs-test-cases-sAIYBR/node_modules/@jondotsoy/configs/sources/sse.js:102:57) {
   [cause]: TypeError: fetch failed
       at node:internal/deps/undici/undici:14976:13
-      at async download (file:///tmp/jondotsoy-configs-test-cases-STUSJX/node_modules/@jondotsoy/configs/utils/http-fetch.js:34:22)
-      at async downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-STUSJX/node_modules/@jondotsoy/configs/utils/http-fetch.js:57:20)
-      at async t (file:///tmp/jondotsoy-configs-test-cases-STUSJX/node_modules/@jondotsoy/configs/utils/t.js:8:24)
-      at async Object.start (file:///tmp/jondotsoy-configs-test-cases-STUSJX/node_modules/@jondotsoy/configs/sources/sse.js:102:57) {
+      at async download (file:///tmp/jondotsoy-configs-test-cases-sAIYBR/node_modules/@jondotsoy/configs/utils/http-fetch.js:34:22)
+      at async downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-sAIYBR/node_modules/@jondotsoy/configs/utils/http-fetch.js:57:20)
+      at async t (file:///tmp/jondotsoy-configs-test-cases-sAIYBR/node_modules/@jondotsoy/configs/utils/t.js:8:24)
+      at async Object.start (file:///tmp/jondotsoy-configs-test-cases-sAIYBR/node_modules/@jondotsoy/configs/sources/sse.js:102:57) {
     [cause]: Error: bad port
         at makeNetworkError (node:internal/deps/undici/undici:9495:35)
         at mainFetch (node:internal/deps/undici/undici:10721:20)
@@ -1176,10 +1176,10 @@ sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" Attempt
         at fetch (node:internal/deps/undici/undici:10576:20)
         at fetch (node:internal/deps/undici/undici:14974:10)
         at fetch (node:internal/bootstrap/web/exposed-window-or-worker:75:12)
-        at download (file:///tmp/jondotsoy-configs-test-cases-STUSJX/node_modules/@jondotsoy/configs/utils/http-fetch.js:34:28)
-        at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-STUSJX/node_modules/@jondotsoy/configs/utils/http-fetch.js:57:26)
-        at file:///tmp/jondotsoy-configs-test-cases-STUSJX/node_modules/@jondotsoy/configs/sources/sse.js:102:71
-        at t (file:///tmp/jondotsoy-configs-test-cases-STUSJX/node_modules/@jondotsoy/configs/utils/t.js:8:63)
+        at download (file:///tmp/jondotsoy-configs-test-cases-sAIYBR/node_modules/@jondotsoy/configs/utils/http-fetch.js:34:28)
+        at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-sAIYBR/node_modules/@jondotsoy/configs/utils/http-fetch.js:57:26)
+        at file:///tmp/jondotsoy-configs-test-cases-sAIYBR/node_modules/@jondotsoy/configs/sources/sse.js:102:71
+        at t (file:///tmp/jondotsoy-configs-test-cases-sAIYBR/node_modules/@jondotsoy/configs/utils/t.js:8:63)
   }
 }
 ```
@@ -1224,9 +1224,9 @@ sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" 63 |   
 68 |     throw new AttemptsExhaustedError(maxAttempts, lastError);
                ^
 AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): Unable to connect. Is the computer able to access the url?
-      at downloadWithRetry (/tmp/jondotsoy-configs-test-cases-STUSJX/node_modules/@jondotsoy/configs/utils/http-fetch.js:68:11)
-      at async t (/tmp/jondotsoy-configs-test-cases-STUSJX/node_modules/@jondotsoy/configs/utils/t.js:8:75)
-      at async start (/tmp/jondotsoy-configs-test-cases-STUSJX/node_modules/@jondotsoy/configs/sources/sse.js:102:63)
+      at downloadWithRetry (/tmp/jondotsoy-configs-test-cases-sAIYBR/node_modules/@jondotsoy/configs/utils/http-fetch.js:68:11)
+      at async t (/tmp/jondotsoy-configs-test-cases-sAIYBR/node_modules/@jondotsoy/configs/utils/t.js:8:75)
+      at async start (/tmp/jondotsoy-configs-test-cases-sAIYBR/node_modules/@jondotsoy/configs/sources/sse.js:102:63)
 
 error: Unable to connect. Is the computer able to access the url?
   path: "http://127.0.0.1:9/nobody-listens-here",
@@ -1297,9 +1297,9 @@ Compile: `$ bun build test/cases/08-sse-source-connection-failure.ts --target br
 [PASSED]
 Failed to load resource: net::ERR_UNSAFE_PORT
 sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): Failed to fetch
-    at downloadWithRetry (http://localhost:38723/:592:9)
-    at async t (http://localhost:38723/:106:20)
-    at async Object.start (http://localhost:38723/:664:51)
+    at downloadWithRetry (http://localhost:38741/:592:9)
+    at async t (http://localhost:38741/:106:20)
+    at async Object.start (http://localhost:38741/:664:51)
 ok - a failed sseSource connection leaves the field null instead of throwing
 ALL_CHECKS_PASSED
 RESULT: PASS
@@ -2826,10 +2826,10 @@ Compile: `$ bun build test/cases/16-shell-source-runs-command.ts --target browse
 ```
 [WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
 shellSource: failed to run "echo {"port":7070}" AttemptsExhaustedError: shellSource: failed after 1 attempt(s): spawn is not a function
-    at runWithRetry (http://localhost:40891/:608:9)
-    at async t (http://localhost:40891/:106:20)
-    at async shellRound (http://localhost:40891/:612:37)
-    at async Object.start (http://localhost:40891/:652:21)
+    at runWithRetry (http://localhost:38851/:608:9)
+    at async t (http://localhost:38851/:106:20)
+    at async shellRound (http://localhost:38851/:612:37)
+    at async Object.start (http://localhost:38851/:652:21)
 RESULT: FAIL: FAIL: shellSource runs a command and parses its stdout as JSON
 ```
 
@@ -3195,16 +3195,16 @@ Compile: `$ bun build test/cases/17-node-file-field.ts --target browser --format
 ```
 [WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
 ConfigError: Value at "key" could not be decoded as a file: mkdtempSync is not a function
-    at http://localhost:41973/:850:43
-    at http://localhost:41973/:494:19
-    at Store.runSubscriber (http://localhost:41973/:365:21)
-    at Store.set (http://localhost:41973/:352:12)
-    at http://localhost:41973/:538:16
-    at Store.runSubscriber (http://localhost:41973/:365:21)
-    at Store.set (http://localhost:41973/:352:12)
-    at http://localhost:41973/:627:51
-    at Store.runSubscriber (http://localhost:41973/:365:21)
-    at Store.subscribe (http://localhost:41973/:357:10)
+    at http://localhost:45079/:850:43
+    at http://localhost:45079/:494:19
+    at Store.runSubscriber (http://localhost:45079/:365:21)
+    at Store.set (http://localhost:45079/:352:12)
+    at http://localhost:45079/:538:16
+    at Store.runSubscriber (http://localhost:45079/:365:21)
+    at Store.set (http://localhost:45079/:352:12)
+    at http://localhost:45079/:627:51
+    at Store.runSubscriber (http://localhost:45079/:365:21)
+    at Store.subscribe (http://localhost:45079/:357:10)
 RESULT: FAIL: FAIL: a source's text value resolves to a FileBlob
 ```
 

@@ -88,8 +88,8 @@ to `create()`/`load()`) is where you wire one or more of these in; the first
 source in the array whose snapshot has a value at a given field's path wins
 over later ones.
 
-A **descriptor** (`string()`, `numeric()`, `boolean()`, `url()`, `shape()`,
-`choice()`, `file()`) is a leaf field: it declares the field's type, options
+A **descriptor** (`string()`, `numeric()`, `boolean()`, `url()`, `list()`,
+`shape()`, `choice()`, `file()`) is a leaf field: it declares the field's type, options
 (`default`, `required`, `pattern`, ...), and how to parse/coerce the raw value
 a source published at that field's path into the field's actual type. Every
 descriptor is a real `Descriptor` instance (built by one of these functions,
@@ -182,6 +182,41 @@ choice({ options: ["debug", "info", "warn", "error"], default: "info" });
 | --- | --- | --- |
 | `options` | `readonly string[]` | **Required.** The fixed list of strings this field is allowed to resolve to. The field's type is the literal union of these strings (e.g. `"debug" \| "info" \| "warn" \| "error"`), not the widened `string`. |
 | `default` | one of `options` | Fallback used when no source has a value for this field. Must itself be one of `options` (enforced structurally at the type level). Narrows the field's type to exclude `null`. |
+
+### `list(options?)`
+
+Parses a comma-separated string into a `string[]`. A field wrapped in double
+quotes may contain literal commas, and a backslash escapes a single character
+outside quotes.
+
+```ts
+list({ default: [] });
+```
+
+```
+1,2,3,4,5                        -> ["1", "2", "3", "4", "5"]
+"Foo tar , bios did",tar,1234    -> ["Foo tar , bios did", "tar", "1234"]
+Foo\,tar,biz                     -> ["Foo,tar", "biz"]
+```
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `default` | `string[]` | Fallback used when no source has a value for this field. Narrows the field's type to exclude `null`. |
+| `delimiter` | `string \| false` | Overrides the split character (`,` by default) — e.g. `delimiter: ";"` for `"a;b;c"` → `["a", "b", "c"]`. Pass `delimiter: false` to skip splitting entirely: a string raw value resolves to a single-element array holding it verbatim (`"a,b,c"` → `["a,b,c"]`) — for a field whose value happens to contain the delimiter but was never meant to be split into a list. |
+| `avoidTrim` | `boolean` | Keeps each unquoted field's surrounding whitespace instead of trimming it (`" a , b "` → `[" a ", " b "]`). A quoted field's content is never trimmed either way. |
+| `required` | `boolean` | Same base option every descriptor has (see above), but with a `list()`-specific gotcha: an empty raw string resolves to `[]`, not `null`, so a `required` list field fed an empty string is *not* rejected — see the note below. |
+
+An already-`string[]` raw value passes through as-is (each element coerced
+via `String(...)`), and a raw `number`/`boolean` is wrapped into a
+single-element array (`1` → `["1"]`, `true` → `["true"]`) instead of being
+rejected. Rejects anything else (e.g. a plain object).
+
+An empty (or whitespace-only) raw string splits to `[]`, not a single-element
+`[""]` — an empty source value means "no items". Note that `required: true`
+only guards against a `null` field (no source ever published a value here):
+`[]` is a real resolved value, so a `required` list field fed an empty string
+resolves to `[]` rather than rejecting; use `pattern`-level validation
+(via a custom `Descriptor`) if an empty list must itself be rejected.
 
 ### `shape(options?)`
 

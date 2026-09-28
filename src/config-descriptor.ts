@@ -8,7 +8,7 @@ import { ConfigError } from "./errors.js";
  * purely informational once a `start` is supplied directly (see the README's "Writing a
  * custom `Descriptor`" section), so a custom field type isn't restricted to this package's own set.
  */
-export type FieldType = "string" | "number" | "boolean" | "url" | "shape" | "file" | "choice" | (string & {});
+export type FieldType = "string" | "number" | "boolean" | "url" | "shape" | "file" | "choice" | "list" | (string & {});
 
 interface BaseFieldOptions {
   summary?: string;
@@ -34,6 +34,16 @@ export interface Parseable<T> {
 }
 
 export type StringFieldOptions = BaseFieldOptions & { pattern?: RegExp; default?: string };
+/**
+ * `list()`'s own options — `default` is a plain `string[]`, same rule as every other field type.
+ * `delimiter` overrides the character split on (`,` by default) — e.g. `delimiter: ";"` for
+ * `"a;b;c"` → `["a", "b", "c"]`; pass `delimiter: false` to skip splitting entirely, so a string raw
+ * value resolves to a single-element array holding it verbatim (`"a,b,c"` → `["a,b,c"]`) — for a
+ * field whose value happens to contain the delimiter but was never meant to be split into a list.
+ * `avoidTrim`, when `true`, keeps each unquoted field's surrounding whitespace instead of trimming
+ * it (a quoted field's content is never trimmed either way).
+ */
+export type ListFieldOptions = BaseFieldOptions & { default?: string[]; delimiter?: string | false; avoidTrim?: boolean };
 export type NumberFieldOptions = BaseFieldOptions & { default?: number };
 export type BooleanFieldOptions = BaseFieldOptions & { default?: boolean };
 /**
@@ -314,6 +324,37 @@ export function url<const O extends UrlFieldOptions = {}>(options?: O): Descript
 }
 
 /**
+ * Builds a `"list"` field descriptor, returned as `Descriptor<Pending, Awaited>` where both are
+ * computed from `O` up front and passed in explicitly: `Descriptor<string[] | null, string[] | null>`
+ * with neither `default` nor `required`, `Descriptor<string[], string[]>` with a `default`, or
+ * `Descriptor<string[] | null, string[]>` with `required: true` alone (see `WithDefault`/`Settled`).
+ * Parses a comma-separated string into a `string[]`: a field wrapped in double quotes may contain
+ * literal commas (`"a,b",c` → `["a,b", "c"]`), and a backslash escapes a single character outside
+ * quotes (`a\,b,c` → `["a,b", "c"]`). An already-`string[]` raw value (e.g. from `shape()`-like JSON
+ * sources) passes through as-is (each element coerced with `String(...)`). A raw `number` or
+ * `boolean` (e.g. a source that only ever hands back JSON primitives) is wrapped into a single-
+ * element array via `String(...)` instead of being rejected — `1` → `["1"]`, `true` → `["true"]`.
+ * `options.delimiter` overrides the split character, or (`false`) skips splitting altogether — a
+ * string raw value then resolves to a single-element array holding it verbatim (`"a,b,c"` →
+ * `["a,b,c"]`) — for a field whose value happens to contain the delimiter but was never meant to be
+ * split into a list. `options.avoidTrim` keeps each unquoted field's surrounding whitespace instead
+ * of trimming it.
+ */
+export function list<const O extends ListFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, string[]>, Settled<O, string[]>> {
+  const opts = (options ?? {}) as O;
+  const parse = listParser(opts);
+  const defaultValue = opts.default !== undefined ? opts.default : (null as unknown as string[]);
+
+  return new Descriptor<string[], string[], O>({
+    type: "list",
+    options: opts,
+    start(control) {
+      subscribeParsed(control, defaultValue, parse);
+    },
+  }) as Descriptor<WithDefault<O, string[]>, Settled<O, string[]>>;
+}
+
+/**
  * Extracts a `shape()` call's value type straight off the caller's own `options` (its `schema`'s
  * `parse` return type) rather than from a separately-inferred type parameter, since `O` alone
  * (captured via the `const` type parameter on `shape()`) already carries the caller's literal
@@ -461,6 +502,74 @@ export function choiceParser<T extends string>(options: { options: readonly T[] 
     }
     return raw as T;
   };
+}
+
+/**
+ * `list()`'s own parser — an array value passes through (each element coerced via `String(...)`);
+ * a `number`/`boolean` is wrapped into a single-element array (also via `String(...)`); a string is
+ * split via `splitList`, honoring `options.delimiter`/`options.avoidTrim` — `delimiter: false` skips
+ * splitting altogether (see `splitList`'s own doc).
+ */
+export function listParser(options: ListFieldOptions): (raw: unknown, path: string[]) => string[] {
+  return (raw, path) => {
+    if (Array.isArray(raw)) return raw.map(String);
+    if (typeof raw === "number" || typeof raw === "boolean") return [String(raw)];
+    if (typeof raw !== "string") typeMismatch("list", raw, path);
+    return splitList(raw, options);
+  };
+}
+
+/**
+ * Splits a string into fields on `options.delimiter` (`,` by default), honoring two escape
+ * mechanisms so a literal delimiter can appear inside a field: a double-quoted span (`"a,b",c` →
+ * `["a,b", "c"]`, the quotes themselves are stripped and the delimiter inside them is literal) and
+ * a backslash immediately before any character outside quotes (`a\,b,c` → `["a,b", "c"]`, the
+ * backslash itself is stripped). Each field with no quoting anywhere in it is trimmed of
+ * surrounding whitespace unless `options.avoidTrim` is set; a field that used quoting anywhere
+ * (`"a" b` just as much as `"a b"`) is never trimmed, so its content is kept verbatim either way.
+ * `options.delimiter: false` skips splitting entirely — the whole (trimmed, unless
+ * `avoidTrim`) raw string becomes the sole element instead. A raw value that's empty, or only
+ * whitespace, always splits to `[]` rather than a single-element `[""]` — an empty raw string means
+ * "no items", not "one empty item" — regardless of `avoidTrim`/`delimiter`.
+ */
+export function splitList(raw: string, options: { delimiter?: string | false; avoidTrim?: boolean } = {}): string[] {
+  if (raw.trim() === "") return [];
+
+  const trim = options.avoidTrim ? (s: string) => s : (s: string) => s.trim();
+
+  if (options.delimiter === false) return [trim(raw)];
+
+  const delimiter = options.delimiter ?? ",";
+  const fields: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  let currentWasQuoted = false;
+  const pushField = () => {
+    fields.push(currentWasQuoted ? current : trim(current));
+    current = "";
+    currentWasQuoted = false;
+  };
+
+  for (let i = 0; i < raw.length; i++) {
+    const char = raw[i];
+    if (char === "\\" && i + 1 < raw.length) {
+      current += raw[i + 1];
+      i++;
+      continue;
+    }
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      currentWasQuoted = true;
+      continue;
+    }
+    if (char === delimiter && !inQuotes) {
+      pushField();
+      continue;
+    }
+    current += char;
+  }
+  pushField();
+  return fields;
 }
 
 /**

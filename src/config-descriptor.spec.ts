@@ -4,6 +4,7 @@ import {
   choice,
   Descriptor,
   isConfigDescriptor,
+  list,
   numeric,
   shape,
   string,
@@ -124,6 +125,152 @@ describe("choice() field builder", () => {
     expect(runStart(descriptor, "warn", ["logLevel"]).last()).toBe("warn");
     const { errors } = runStart(descriptor, "verbose", ["logLevel"]);
     expect(errors[0]).toBeInstanceOf(ConfigError);
+  });
+});
+
+describe("list() field builder", () => {
+  test('list() builds a Descriptor carrying a { type: "list" } schema', () => {
+    expectDescriptor(list(), "list", {});
+    expectDescriptor(list({ summary: "allowed origins", default: ["a.com"] }), "list", {
+      summary: "allowed origins",
+      default: ["a.com"],
+    });
+  });
+
+  test("splits a plain comma-separated string", () => {
+    expect(runStart(list(), "1,2,3,4,5", ["ids"]).last()).toEqual(["1", "2", "3", "4", "5"]);
+  });
+
+  test("a double-quoted field may contain literal commas", () => {
+    expect(runStart(list(), '"Foo tar , bios did",tar,1234', ["values"]).last()).toEqual([
+      "Foo tar , bios did",
+      "tar",
+      "1234",
+    ]);
+  });
+
+  test("a backslash escapes a literal comma outside quotes", () => {
+    expect(runStart(list(), "Foo\\,tar,biz", ["values"]).last()).toEqual(["Foo,tar", "biz"]);
+  });
+
+  test("passes an already-array raw value through, coercing each element to a string", () => {
+    expect(runStart(list(), ["a", "b"], ["values"]).last()).toEqual(["a", "b"]);
+  });
+
+  test("wraps a raw number into a single-element string[] instead of rejecting it", () => {
+    expect(runStart(list(), 1, ["values"]).last()).toEqual(["1"]);
+  });
+
+  test("wraps a raw boolean into a single-element string[] instead of rejecting it", () => {
+    expect(runStart(list(), true, ["values"]).last()).toEqual(["true"]);
+    expect(runStart(list(), false, ["values"]).last()).toEqual(["false"]);
+  });
+
+  test("falls back to options.default when raw is undefined/null", () => {
+    expect(runStart(list({ default: ["x"] }), undefined).last()).toEqual(["x"]);
+    expect(runStart(list({ default: ["x"] }), null).last()).toEqual(["x"]);
+  });
+
+  test("resolves to null when raw is missing and there is no default", () => {
+    expect(runStart(list(), undefined).last()).toBeNull();
+  });
+
+  test("rejects a value that's neither a string, an array, a number nor a boolean, by reporting it via control.error()", () => {
+    const { errors, values } = runStart(list(), { foo: "bar" }, ["values"]);
+    expect(errors[0]).toBeInstanceOf(ConfigError);
+    expect(values).toEqual([]);
+  });
+
+  test("required: true is carried through .options and exposed via the .required getter, same as every other field type", () => {
+    expectDescriptor(list({ required: true }), "list", { required: true });
+    expect(list({ required: true }).required).toBe(true);
+    expect(list().required).toBe(false);
+  });
+
+  test("required: true alone does not change parsing — a missing value still resolves to null at this point; create()'s own requiredChecks sweep is what escalates it (see config-node.spec.ts)", () => {
+    expect(runStart(list({ required: true }), undefined).last()).toBeNull();
+  });
+
+  test("an empty (or whitespace-only) raw string splits to [], not a single-element [\"\"]", () => {
+    expect(runStart(list(), "", ["values"]).last()).toEqual([]);
+    expect(runStart(list(), "   ", ["values"]).last()).toEqual([]);
+  });
+
+  test("required: true does not reject an empty raw string — [] is a real resolved value, not the null the requiredChecks sweep looks for; use pattern-level validation if an empty list must be rejected", () => {
+    expect(runStart(list({ required: true }), "", ["values"]).last()).toEqual([]);
+  });
+
+  test("a comma with nothing around it still yields empty fields — only a wholly empty/whitespace raw string collapses to []", () => {
+    expect(runStart(list(), ",", ["values"]).last()).toEqual(["", ""]);
+  });
+
+  describe("delimiter option", () => {
+    test("overrides the split character", () => {
+      expect(runStart(list({ delimiter: ";" }), "a;b;c", ["values"]).last()).toEqual(["a", "b", "c"]);
+    });
+
+    test("a delimiter override still respects quoting and backslash-escaping", () => {
+      expect(runStart(list({ delimiter: ";" }), '"a;b";c', ["values"]).last()).toEqual(["a;b", "c"]);
+      expect(runStart(list({ delimiter: ";" }), "a\\;b;c", ["values"]).last()).toEqual(["a;b", "c"]);
+    });
+
+    test("a comma is no longer a separator once delimiter is overridden", () => {
+      expect(runStart(list({ delimiter: ";" }), "a,b;c", ["values"]).last()).toEqual(["a,b", "c"]);
+    });
+
+    test("delimiter: false skips splitting entirely: a string raw value resolves to a single-element array holding it verbatim", () => {
+      expect(runStart(list({ delimiter: false }), "a,b,c", ["values"]).last()).toEqual(["a,b,c"]);
+      expect(runStart(list({ delimiter: false }), '"quoted, value"', ["values"]).last()).toEqual(['"quoted, value"']);
+    });
+
+    test("without delimiter: false, the same raw value would have been split", () => {
+      expect(runStart(list(), "a,b,c", ["values"]).last()).toEqual(["a", "b", "c"]);
+    });
+
+    test("delimiter: false still collapses an empty/whitespace-only raw string to [], and still trims the sole field", () => {
+      expect(runStart(list({ delimiter: false }), "", ["values"]).last()).toEqual([]);
+      expect(runStart(list({ delimiter: false }), "   ", ["values"]).last()).toEqual([]);
+      expect(runStart(list({ delimiter: false }), "  a,b,c  ", ["values"]).last()).toEqual(["a,b,c"]);
+    });
+
+    test("doesn't affect an already-array raw value, or a number/boolean raw value", () => {
+      expect(runStart(list({ delimiter: false }), ["a", "b"], ["values"]).last()).toEqual(["a", "b"]);
+      expect(runStart(list({ delimiter: false }), 1, ["values"]).last()).toEqual(["1"]);
+      expect(runStart(list({ delimiter: false }), true, ["values"]).last()).toEqual(["true"]);
+    });
+
+    test("is carried through .options, same as every other option", () => {
+      expectDescriptor(list({ delimiter: ";" }), "list", { delimiter: ";" });
+      expectDescriptor(list({ delimiter: false }), "list", { delimiter: false });
+    });
+  });
+
+  describe("avoidTrim option", () => {
+    test("keeps each unquoted field's surrounding whitespace instead of trimming it", () => {
+      expect(runStart(list({ avoidTrim: true }), " a , b ,c", ["values"]).last()).toEqual([" a ", " b ", "c"]);
+    });
+
+    test("without avoidTrim, the same raw value would have been trimmed", () => {
+      expect(runStart(list(), " a , b ,c", ["values"]).last()).toEqual(["a", "b", "c"]);
+    });
+
+    test("a quoted field's content is never trimmed, with or without avoidTrim", () => {
+      expect(runStart(list({ avoidTrim: true }), '" a ",b', ["values"]).last()).toEqual([" a ", "b"]);
+      expect(runStart(list(), '" a ",b', ["values"]).last()).toEqual([" a ", "b"]);
+    });
+
+    test("an empty/whitespace-only raw string still collapses to [], regardless of avoidTrim", () => {
+      expect(runStart(list({ avoidTrim: true }), "", ["values"]).last()).toEqual([]);
+      expect(runStart(list({ avoidTrim: true }), "   ", ["values"]).last()).toEqual([]);
+    });
+
+    test("combines with delimiter: false to keep the sole field's whitespace verbatim", () => {
+      expect(runStart(list({ delimiter: false, avoidTrim: true }), "  a,b,c  ", ["values"]).last()).toEqual(["  a,b,c  "]);
+    });
+
+    test("is carried through .options, same as every other option", () => {
+      expectDescriptor(list({ avoidTrim: true }), "list", { avoidTrim: true });
+    });
   });
 });
 
@@ -259,6 +406,7 @@ describe("isConfigDescriptor()", () => {
     expect(isConfigDescriptor(url())).toBe(true);
     expect(isConfigDescriptor(choice({ options: ["a", "b"] }))).toBe(true);
     expect(isConfigDescriptor(shape())).toBe(true);
+    expect(isConfigDescriptor(list())).toBe(true);
   });
 
   test("recognizes a directly-constructed Descriptor instance", () => {
