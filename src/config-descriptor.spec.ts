@@ -157,6 +157,15 @@ describe("list() field builder", () => {
     expect(runStart(list(), ["a", "b"], ["values"]).last()).toEqual(["a", "b"]);
   });
 
+  test("wraps a raw number into a single-element string[] instead of rejecting it", () => {
+    expect(runStart(list(), 1, ["values"]).last()).toEqual(["1"]);
+  });
+
+  test("wraps a raw boolean into a single-element string[] instead of rejecting it", () => {
+    expect(runStart(list(), true, ["values"]).last()).toEqual(["true"]);
+    expect(runStart(list(), false, ["values"]).last()).toEqual(["false"]);
+  });
+
   test("falls back to options.default when raw is undefined/null", () => {
     expect(runStart(list({ default: ["x"] }), undefined).last()).toEqual(["x"]);
     expect(runStart(list({ default: ["x"] }), null).last()).toEqual(["x"]);
@@ -166,8 +175,8 @@ describe("list() field builder", () => {
     expect(runStart(list(), undefined).last()).toBeNull();
   });
 
-  test("rejects a non-string, non-array value by reporting it via control.error()", () => {
-    const { errors, values } = runStart(list(), 42, ["values"]);
+  test("rejects a value that's neither a string, an array, a number nor a boolean, by reporting it via control.error()", () => {
+    const { errors, values } = runStart(list(), { foo: "bar" }, ["values"]);
     expect(errors[0]).toBeInstanceOf(ConfigError);
     expect(values).toEqual([]);
   });

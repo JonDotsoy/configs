@@ -325,7 +325,9 @@ export function url<const O extends UrlFieldOptions = {}>(options?: O): Descript
  * Parses a comma-separated string into a `string[]`: a field wrapped in double quotes may contain
  * literal commas (`"a,b",c` → `["a,b", "c"]`), and a backslash escapes a single character outside
  * quotes (`a\,b,c` → `["a,b", "c"]`). An already-`string[]` raw value (e.g. from `shape()`-like JSON
- * sources) passes through as-is (each element coerced with `String(...)`).
+ * sources) passes through as-is (each element coerced with `String(...)`). A raw `number` or
+ * `boolean` (e.g. a source that only ever hands back JSON primitives) is wrapped into a single-
+ * element array via `String(...)` instead of being rejected — `1` → `["1"]`, `true` → `["true"]`.
  */
 export function list<const O extends ListFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, string[]>, Settled<O, string[]>> {
   const opts = (options ?? {}) as O;
@@ -491,10 +493,15 @@ export function choiceParser<T extends string>(options: { options: readonly T[] 
   };
 }
 
-/** `list()`'s own parser — an array value passes through (each element coerced via `String(...)`); a string is split via `splitList`. */
+/**
+ * `list()`'s own parser — an array value passes through (each element coerced via `String(...)`);
+ * a `number`/`boolean` is wrapped into a single-element array (also via `String(...)`); a string is
+ * split via `splitList`.
+ */
 export function listParser(_options: ListFieldOptions): (raw: unknown, path: string[]) => string[] {
   return (raw, path) => {
     if (Array.isArray(raw)) return raw.map(String);
+    if (typeof raw === "number" || typeof raw === "boolean") return [String(raw)];
     if (typeof raw !== "string") typeMismatch("list", raw, path);
     return splitList(raw);
   };
