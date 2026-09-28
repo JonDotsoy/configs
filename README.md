@@ -1,6 +1,6 @@
-# hotconfigs
-
 <img src="docs/assets/octopus-logo.png" align="right" width="180" alt="hotconfigs logo" />
+
+# hotconfigs
 
 Ship your config to your apps, fast. Configuration isn't just static values
 read once at boot anymore — feature flags, remote toggles, and settings
