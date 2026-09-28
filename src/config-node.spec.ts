@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, mock, spyOn, test } from "bun:test";
 import { create, isConfigsNode, type ConfigsNode, type ConfigsNodePending, type ConfigsNodeReady, type ConfigsShape, type Options } from "./config-node.ts";
-import { boolean, choice, Descriptor, isConfigDescriptor, numeric, shape, string, url, type DescriptorControl } from "./config-descriptor.ts";
+import { boolean, choice, Descriptor, isConfigDescriptor, list, numeric, shape, string, url, type DescriptorControl } from "./config-descriptor.ts";
 import { ConfigError, ConfigValidationError } from "./errors.ts";
 import { envSource } from "./sources/env.ts";
 import { literalSource } from "./sources/literal.ts";
@@ -90,6 +90,16 @@ describe("create", () => {
     const cfg = create(shape, { sources: [testSource({ port: 3000 })] });
 
     expectTypeOf(cfg.port).toEqualTypeOf<Store<number | null>>();
+  });
+
+  test("types: list() with required alone narrows only once awaited, same as every other field type", async () => {
+    const cfg = create({ tags: list({ required: true }) }, { sources: [testSource({ tags: "a,b" })] });
+
+    expectTypeOf(cfg.tags).toEqualTypeOf<Store<string[] | null>>();
+
+    const resolved = await cfg;
+
+    expectTypeOf(resolved.tags).toEqualTypeOf<Store<string[]>>();
   });
 
   test("types: awaiting narrows each field by its own descriptor's `Awaited` type parameter — a default always narrows out null, `required` alone narrows it only once awaited, and neither narrows the still-pending node", async () => {
@@ -909,6 +919,21 @@ describe("create — error aggregation by path (ConfigValidationError)", () => {
     const cfg = await create({ server: { port: numeric({ required: true }) } }, { sources: [literalSource({ server: { port: 3000 } })] });
 
     expect(cfg.server.port.get()).toBe(3000);
+  });
+
+  test("a required list() field with no resolved value rejects with a ConfigValidationError naming its path", async () => {
+    const cfg = create({ tags: list({ required: true }) }, { sources: [testSource({})] });
+
+    await expect(Promise.resolve(cfg)).rejects.toThrow(ConfigValidationError);
+    await Promise.resolve(cfg).catch((err: unknown) => {
+      expect((err as ConfigValidationError).errors).toEqual([{ path: ["tags"], error: expect.any(ConfigError) }]);
+    });
+  });
+
+  test("a required list() field with the value actually present doesn't throw", async () => {
+    const cfg = await create({ tags: list({ required: true }) }, { sources: [testSource({ tags: "a,b,c" })] });
+
+    expect(cfg.tags.get()).toEqual(["a", "b", "c"]);
   });
 
   test("a required field with no sources configured at all still only rejects the awaited node, never create() itself", async () => {

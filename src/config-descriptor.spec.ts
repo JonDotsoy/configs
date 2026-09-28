@@ -171,6 +171,16 @@ describe("list() field builder", () => {
     expect(errors[0]).toBeInstanceOf(ConfigError);
     expect(values).toEqual([]);
   });
+
+  test("required: true is carried through .options and exposed via the .required getter, same as every other field type", () => {
+    expectDescriptor(list({ required: true }), "list", { required: true });
+    expect(list({ required: true }).required).toBe(true);
+    expect(list().required).toBe(false);
+  });
+
+  test("required: true alone does not change parsing — a missing value still resolves to null at this point; create()'s own requiredChecks sweep is what escalates it (see config-node.spec.ts)", () => {
+    expect(runStart(list({ required: true }), undefined).last()).toBeNull();
+  });
 });
 
 describe("shape() field builder", () => {
