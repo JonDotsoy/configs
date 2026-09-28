@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { CounterMetric, HistogramMetric, type Metric } from "../utils/metric.js";
+import { maskSensitiveArgs } from "../utils/sanitize-log.js";
 import { t } from "../utils/t.js";
 import { selectTreePath } from "../utils/tree-path.js";
 import { Source } from "./source.js";
@@ -94,7 +95,7 @@ const defaultAcceptExitCode = (exitCode: number) => exitCode === 0;
 class RejectedExitCodeError extends Error {
   constructor(args: string[], exitCode: number, stderr: string) {
     super(
-      `shellSource: "${args.join(" ")}" exited with unexpected code ${exitCode}${stderr.trim() ? `: ${stderr.trim()}` : ""}`,
+      `shellSource: "${maskSensitiveArgs(args).join(" ")}" exited with unexpected code ${exitCode}${stderr.trim() ? `: ${stderr.trim()}` : ""}`,
     );
     this.name = "RejectedExitCodeError";
   }
@@ -199,7 +200,7 @@ async function shellRound<T>(
   if (!ranOk) {
     metrics.runs.inc({ ok: "false" });
     metrics.duration.observe({ ok: "false" }, durationMs / 1000);
-    console.error(`shellSource: failed to run "${args.join(" ")}"`, runError);
+    console.error(`shellSource: failed to run "${maskSensitiveArgs(args).join(" ")}"`, runError);
     onRun?.({ args, ok: false, durationMs, error: runError });
     return undefined;
   }
@@ -210,7 +211,7 @@ async function shellRound<T>(
   metrics.duration.observe(labels, durationMs / 1000);
 
   if (!parsedOk) {
-    console.error(`shellSource: failed to parse stdout of "${args.join(" ")}"`, parseError);
+    console.error(`shellSource: failed to parse stdout of "${maskSensitiveArgs(args).join(" ")}"`, parseError);
     onRun?.({ args, ok: false, exitCode: result.exitCode, stderr: result.stderr, durationMs, error: parseError });
     return undefined;
   }
@@ -231,7 +232,7 @@ function applyTreePath<T>(args: string[], data: T, treePath: string[]): T {
   const selected = selectTreePath(data, treePath);
   if (selected === undefined) {
     console.error(
-      `shellSource: treePath [${treePath.map((k) => JSON.stringify(k)).join(", ")}] did not resolve to anything in the output of "${args.join(" ")}"`,
+      `shellSource: treePath [${treePath.map((k) => JSON.stringify(k)).join(", ")}] did not resolve to anything in the output of "${maskSensitiveArgs(args).join(" ")}"`,
     );
     return {} as T;
   }
@@ -244,7 +245,12 @@ function applyTreePath<T>(args: string[], data: T, treePath: string[]): T {
  * process's stdout is decoded as UTF-8 and turned into `T` by `stdoutParser` (defaulting to
  * `JSON.parse`), so non-JSON output is supported by passing a custom parser. A run whose exit code
  * is rejected by `acceptExitCode` (default: non-zero) or whose stdout fails to parse is logged via
- * `console.error` and swallowed instead of thrown, same as `fetchSource`.
+ * `console.error` and swallowed instead of thrown, same as `fetchSource`. Every `args` embedded in
+ * one of these log lines goes through `maskSensitiveArgs` (`../utils/sanitize-log.js`) first — a
+ * flag/header whose name looks sensitive (`--key value`, `--key=value`, `"Authorization: Bearer
+ * xxx"`) has its value masked, so a secret passed on the command line doesn't end up readable in a
+ * log. `onRun`, by contrast, is always handed the real, unmasked `args` — its caller already has
+ * whatever secret they put there themselves.
  *
  * By default (`pollingInterval: false`) it runs `args` exactly once and closes. Set
  * `pollingInterval` to a number of milliseconds to keep re-running on that interval instead —
