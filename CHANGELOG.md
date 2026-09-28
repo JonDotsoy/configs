@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `credential`, `auth` — case-insensitive) now has its raw value masked (`***`) in the
   `ConfigError` thrown/reported when it fails to parse, instead of embedding the unparseable value
   verbatim in the error message.
+- `file()`'s temp file/directory (used for any value that didn't already come from a real file on
+  disk) are now created with minimal privileges — the directory `chmod`'d `0o700` and the file
+  written `0o400` — so a secret handed to `file()` isn't left world/group-readable on disk.
 
 ## [1.0.2] - 2026-09-28
 

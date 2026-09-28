@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describeValue, Descriptor, shapeFailure, subscribeParsed, type Settled, type WithDefault } from "./config-descriptor.js";
@@ -185,11 +185,23 @@ function decodeValue(value: string, format: FileValueFormat | undefined): Uint8A
  * source's raw value, or a string `default`). Each call gets its own temp directory (via
  * `mkdtempSync`), so concurrent/repeated resolutions never collide; nothing on this package's side
  * cleans these up afterwards.
+ *
+ * A field's decoded value can be a secret (a `file()`'s whole point is often to hand a private
+ * key/credential to something that only accepts a file path), so both the directory and the file
+ * are locked down to the owning user only: the directory is `chmod`'d `0o700` right after creation
+ * — `mkdtempSync` alone only gets there if the process umask happens to allow it, so this doesn't
+ * rely on that — and the file itself is written `0o400` (owner read-only, no write, no execute, no
+ * access for group/other), so nothing else on the machine can read it back off disk. The explicit
+ * `chmodSync` after each write matters as much as the `mode` passed to `writeFileSync` itself: both
+ * are subject to the process umask, which can mask off bits `0o400` asks for, so the follow-up
+ * `chmodSync` (unaffected by umask) is what actually guarantees the final permissions.
  */
 function writeTempFileSync(payload: Uint8Array): URL {
   const dir = mkdtempSync(join(tmpdir(), "configs-file-"));
+  chmodSync(dir, 0o700);
   const path = join(dir, "file");
-  writeFileSync(path, payload);
+  writeFileSync(path, payload, { mode: 0o400 });
+  chmodSync(path, 0o400);
   return toFileURL(path);
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -218,6 +218,21 @@ describe("file()", () => {
       expect(blob.location).toBeInstanceOf(URL);
       expect(await readFile(blob.location!, "utf-8")).toBe("hello");
     });
+
+    test.skipIf(process.platform === "win32")(
+      "the temp file/directory are locked down to owner-only, read-only access",
+      async () => {
+        const cfg = await create({ key: file() }, { sources: [literalSource({ key: "s3cr3t" })] });
+
+        const blob = cfg.key.get()!;
+        const filePath = new URL(blob.location!);
+        const fileStat = await stat(filePath);
+        const dirStat = await stat(join(filePath.pathname, ".."));
+
+        expect(fileStat.mode & 0o777).toBe(0o400);
+        expect(dirStat.mode & 0o777).toBe(0o700);
+      },
+    );
 
     test(".location is the same URL given as a URL default", async () => {
       const dir = await mkdtemp(join(tmpdir(), "configs-file-field-"));
