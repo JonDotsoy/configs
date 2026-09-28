@@ -1,4 +1,4 @@
-<img src="docs/assets/octopus-logo.png" align="right" width="180" alt="hotconfigs logo" />
+<img src="docs/assets/octopus-logo.png" align="right" width="180" alt="hotconfigs logo - pen-and-ink illustration of an octopus entwined with mechanical gears" />
 
 # hotconfigs
 
