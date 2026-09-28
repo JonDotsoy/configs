@@ -234,6 +234,13 @@ describe("file()", () => {
       },
     );
 
+    test.skipIf(process.platform === "win32")("mode overrides the temp file's default permissions", async () => {
+      const cfg = await create({ key: file({ mode: 0o600 }) }, { sources: [literalSource({ key: "s3cr3t" })] });
+
+      const fileStat = await stat(new URL(cfg.key.get()!.location!));
+      expect(fileStat.mode & 0o777).toBe(0o600);
+    });
+
     test(".location is the same URL given as a URL default", async () => {
       const dir = await mkdtemp(join(tmpdir(), "configs-file-field-"));
       try {
@@ -282,6 +289,19 @@ describe("file()", () => {
         expect(await stat(path).then(() => true, () => false)).toBe(true);
       } finally {
         await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    test("deleteOnClose: false leaves the temp file/directory on disk after close()", async () => {
+      const cfg = await create({ key: file({ deleteOnClose: false }) }, { sources: [literalSource({ key: "s3cr3t" })] });
+
+      const filePath = new URL(cfg.key.get()!.location!);
+      try {
+        await cfg.close();
+
+        expect(await stat(filePath).then(() => true, () => false)).toBe(true);
+      } finally {
+        await rm(join(filePath.pathname, ".."), { recursive: true, force: true });
       }
     });
   });

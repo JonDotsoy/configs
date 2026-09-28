@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`file()`'s `mode`/`deleteOnClose` options** — `mode` (default `0o400`) overrides the permission
+  bits applied to a temp file `file()` writes out to disk; `deleteOnClose` (default `true`) can be
+  set to `false` to leave the field's temp file/directory on disk instead of removing them on
+  `close()`. Neither option affects a `file:` `URL` default, since `file()` never created that file.
+
 ### Fixed
 
 - A field whose path contains a sensitive word (`key`, `secret`, `password`, `token`,
