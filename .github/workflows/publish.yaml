@@ -133,17 +133,20 @@ jobs:
         run: |
           npm stage publish ./dist --access public --tag ${{ steps.dist-tag.outputs.tag }} --provenance --json | tee stage-result.json
           stage_id="$(node -p "(() => { const r = require('./stage-result.json'); return r.id ?? r.stageId ?? r.stage_id ?? ''; })()")"
+          staged_url="https://www.npmjs.com/settings/${NPM_OWNER}/staged-packages/?page=0&perPage=10&filterPackage=${{ steps.pkg.outputs.name }}"
           echo "stage_id=$stage_id" >> "$GITHUB_OUTPUT"
+          echo "staged_url=$staged_url" >> "$GITHUB_OUTPUT"
           {
             echo "### npm package staged, awaiting approval"
             echo ""
             echo "\`${{ steps.pkg.outputs.name }}@${{ steps.pkg.outputs.version }}\` is staged under tag \`${{ steps.dist-tag.outputs.tag }}\` but not yet live."
-            echo "A maintainer with publish access must approve it (2FA required) to release it:"
+            echo "A maintainer with publish access must approve it (2FA required) before it's installable:"
             echo ""
-            echo '```'
-            echo "npm stage approve $stage_id"
-            echo '```'
+            echo "- Review and approve it on npm: $staged_url"
+            echo "- Or from the CLI: \`npm stage approve $stage_id\`"
           } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          NPM_OWNER: jondotsoy
 
       - name: Extract changelog notes for this version
         id: changelog
@@ -170,8 +173,8 @@ jobs:
           version="${{ steps.pkg.outputs.version }}"
           pkg_name="${{ steps.pkg.outputs.name }}"
           notes_file="$(mktemp)"
-          printf '%s\n\n%s@%s is staged (id `%s`) and pending a maintainer'"'"'s approval (`npm stage approve %s`) before it goes live at https://www.npmjs.com/package/%s/v/%s\n' \
-            "$NOTES" "$pkg_name" "$version" "${{ steps.npm-publish.outputs.stage_id }}" "${{ steps.npm-publish.outputs.stage_id }}" "$pkg_name" "$version" > "$notes_file"
+          printf '%s\n\n%s@%s is staged (id `%s`) and pending a maintainer'"'"'s approval before it goes live at https://www.npmjs.com/package/%s/v/%s\n\nApprove it at %s\n' \
+            "$NOTES" "$pkg_name" "$version" "${{ steps.npm-publish.outputs.stage_id }}" "$pkg_name" "$version" "${{ steps.npm-publish.outputs.staged_url }}" > "$notes_file"
           release_url="$(gh release create "v$version" \
             --repo "${{ github.repository }}" \
             --title "v$version" \
