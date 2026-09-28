@@ -84,6 +84,14 @@ describe("httpFetch", () => {
     expect(calls).toBe(1);
   });
 
+  test("a rejected status's error message masks a sensitive query parameter's value", async () => {
+    globalThis.fetch = (async () => jsonResponse(JSON.stringify({ message: "boom" }), { status: 500 })) as unknown as typeof fetch;
+
+    const error = await httpFetch({ url: "https://example.com/config?token=s3cr3t-value" }).catch((err) => err);
+    expect(error.message).toContain("****");
+    expect(error.message).not.toContain("s3cr3t-value");
+  });
+
   test("a custom bodyParser is used instead of the default JSON parsing", async () => {
     globalThis.fetch = (async () => jsonResponse(JSON.stringify({ port: 3000 }))) as unknown as typeof fetch;
 

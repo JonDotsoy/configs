@@ -1,3 +1,4 @@
+import { containsSensitiveWord } from "./utils/sensitive.js";
 import { Store, type ReadOnlyStore } from "./utils/store.js";
 import { tSync } from "./utils/t.js";
 import { ConfigError } from "./errors.js";
@@ -430,29 +431,16 @@ export function isConfigDescriptor(node: unknown): node is Descriptor<unknown> {
   return node instanceof Descriptor;
 }
 
-/**
- * Path segments treated as sensitive (case-insensitive substring match against the full dotted
- * path) — a field whose path matches one of these has its unparseable raw value masked instead of
- * embedded verbatim in a thrown `ConfigError`, so a bad secret/password/token never ends up in a
- * log or crash report just because it failed to parse.
- */
-const SENSITIVE_PATH_WORDS = ["key", "secret", "password", "token", "credential", "auth"];
-
 const MASKED_VALUE = "***";
 
-function isSensitivePath(path: string[]): boolean {
-  const joined = path.join(".").toLowerCase();
-  return SENSITIVE_PATH_WORDS.some((word) => joined.includes(word));
-}
-
 /**
- * Renders `value` for a field-error message: masked (`"***"`) when `path` looks sensitive (see
- * `SENSITIVE_PATH_WORDS`), `JSON.stringify`'d as usual otherwise. Every built-in parser that embeds
- * a field's raw value in a thrown `ConfigError` message goes through this instead of calling
- * `JSON.stringify` directly.
+ * Renders `value` for a field-error message: masked (`"***"`) when `path` looks sensitive — its
+ * full dotted path contains one of `SENSITIVE_WORDS` (`./utils/sensitive.js`), case-insensitive —
+ * `JSON.stringify`'d as usual otherwise. Every built-in parser that embeds a field's raw value in a
+ * thrown `ConfigError` message goes through this instead of calling `JSON.stringify` directly.
  */
 export function describeValue(value: unknown, path: string[]): string {
-  return isSensitivePath(path) ? MASKED_VALUE : JSON.stringify(value);
+  return containsSensitiveWord(path.join(".")) ? MASKED_VALUE : JSON.stringify(value);
 }
 
 function typeMismatch(type: FieldType, value: unknown, path: string[]): never {

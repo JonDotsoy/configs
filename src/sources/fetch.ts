@@ -6,6 +6,7 @@ import {
   type HttpFetchRequest,
 } from "../utils/http-fetch.js";
 import { CounterMetric, HistogramMetric, type Metric } from "../utils/metric.js";
+import { maskSensitiveUrl } from "../utils/sanitize-log.js";
 import { t } from "../utils/t.js";
 import { selectTreePath } from "../utils/tree-path.js";
 import { Source } from "./source.js";
@@ -150,7 +151,7 @@ async function fetchRound<T>(
   metrics.duration.observe(labels, durationMs / 1000);
 
   if (!ok) {
-    console.error(`fetchSource: failed to fetch "${req.url}"`, error);
+    console.error(`fetchSource: failed to fetch "${maskSensitiveUrl(req.url)}"`, error);
     onFetched?.({ url: req.url, ok: false, durationMs, error });
     return undefined;
   }
@@ -209,7 +210,7 @@ function applyTreePath<T>(url: string | URL, data: T, treePath: string[]): T {
   const selected = selectTreePath(data, treePath);
   if (selected === undefined) {
     console.error(
-      `fetchSource: treePath [${treePath.map((k) => JSON.stringify(k)).join(", ")}] did not resolve to anything in the response from "${url}"`,
+      `fetchSource: treePath [${treePath.map((k) => JSON.stringify(k)).join(", ")}] did not resolve to anything in the response from "${maskSensitiveUrl(url)}"`,
     );
     return {} as T;
   }
@@ -223,7 +224,11 @@ function applyTreePath<T>(url: string | URL, data: T, treePath: string[]): T {
  * `httpFetch` helper, which throws when the download never succeeds (network error or a
  * status rejected by `acceptStatus`, after exhausting `attempts`) or when `bodyParser` throws.
  * `fetchSource` catches that, logs a `console.error`, and leaves the store empty (`null`)
- * instead of throwing.
+ * instead of throwing. `url` embedded in one of these log lines goes through `maskSensitiveUrl`
+ * (`../utils/sanitize-log.js`) first — any query parameter whose name looks sensitive (e.g.
+ * `token`, `api_key`) has its value masked, so a secret passed in the URL's own query string
+ * doesn't end up readable in a log. `onFetched`, by contrast, is always handed the real, unmasked
+ * `url` — its caller already has whatever secret they put there themselves.
  *
  * By default (`pollingInterval: false`) it fetches `url` exactly once and closes. Set
  * `pollingInterval` to a number of milliseconds to keep fetching on that interval instead — each

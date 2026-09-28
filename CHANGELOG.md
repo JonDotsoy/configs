@@ -30,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and one per raw value a live source published over the field's lifetime) instead of leaking them
   on disk indefinitely. A `file:` `URL` default — a real file `file()` didn't create — is left
   untouched.
+- `shellSource`/`fetchSource` no longer leak full commands/URLs into their own `console.error` logs.
+  `shellSource` masks a sensitive flag's value (`--key value` → `--key ****`, `--key=value` →
+  `--key=****`) and a sensitive header-style argument's value, keeping any scheme prefix
+  (`"Authorization: Bearer xxx"` → `"Authorization: Bearer ****"`, `"token: xxx"` → `"token:
+  ****"`); `fetchSource` (and `httpFetch`'s own rejected-status error) masks a sensitive query
+  parameter's value in a logged URL. Neither affects `onRun`/`onFetched`, which are still handed the
+  real, unmasked `args`/`url` — the caller already has whatever secret they put there.
 
 ## [1.0.2] - 2026-09-28
 
