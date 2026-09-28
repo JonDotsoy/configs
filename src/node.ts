@@ -168,13 +168,14 @@ export interface FileFieldOptions {
    */
   mode?: number;
   /**
-   * Whether this field's own `close()` deletes the temp file(s)/directory(ies) it created (its
-   * resolved default's, and one per raw value a live source published over the field's lifetime).
-   * Defaults to `true`. Set `false` to leave them on disk instead — e.g. when something else still
-   * needs to read the file's `.location` after the config tree itself has been closed. Never
-   * affects a `file:` `URL` default, which `file()` never created and so never deletes either way.
+   * When `true`, this field's own `close()` leaves the temp file(s)/directory(ies) it created (its
+   * resolved default's, and one per raw value a live source published over the field's lifetime) on
+   * disk instead of deleting them — e.g. when something else still needs to read the file's
+   * `.location` after the config tree itself has been closed. Defaults to `false` (`close()` deletes
+   * them). Never affects a `file:` `URL` default, which `file()` never created and so never deletes
+   * either way.
    */
-  deleteOnClose?: boolean;
+  avoidCleanup?: boolean;
 }
 
 /** Whether `value` looks like base64: only base64-alphabet characters (plus up to two trailing `=`), and a length that's a multiple of 4. */
@@ -303,11 +304,11 @@ function fileStart(
  *
  * Every temp directory this descriptor ever creates (its resolved default's, and one per raw value
  * a live source publishes over the field's lifetime — `subscribeParsed` re-runs `parse` on each
- * update) is tracked and, unless `deleteOnClose: false` (see `FileFieldOptions.deleteOnClose`),
- * removed recursively by this descriptor's own `close()` — `create()`'s own `close()`
- * (`./config-node.js`) calls it once per field. A `file:` `URL` default is never tracked, and
- * `FileFieldOptions.mode` is never applied to it either: it points at a file this descriptor didn't
- * create, so it isn't this descriptor's to touch or delete.
+ * update) is tracked and, unless `avoidCleanup: true` (see `FileFieldOptions.avoidCleanup`), removed
+ * recursively by this descriptor's own `close()` — `create()`'s own `close()` (`./config-node.js`)
+ * calls it once per field. A `file:` `URL` default is never tracked, and `FileFieldOptions.mode` is
+ * never applied to it either: it points at a file this descriptor didn't create, so it isn't this
+ * descriptor's to touch or delete.
  *
  * Returned as `Descriptor<Pending, Awaited>` where both are computed from `O` up front and passed
  * in explicitly, same as every built-in builder in `./config-descriptor.js`:
@@ -318,9 +319,9 @@ function fileStart(
 export function file<const O extends FileFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, FileBlob>, Settled<O, FileBlob>> {
   const opts = options ?? ({} as O);
   const mode = opts.mode ?? DEFAULT_FILE_MODE;
-  const deleteOnClose = opts.deleteOnClose ?? true;
+  const avoidCleanup = opts.avoidCleanup ?? false;
   const tempDirs = new Set<string>();
-  const trackDir = deleteOnClose ? (dir: string) => tempDirs.add(dir) : () => {};
+  const trackDir = avoidCleanup ? () => {} : (dir: string) => tempDirs.add(dir);
 
   const runtimeOptions: Omit<FileFieldOptions, "default"> & { default?: FileBlob } = {
     summary: opts.summary,
@@ -329,7 +330,7 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): Descri
     key: opts.key,
     format: opts.format,
     mode: opts.mode,
-    deleteOnClose: opts.deleteOnClose,
+    avoidCleanup: opts.avoidCleanup,
   };
 
   const resolvedDefault = resolveDefault(opts.default, opts.format, mode, trackDir);

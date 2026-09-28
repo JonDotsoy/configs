@@ -292,8 +292,8 @@ describe("file()", () => {
       }
     });
 
-    test("deleteOnClose: false leaves the temp file/directory on disk after close()", async () => {
-      const cfg = await create({ key: file({ deleteOnClose: false }) }, { sources: [literalSource({ key: "s3cr3t" })] });
+    test("avoidCleanup: true leaves the temp file/directory on disk after close()", async () => {
+      const cfg = await create({ key: file({ avoidCleanup: true }) }, { sources: [literalSource({ key: "s3cr3t" })] });
 
       const filePath = new URL(cfg.key.get()!.location!);
       try {
