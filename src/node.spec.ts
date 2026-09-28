@@ -241,6 +241,21 @@ describe("file()", () => {
       expect(fileStat.mode & 0o777).toBe(0o600);
     });
 
+    test("tempDir overrides where the temp file/directory is created, instead of the OS temp directory", async () => {
+      const customBase = await mkdtemp(join(tmpdir(), "configs-file-tempdir-"));
+      try {
+        const cfg = await create({ key: file({ tempDir: customBase }) }, { sources: [literalSource({ key: "hello" })] });
+
+        const filePath = new URL(cfg.key.get()!.location!);
+        expect(filePath.pathname.startsWith(customBase)).toBe(true);
+        expect(await readFile(filePath, "utf-8")).toBe("hello");
+
+        await cfg.close();
+      } finally {
+        await rm(customBase, { recursive: true, force: true });
+      }
+    });
+
     test(".location is the same URL given as a URL default", async () => {
       const dir = await mkdtemp(join(tmpdir(), "configs-file-field-"));
       try {

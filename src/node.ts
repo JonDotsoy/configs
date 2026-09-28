@@ -176,6 +176,15 @@ export interface FileFieldOptions {
    * either way.
    */
   avoidCleanup?: boolean;
+  /**
+   * Overrides where this field's temp file/directory is created, instead of the OS temp directory
+   * (`node:os`'s `tmpdir()`) — mainly a debugging knob, for pointing the written file somewhere
+   * easy to find and inspect by hand (a fixed local folder, say) instead of an ephemeral OS temp
+   * path. The directory must already exist; `file()` still creates its own fresh subdirectory
+   * inside it via `mkdtempSync`, same as it does under `tmpdir()`, so concurrent/repeated
+   * resolutions still never collide.
+   */
+  tempDir?: string;
 }
 
 /** Whether `value` looks like base64: only base64-alphabet characters (plus up to two trailing `=`), and a length that's a multiple of 4. */
@@ -201,37 +210,52 @@ function decodeValue(value: string, format: FileValueFormat | undefined): Uint8A
 const DEFAULT_FILE_MODE = 0o400;
 
 /**
- * Writes `payload` out to a fresh file under the OS temp directory and returns its `file:` `URL`
- * — `FileBlob.location` for any value that didn't already come from a real file on disk (a
- * source's raw value, or a string `default`). Each call gets its own temp directory (via
- * `mkdtempSync`), so concurrent/repeated resolutions never collide. `trackDir` is handed the fresh
- * directory so the caller (`file()`) can remove it again on `close()` (see `file()`'s own doc) —
- * this function itself never deletes anything.
+ * The write-time knobs a single `file()` call shares across every temp file it ever writes (its
+ * resolved default's, and one per raw value a live source publishes) — bundled into one object
+ * instead of threading `mode`/`baseDir`/`trackDir` as separate parameters through
+ * `writeTempFileSync` → `blobFromText` → `resolveDefault`/`fileStart`.
+ */
+interface TempFileContext {
+  /** `FileFieldOptions.mode`, defaulted. */
+  mode: number;
+  /** `FileFieldOptions.tempDir`, defaulted to `tmpdir()` — the directory `mkdtempSync` creates its fresh subdirectory under. */
+  baseDir: string;
+  /** Records a freshly created temp directory so `file()`'s own `close()` can remove it again (a no-op when `avoidCleanup` is set). */
+  trackDir(dir: string): void;
+}
+
+/**
+ * Writes `payload` out to a fresh file under `ctx.baseDir` and returns its `file:` `URL` —
+ * `FileBlob.location` for any value that didn't already come from a real file on disk (a source's
+ * raw value, or a string `default`). Each call gets its own temp directory (via `mkdtempSync`), so
+ * concurrent/repeated resolutions never collide. `ctx.trackDir` is handed the fresh directory so the
+ * caller (`file()`) can remove it again on `close()` (see `file()`'s own doc) — this function itself
+ * never deletes anything.
  *
  * A field's decoded value can be a secret (a `file()`'s whole point is often to hand a private
  * key/credential to something that only accepts a file path), so both the directory and the file
  * are locked down to the owning user only by default: the directory is `chmod`'d `0o700` right
  * after creation — `mkdtempSync` alone only gets there if the process umask happens to allow it, so
- * this doesn't rely on that — and the file itself is written `mode` (`FileFieldOptions.mode`,
+ * this doesn't rely on that — and the file itself is written `ctx.mode` (`FileFieldOptions.mode`,
  * defaulting to `0o400`). The explicit `chmodSync` after each write matters as much as the `mode`
  * passed to `writeFileSync` itself: both are subject to the process umask, which can mask off bits
  * `mode` asks for, so the follow-up `chmodSync` (unaffected by umask) is what actually guarantees
  * the final permissions.
  */
-function writeTempFileSync(payload: Uint8Array, mode: number, trackDir: (dir: string) => void): URL {
-  const dir = mkdtempSync(join(tmpdir(), "configs-file-"));
-  trackDir(dir);
+function writeTempFileSync(payload: Uint8Array, ctx: TempFileContext): URL {
+  const dir = mkdtempSync(join(ctx.baseDir, "configs-file-"));
+  ctx.trackDir(dir);
   chmodSync(dir, 0o700);
   const path = join(dir, "file");
-  writeFileSync(path, payload, { mode });
-  chmodSync(path, mode);
+  writeFileSync(path, payload, { mode: ctx.mode });
+  chmodSync(path, ctx.mode);
   return toFileURL(path);
 }
 
-/** Decodes `value` (per `decodeValue`) and writes it out to a temp file, returning a `FileBlob` whose `.location` points at that copy — `mode`/`trackDir` are forwarded to `writeTempFileSync` as-is. */
-function blobFromText(value: string, format: FileValueFormat | undefined, mode: number, trackDir: (dir: string) => void): FileBlob {
+/** Decodes `value` (per `decodeValue`) and writes it out to a temp file, returning a `FileBlob` whose `.location` points at that copy — `ctx` is forwarded to `writeTempFileSync` as-is. */
+function blobFromText(value: string, format: FileValueFormat | undefined, ctx: TempFileContext): FileBlob {
   const payload = decodeValue(value, format);
-  return new FileBlob(payload, writeTempFileSync(payload, mode, trackDir));
+  return new FileBlob(payload, writeTempFileSync(payload, ctx));
 }
 
 /** Reads `location` from disk synchronously; `undefined` (not thrown) when the file doesn't exist. */
@@ -247,18 +271,18 @@ function readLocationSync(location: URL): Uint8Array | undefined {
 /**
  * Resolves `default` (per `file()`'s options) into a `FileBlob`, or `undefined` — either because
  * there's no default, or a `URL` default's file doesn't exist. A `URL` default is read from its
- * existing location as-is (never tracked for cleanup, and `mode` is never applied to it — `file()`
- * didn't create that file, so it has no business changing its permissions or deleting it); a string
- * default is written to a fresh temp file via `blobFromText`, tracked through `trackDir` same as
- * any source-provided value.
+ * existing location as-is (never tracked for cleanup, and `ctx.mode`/`ctx.baseDir` never apply to
+ * it — `file()` didn't create that file, so it has no business changing its permissions, location,
+ * or deleting it); a string default is written to a fresh temp file via `blobFromText`, tracked
+ * through `ctx.trackDir` same as any source-provided value.
  */
-function resolveDefault(defaultValue: string | URL | undefined, format: FileValueFormat | undefined, mode: number, trackDir: (dir: string) => void): FileBlob | undefined {
+function resolveDefault(defaultValue: string | URL | undefined, format: FileValueFormat | undefined, ctx: TempFileContext): FileBlob | undefined {
   if (defaultValue === undefined) return undefined;
   if (defaultValue instanceof URL) {
     const payload = readLocationSync(defaultValue);
     return payload === undefined ? undefined : new FileBlob(payload, defaultValue);
   }
-  return blobFromText(defaultValue, format, mode, trackDir);
+  return blobFromText(defaultValue, format, ctx);
 }
 
 /**
@@ -271,8 +295,7 @@ function resolveDefault(defaultValue: string | URL | undefined, format: FileValu
  */
 function fileStart(
   options: Pick<FileFieldOptions, "required" | "format">,
-  mode: number,
-  trackDir: (dir: string) => void,
+  ctx: TempFileContext,
 ): (raw: unknown, path: string[]) => FileBlob {
   return (raw, path) => {
     if (raw instanceof FileBlob) return raw;
@@ -282,7 +305,7 @@ function fileStart(
         new ConfigError(`Value at "${path.join(".")}" is not a file: expected a string, got ${describeValue(raw, path)}`),
       ) as FileBlob;
     }
-    const [ok, err, result] = tSync(() => blobFromText(raw, options.format, mode, trackDir));
+    const [ok, err, result] = tSync(() => blobFromText(raw, options.format, ctx));
     if (ok) return result;
     const message = err instanceof Error ? err.message : String(err);
     return shapeFailure(
@@ -306,9 +329,9 @@ function fileStart(
  * a live source publishes over the field's lifetime — `subscribeParsed` re-runs `parse` on each
  * update) is tracked and, unless `avoidCleanup: true` (see `FileFieldOptions.avoidCleanup`), removed
  * recursively by this descriptor's own `close()` — `create()`'s own `close()` (`./config-node.js`)
- * calls it once per field. A `file:` `URL` default is never tracked, and `FileFieldOptions.mode` is
- * never applied to it either: it points at a file this descriptor didn't create, so it isn't this
- * descriptor's to touch or delete.
+ * calls it once per field. A `file:` `URL` default is never tracked, and neither `FileFieldOptions.mode`
+ * nor `FileFieldOptions.tempDir` are ever applied to it either: it points at a file this descriptor
+ * didn't create, so it isn't this descriptor's to touch, relocate, or delete.
  *
  * Returned as `Descriptor<Pending, Awaited>` where both are computed from `O` up front and passed
  * in explicitly, same as every built-in builder in `./config-descriptor.js`:
@@ -318,10 +341,13 @@ function fileStart(
  */
 export function file<const O extends FileFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, FileBlob>, Settled<O, FileBlob>> {
   const opts = options ?? ({} as O);
-  const mode = opts.mode ?? DEFAULT_FILE_MODE;
   const avoidCleanup = opts.avoidCleanup ?? false;
   const tempDirs = new Set<string>();
-  const trackDir = avoidCleanup ? () => {} : (dir: string) => tempDirs.add(dir);
+  const ctx: TempFileContext = {
+    mode: opts.mode ?? DEFAULT_FILE_MODE,
+    baseDir: opts.tempDir ?? tmpdir(),
+    trackDir: avoidCleanup ? () => {} : (dir) => tempDirs.add(dir),
+  };
 
   const runtimeOptions: Omit<FileFieldOptions, "default"> & { default?: FileBlob } = {
     summary: opts.summary,
@@ -331,12 +357,13 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): Descri
     format: opts.format,
     mode: opts.mode,
     avoidCleanup: opts.avoidCleanup,
+    tempDir: opts.tempDir,
   };
 
-  const resolvedDefault = resolveDefault(opts.default, opts.format, mode, trackDir);
+  const resolvedDefault = resolveDefault(opts.default, opts.format, ctx);
   if (resolvedDefault !== undefined) runtimeOptions.default = resolvedDefault;
 
-  const parse = fileStart(runtimeOptions, mode, trackDir);
+  const parse = fileStart(runtimeOptions, ctx);
   const defaultValue = runtimeOptions.default !== undefined ? runtimeOptions.default : (null as unknown as FileBlob);
 
   return new Descriptor<FileBlob, FileBlob>({
