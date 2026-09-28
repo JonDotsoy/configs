@@ -204,6 +204,7 @@ Foo\,tar,biz                     -> ["Foo,tar", "biz"]
 | `default` | `string[]` | Fallback used when no source has a value for this field. Narrows the field's type to exclude `null`. |
 | `delimiter` | `string \| false` | Overrides the split character (`,` by default) — e.g. `delimiter: ";"` for `"a;b;c"` → `["a", "b", "c"]`. Pass `delimiter: false` to skip splitting entirely: a string raw value resolves to a single-element array holding it verbatim (`"a,b,c"` → `["a,b,c"]`) — for a field whose value happens to contain the delimiter but was never meant to be split into a list. |
 | `avoidTrim` | `boolean` | Keeps each unquoted field's surrounding whitespace instead of trimming it (`" a , b "` → `[" a ", " b "]`). A quoted field's content is never trimmed either way. |
+| `required` | `boolean` | Same base option every descriptor has (see above), but with a `list()`-specific gotcha: an empty raw string resolves to `[]`, not `null`, so a `required` list field fed an empty string is *not* rejected — see the note below. |
 
 An already-`string[]` raw value passes through as-is (each element coerced
 via `String(...)`), and a raw `number`/`boolean` is wrapped into a
