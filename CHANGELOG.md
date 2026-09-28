@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `file()`'s temp file/directory (used for any value that didn't already come from a real file on
   disk) are now created with minimal privileges — the directory `chmod`'d `0o700` and the file
   written `0o400` — so a secret handed to `file()` isn't left world/group-readable on disk.
+- `file()`'s own `close()` now deletes every temp file/directory it created (its resolved default's,
+  and one per raw value a live source published over the field's lifetime) instead of leaking them
+  on disk indefinitely. A `file:` `URL` default — a real file `file()` didn't create — is left
+  untouched.
 
 ## [1.0.2] - 2026-09-28
 

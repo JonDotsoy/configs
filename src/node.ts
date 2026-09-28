@@ -1,4 +1,5 @@
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describeValue, Descriptor, shapeFailure, subscribeParsed, type Settled, type WithDefault } from "./config-descriptor.js";
@@ -183,8 +184,9 @@ function decodeValue(value: string, format: FileValueFormat | undefined): Uint8A
  * Writes `payload` out to a fresh file under the OS temp directory and returns its `file:` `URL`
  * — `FileBlob.location` for any value that didn't already come from a real file on disk (a
  * source's raw value, or a string `default`). Each call gets its own temp directory (via
- * `mkdtempSync`), so concurrent/repeated resolutions never collide; nothing on this package's side
- * cleans these up afterwards.
+ * `mkdtempSync`), so concurrent/repeated resolutions never collide. `trackDir` is handed the fresh
+ * directory so the caller (`file()`) can remove it again on `close()` (see `file()`'s own doc) —
+ * this function itself never deletes anything.
  *
  * A field's decoded value can be a secret (a `file()`'s whole point is often to hand a private
  * key/credential to something that only accepts a file path), so both the directory and the file
@@ -196,8 +198,9 @@ function decodeValue(value: string, format: FileValueFormat | undefined): Uint8A
  * are subject to the process umask, which can mask off bits `0o400` asks for, so the follow-up
  * `chmodSync` (unaffected by umask) is what actually guarantees the final permissions.
  */
-function writeTempFileSync(payload: Uint8Array): URL {
+function writeTempFileSync(payload: Uint8Array, trackDir: (dir: string) => void): URL {
   const dir = mkdtempSync(join(tmpdir(), "configs-file-"));
+  trackDir(dir);
   chmodSync(dir, 0o700);
   const path = join(dir, "file");
   writeFileSync(path, payload, { mode: 0o400 });
@@ -205,10 +208,10 @@ function writeTempFileSync(payload: Uint8Array): URL {
   return toFileURL(path);
 }
 
-/** Decodes `value` (per `decodeValue`) and writes it out to a temp file, returning a `FileBlob` whose `.location` points at that copy. */
-function blobFromText(value: string, format: FileValueFormat | undefined): FileBlob {
+/** Decodes `value` (per `decodeValue`) and writes it out to a temp file, returning a `FileBlob` whose `.location` points at that copy — `trackDir` is forwarded to `writeTempFileSync` as-is. */
+function blobFromText(value: string, format: FileValueFormat | undefined, trackDir: (dir: string) => void): FileBlob {
   const payload = decodeValue(value, format);
-  return new FileBlob(payload, writeTempFileSync(payload));
+  return new FileBlob(payload, writeTempFileSync(payload, trackDir));
 }
 
 /** Reads `location` from disk synchronously; `undefined` (not thrown) when the file doesn't exist. */
@@ -221,14 +224,20 @@ function readLocationSync(location: URL): Uint8Array | undefined {
   }
 }
 
-/** Resolves `default` (per `file()`'s options) into a `FileBlob`, or `undefined` — either because there's no default, or a `URL` default's file doesn't exist. */
-function resolveDefault(defaultValue: string | URL | undefined, format: FileValueFormat | undefined): FileBlob | undefined {
+/**
+ * Resolves `default` (per `file()`'s options) into a `FileBlob`, or `undefined` — either because
+ * there's no default, or a `URL` default's file doesn't exist. A `URL` default is read from its
+ * existing location as-is (never tracked for cleanup — `file()` didn't create that file, so it has
+ * no business deleting it); a string default is written to a fresh temp file via `blobFromText`,
+ * tracked through `trackDir` same as any source-provided value.
+ */
+function resolveDefault(defaultValue: string | URL | undefined, format: FileValueFormat | undefined, trackDir: (dir: string) => void): FileBlob | undefined {
   if (defaultValue === undefined) return undefined;
   if (defaultValue instanceof URL) {
     const payload = readLocationSync(defaultValue);
     return payload === undefined ? undefined : new FileBlob(payload, defaultValue);
   }
-  return blobFromText(defaultValue, format);
+  return blobFromText(defaultValue, format, trackDir);
 }
 
 /**
@@ -239,7 +248,7 @@ function resolveDefault(defaultValue: string | URL | undefined, format: FileValu
  * `required` escalates it into a thrown `ConfigError`, same "log unless required" rule every
  * schema-based field (`shape()`, `file()`) follows (see `shapeFailure`).
  */
-function fileStart(options: Pick<FileFieldOptions, "required" | "format">): (raw: unknown, path: string[]) => FileBlob {
+function fileStart(options: Pick<FileFieldOptions, "required" | "format">, trackDir: (dir: string) => void): (raw: unknown, path: string[]) => FileBlob {
   return (raw, path) => {
     if (raw instanceof FileBlob) return raw;
     if (typeof raw !== "string") {
@@ -248,7 +257,7 @@ function fileStart(options: Pick<FileFieldOptions, "required" | "format">): (raw
         new ConfigError(`Value at "${path.join(".")}" is not a file: expected a string, got ${describeValue(raw, path)}`),
       ) as FileBlob;
     }
-    const [ok, err, result] = tSync(() => blobFromText(raw, options.format));
+    const [ok, err, result] = tSync(() => blobFromText(raw, options.format, trackDir));
     if (ok) return result;
     const message = err instanceof Error ? err.message : String(err);
     return shapeFailure(
@@ -268,6 +277,13 @@ function fileStart(options: Pick<FileFieldOptions, "required" | "format">): (raw
  * source's raw value, or a string `default`) is written out to a fresh temp file whose `file:`
  * `URL` becomes `.location`.
  *
+ * Every temp directory this descriptor ever creates (its resolved default's, and one per raw value
+ * a live source publishes over the field's lifetime — `subscribeParsed` re-runs `parse` on each
+ * update) is tracked and removed, recursively, by this descriptor's own `close()` — `create()`'s
+ * own `close()` (`./config-node.js`) calls it once per field. A `file:` `URL` default is never
+ * tracked: it points at a file this descriptor didn't create, so it isn't this descriptor's to
+ * delete.
+ *
  * Returned as `Descriptor<Pending, Awaited>` where both are computed from `O` up front and passed
  * in explicitly, same as every built-in builder in `./config-descriptor.js`:
  * `Descriptor<FileBlob | null, FileBlob | null>` with neither `default` nor `required`,
@@ -276,6 +292,8 @@ function fileStart(options: Pick<FileFieldOptions, "required" | "format">): (raw
  */
 export function file<const O extends FileFieldOptions = {}>(options?: O): Descriptor<WithDefault<O, FileBlob>, Settled<O, FileBlob>> {
   const opts = options ?? ({} as O);
+  const tempDirs = new Set<string>();
+  const trackDir = (dir: string) => tempDirs.add(dir);
 
   const runtimeOptions: Omit<FileFieldOptions, "default"> & { default?: FileBlob } = {
     summary: opts.summary,
@@ -285,10 +303,10 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): Descri
     format: opts.format,
   };
 
-  const resolvedDefault = resolveDefault(opts.default, opts.format);
+  const resolvedDefault = resolveDefault(opts.default, opts.format, trackDir);
   if (resolvedDefault !== undefined) runtimeOptions.default = resolvedDefault;
 
-  const parse = fileStart(runtimeOptions);
+  const parse = fileStart(runtimeOptions, trackDir);
   const defaultValue = runtimeOptions.default !== undefined ? runtimeOptions.default : (null as unknown as FileBlob);
 
   return new Descriptor<FileBlob, FileBlob>({
@@ -296,6 +314,9 @@ export function file<const O extends FileFieldOptions = {}>(options?: O): Descri
     options: runtimeOptions,
     start(control) {
       subscribeParsed(control, defaultValue, parse);
+    },
+    async close() {
+      await Promise.all([...tempDirs].map((dir) => rm(dir, { recursive: true, force: true })));
     },
   }) as Descriptor<WithDefault<O, FileBlob>, Settled<O, FileBlob>>;
 }

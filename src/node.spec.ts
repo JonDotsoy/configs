@@ -247,6 +247,43 @@ describe("file()", () => {
         await rm(dir, { recursive: true, force: true });
       }
     });
+
+    test("close() removes the temp file and its temp directory from disk", async () => {
+      const cfg = await create({ key: file() }, { sources: [literalSource({ key: "s3cr3t" })] });
+
+      const filePath = new URL(cfg.key.get()!.location!);
+      const dirPath = join(filePath.pathname, "..");
+      expect(await stat(filePath).then(() => true, () => false)).toBe(true);
+
+      await cfg.close();
+
+      expect(await stat(filePath).then(() => true, () => false)).toBe(false);
+      expect(await stat(dirPath).then(() => true, () => false)).toBe(false);
+    });
+
+    test("close() also removes a string default's own temp file", async () => {
+      const cfg = await create({ key: file({ default: "hello", format: "text" }) }, { sources: [] });
+
+      const filePath = new URL(cfg.key.get()!.location!);
+      await cfg.close();
+
+      expect(await stat(filePath).then(() => true, () => false)).toBe(false);
+    });
+
+    test("close() leaves a URL default's own file on disk untouched — file() never created it", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "configs-file-field-"));
+      try {
+        const path = join(dir, "cert.pem");
+        await Bun.write(path, "-----BEGIN CERTIFICATE-----");
+
+        const cfg = await create({ key: file({ default: pathToFileURL(path) }) }, { sources: [] });
+        await cfg.close();
+
+        expect(await stat(path).then(() => true, () => false)).toBe(true);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe("required", () => {
