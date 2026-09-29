@@ -3,10 +3,11 @@ dependency hotconfigs
 case basic {
   env FOO tar
   run <<<ts
+    import assert from "node:assert"
     import { load, string } from "hotconfigs"
     await using configs = await load({
-      foo: string()
+      foo: string({ key: "FOO" })
     })
-    expect(typeof configs.foo === "string", ".....")
-    expect(configs.foo === "tar", ".....")
+    assert(typeof configs.foo.get() === "string", "foo should be a string")
+    assert(configs.foo.get() === "tar", "foo should be \"tar\"")
 }
