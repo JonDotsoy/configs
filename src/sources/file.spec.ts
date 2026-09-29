@@ -109,6 +109,19 @@ describe("fileSource", () => {
       // The backslash isn't stripped by DotEnv.parse — see src/utils/dotenv.md.
       expect(store.get()).toEqual({ NAME: "my app", OTHER: "it\\'s fine" });
     });
+
+    test("parses a .properties file, nesting dotted keys", async () => {
+      const path = join(dir, "config.properties");
+      await Bun.write(path, "game.initial-score=30\nplayers.default-name=default\n");
+
+      const source = fileSource(path, { watch: false });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({
+        game: { "initial-score": "30" },
+        players: { "default-name": "default" },
+      });
+    });
   });
 
   describe("parser", () => {
@@ -221,6 +234,16 @@ describe("fileSource", () => {
       const store = await source.open();
 
       expect(store.get()).toEqual({ port: 3000 });
+    });
+
+    test("format: \"properties\" forces properties parsing on an extensionless path", async () => {
+      const path = join(dir, "config");
+      await Bun.write(path, "port=3000\n");
+
+      const source = fileSource(path, { watch: false, format: "properties" });
+      const store = await source.open();
+
+      expect(store.get()).toEqual({ port: "3000" });
     });
 
     test("format is ignored once parser is set", async () => {
