@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `SourceControl.keys` — every field path (e.g. `[["server", "port"], ["HOST"]]`) a `Source` is
+  being opened for, computed from the whole `create()`/`load()` shape and available inside
+  `start(control)` before it does any work. Defaults to `[]` when a source is `open()`ed directly,
+  without a `create()` shape behind it.
+
+### Changed
+
+- **BREAKING**: `Source.start()` no longer runs eagerly at `new Source(...)` construction time —
+  it's now deferred until the `Source` is first `open()`ed (directly, or by `create()`/`load()`
+  opening it as one of `options.sources`), which is what makes `control.keys` available in time.
+  A source constructed but never opened no longer runs its `start()` at all.
+
 ## [1.0.7] - 2026-09-28
 
 ### Changed

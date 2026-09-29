@@ -197,6 +197,10 @@ function buildField(
  * resolves independently, from its own `sources` — nothing here rewires it against `rawSources`
  * or `path`. Its own readiness is collected into `embeddedReady`, so the node embedding it can
  * still `await` it as part of its own `then()`.
+ *
+ * Every leaf's own `fieldPath` (an embedded node's own fields aren't included — they're not this
+ * shape's own leaves) is also appended to `keys`, so `create()` can hand the whole shape's field
+ * paths to every `options.sources` entry's `open(keys)` — see `Source.open()`, `./sources/source.js`.
  */
 function buildNode(
   shape: ConfigsShape,
@@ -206,6 +210,7 @@ function buildNode(
   closers: (() => Promise<void>)[],
   reportError: (path: string[], error: unknown) => void,
   requiredChecks: (() => void)[],
+  keys: string[][],
 ): Record<string, unknown> {
   const node: Record<string, unknown> = {};
   for (const key of Object.keys(shape)) {
@@ -213,6 +218,7 @@ function buildNode(
     const entryPath = [...path, key];
     if (isConfigDescriptor(entry)) {
       const fieldPath = resolveFieldPath(entry, entryPath);
+      keys.push(fieldPath);
       node[key] = buildField(entry, keyStore(rawSources, fieldPath), fieldPath, reportError, requiredChecks);
       closers.push(() => (typeof entry.close === "function" ? entry.close() : Promise.resolve()));
     } else if (isConfigsNode(entry)) {
@@ -233,7 +239,7 @@ function buildNode(
       closers.push(() => entry.close());
       node[key] = entry;
     } else {
-      node[key] = buildNode(entry as ConfigsShape, entryPath, rawSources, embeddedReady, closers, reportError, requiredChecks);
+      node[key] = buildNode(entry as ConfigsShape, entryPath, rawSources, embeddedReady, closers, reportError, requiredChecks, keys);
     }
   }
   return node;
@@ -256,6 +262,7 @@ export function create<T extends ConfigsShape>(configShape: T, options: Options 
   const embeddedReady: PromiseLike<unknown>[] = [];
   const closers: (() => Promise<void>)[] = [];
   const requiredChecks: (() => void)[] = [];
+  const keys: string[][] = [];
 
   // Every field error across the whole tree, by path — first error per path wins. `settled` flips
   // once `ready` has resolved or rejected; a later error (a live source pushing a bad value after
@@ -272,7 +279,7 @@ export function create<T extends ConfigsShape>(configShape: T, options: Options 
     if (!fieldErrors.has(key)) fieldErrors.set(key, { path, error: configError });
   }
 
-  const node = buildNode(configShape, [], rawSources, embeddedReady, closers, reportError, requiredChecks) as ConfigsNode<T>;
+  const node = buildNode(configShape, [], rawSources, embeddedReady, closers, reportError, requiredChecks, keys) as ConfigsNode<T>;
   (node as Record<symbol, unknown>)[CONFIGS_NODE_TAG] = true;
   // Set directly on `node` (not only on the wrapper below) so `close()` also reaches the awaited
   // node: `ready.then()` resolves to this exact same runtime object, just narrowed to
@@ -298,7 +305,7 @@ export function create<T extends ConfigsShape>(configShape: T, options: Options 
   // that wiring work regardless of how "instantly" the embedded node was always going to fail.
   const ownReady = Promise.all(
     sources.map((source, index) =>
-      source.open().then((opened) => {
+      source.open(keys).then((opened) => {
         opened.subscribe((value) => rawSources[index]!.set(value));
       }),
     ),
