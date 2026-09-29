@@ -106,3 +106,46 @@ case shape-properties-descriptor {
     )
     assert(configs.game.get()?.["initial-score"] === "30", "game.initial-score should be \"30\"")
 }
+
+case nested-groups {
+  env SERVER_PORT 8080
+  env SERVER_TLS_ENABLED true
+  run <<<ts
+    import assert from "node:assert"
+    import { create, boolean, numeric } from "hotconfigs"
+    import { envSource, mapKey } from "hotconfigs/sources/env"
+    await using configs = await create(
+      {
+        server: {
+          port: numeric(),
+          tls: {
+            enabled: boolean(),
+          },
+        },
+      },
+      { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
+    )
+    assert(configs.server.port.get() === 8080, "server.port should be 8080")
+    assert(configs.server.tls.enabled.get() === true, "server.tls.enabled should be true")
+}
+
+case nested-groups-embedded-create {
+  env DATABASE_HOST db.local
+  env PORT 3000
+  run <<<ts
+    import assert from "node:assert"
+    import { create, numeric, string } from "hotconfigs"
+    import { envSource } from "hotconfigs/sources/env"
+    await using configs = await create(
+      {
+        port: numeric({ key: "PORT" }),
+        database: create(
+          { host: string({ key: "HOST" }) },
+          { sources: [envSource({ prefix: "DATABASE_" })] },
+        ),
+      },
+      { sources: [envSource()] },
+    )
+    assert(configs.port.get() === 3000, "port should be 3000")
+    assert(configs.database.host.get() === "db.local", "database.host should be \"db.local\"")
+}
