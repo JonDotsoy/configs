@@ -22,21 +22,14 @@ Every documented top-level export resolves from the root entry point.
 
 ```ts
 // Case: importing the root entry point (`hotconfigs`) exposes every
-// documented top-level export, under every supported engine.
-import {
-  create,
-  load,
-  envSource,
-  fetchSource,
-  fileSource,
-  literalSource,
-  mapKey,
-  pullSource,
-  sseSource,
-  Source,
-  Store,
-  ConfigError,
-} from "hotconfigs";
+// documented top-level export, under every supported engine. `envSource` is
+// the only source *factory* re-exported from root — every other source
+// factory (`fetchSource`, `sseSource`, `fileSource`, `literalSource`,
+// `pullSource`) lives only under its own `hotconfigs/sources/*` subpath (see
+// case 02), so importing the root entry point never pulls in code a consumer
+// didn't ask for. The `Source` base class itself (for hand-rolling a custom
+// source) stays exported from root alongside it.
+import { create, load, envSource, mapKey, Source, Store, ConfigError } from "hotconfigs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -46,11 +39,6 @@ function assert(cond: unknown, message: string): void {
 assert(typeof create === "function", "create is exported from root");
 assert(typeof load === "function", "load is exported from root");
 assert(typeof envSource === "function", "envSource is exported from root");
-assert(typeof fetchSource === "function", "fetchSource is exported from root");
-assert(typeof fileSource === "function", "fileSource is exported from root");
-assert(typeof literalSource === "function", "literalSource is exported from root");
-assert(typeof pullSource === "function", "pullSource is exported from root");
-assert(typeof sseSource === "function", "sseSource is exported from root");
 assert(typeof Source === "function", "Source is exported from root");
 assert(typeof Store === "function", "Store is exported from root");
 assert(typeof ConfigError === "function", "ConfigError is exported from root");
@@ -69,11 +57,6 @@ Compile: `$ node --experimental-strip-types --no-warnings test/cases/01-import-r
 ok - create is exported from root
 ok - load is exported from root
 ok - envSource is exported from root
-ok - fetchSource is exported from root
-ok - fileSource is exported from root
-ok - literalSource is exported from root
-ok - pullSource is exported from root
-ok - sseSource is exported from root
 ok - Source is exported from root
 ok - Store is exported from root
 ok - ConfigError is exported from root
@@ -90,21 +73,14 @@ Every documented top-level export resolves from the root entry point.
 
 ```ts
 // Case: importing the root entry point (`hotconfigs`) exposes every
-// documented top-level export, under every supported engine.
-import {
-  create,
-  load,
-  envSource,
-  fetchSource,
-  fileSource,
-  literalSource,
-  mapKey,
-  pullSource,
-  sseSource,
-  Source,
-  Store,
-  ConfigError,
-} from "hotconfigs";
+// documented top-level export, under every supported engine. `envSource` is
+// the only source *factory* re-exported from root — every other source
+// factory (`fetchSource`, `sseSource`, `fileSource`, `literalSource`,
+// `pullSource`) lives only under its own `hotconfigs/sources/*` subpath (see
+// case 02), so importing the root entry point never pulls in code a consumer
+// didn't ask for. The `Source` base class itself (for hand-rolling a custom
+// source) stays exported from root alongside it.
+import { create, load, envSource, mapKey, Source, Store, ConfigError } from "hotconfigs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -114,11 +90,6 @@ function assert(cond: unknown, message: string): void {
 assert(typeof create === "function", "create is exported from root");
 assert(typeof load === "function", "load is exported from root");
 assert(typeof envSource === "function", "envSource is exported from root");
-assert(typeof fetchSource === "function", "fetchSource is exported from root");
-assert(typeof fileSource === "function", "fileSource is exported from root");
-assert(typeof literalSource === "function", "literalSource is exported from root");
-assert(typeof pullSource === "function", "pullSource is exported from root");
-assert(typeof sseSource === "function", "sseSource is exported from root");
 assert(typeof Source === "function", "Source is exported from root");
 assert(typeof Store === "function", "Store is exported from root");
 assert(typeof ConfigError === "function", "ConfigError is exported from root");
@@ -137,11 +108,6 @@ Compile: `$ bun test/cases/01-import-root.ts (running the copy installed against
 ok - create is exported from root
 ok - load is exported from root
 ok - envSource is exported from root
-ok - fetchSource is exported from root
-ok - fileSource is exported from root
-ok - literalSource is exported from root
-ok - pullSource is exported from root
-ok - sseSource is exported from root
 ok - Source is exported from root
 ok - Store is exported from root
 ok - ConfigError is exported from root
@@ -158,21 +124,14 @@ Every documented top-level export resolves from the root entry point.
 
 ```ts
 // Case: importing the root entry point (`hotconfigs`) exposes every
-// documented top-level export, under every supported engine.
-import {
-  create,
-  load,
-  envSource,
-  fetchSource,
-  fileSource,
-  literalSource,
-  mapKey,
-  pullSource,
-  sseSource,
-  Source,
-  Store,
-  ConfigError,
-} from "hotconfigs";
+// documented top-level export, under every supported engine. `envSource` is
+// the only source *factory* re-exported from root — every other source
+// factory (`fetchSource`, `sseSource`, `fileSource`, `literalSource`,
+// `pullSource`) lives only under its own `hotconfigs/sources/*` subpath (see
+// case 02), so importing the root entry point never pulls in code a consumer
+// didn't ask for. The `Source` base class itself (for hand-rolling a custom
+// source) stays exported from root alongside it.
+import { create, load, envSource, mapKey, Source, Store, ConfigError } from "hotconfigs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -182,11 +141,6 @@ function assert(cond: unknown, message: string): void {
 assert(typeof create === "function", "create is exported from root");
 assert(typeof load === "function", "load is exported from root");
 assert(typeof envSource === "function", "envSource is exported from root");
-assert(typeof fetchSource === "function", "fetchSource is exported from root");
-assert(typeof fileSource === "function", "fileSource is exported from root");
-assert(typeof literalSource === "function", "literalSource is exported from root");
-assert(typeof pullSource === "function", "pullSource is exported from root");
-assert(typeof sseSource === "function", "sseSource is exported from root");
 assert(typeof Source === "function", "Source is exported from root");
 assert(typeof Store === "function", "Store is exported from root");
 assert(typeof ConfigError === "function", "ConfigError is exported from root");
@@ -211,21 +165,14 @@ Every documented top-level export resolves from the root entry point.
 
 ```ts
 // Case: importing the root entry point (`hotconfigs`) exposes every
-// documented top-level export, under every supported engine.
-import {
-  create,
-  load,
-  envSource,
-  fetchSource,
-  fileSource,
-  literalSource,
-  mapKey,
-  pullSource,
-  sseSource,
-  Source,
-  Store,
-  ConfigError,
-} from "hotconfigs";
+// documented top-level export, under every supported engine. `envSource` is
+// the only source *factory* re-exported from root — every other source
+// factory (`fetchSource`, `sseSource`, `fileSource`, `literalSource`,
+// `pullSource`) lives only under its own `hotconfigs/sources/*` subpath (see
+// case 02), so importing the root entry point never pulls in code a consumer
+// didn't ask for. The `Source` base class itself (for hand-rolling a custom
+// source) stays exported from root alongside it.
+import { create, load, envSource, mapKey, Source, Store, ConfigError } from "hotconfigs";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -235,11 +182,6 @@ function assert(cond: unknown, message: string): void {
 assert(typeof create === "function", "create is exported from root");
 assert(typeof load === "function", "load is exported from root");
 assert(typeof envSource === "function", "envSource is exported from root");
-assert(typeof fetchSource === "function", "fetchSource is exported from root");
-assert(typeof fileSource === "function", "fileSource is exported from root");
-assert(typeof literalSource === "function", "literalSource is exported from root");
-assert(typeof pullSource === "function", "pullSource is exported from root");
-assert(typeof sseSource === "function", "sseSource is exported from root");
 assert(typeof Source === "function", "Source is exported from root");
 assert(typeof Store === "function", "Store is exported from root");
 assert(typeof ConfigError === "function", "ConfigError is exported from root");
@@ -258,11 +200,6 @@ Compile: `$ bun build test/cases/01-import-root.ts --target browser --format esm
 ok - create is exported from root
 ok - load is exported from root
 ok - envSource is exported from root
-ok - fetchSource is exported from root
-ok - fileSource is exported from root
-ok - literalSource is exported from root
-ok - pullSource is exported from root
-ok - sseSource is exported from root
 ok - Source is exported from root
 ok - Store is exported from root
 ok - ConfigError is exported from root
@@ -665,7 +602,8 @@ create() + literalSource: publish once, read two leaf fields, close the source.
 ```ts
 // Case: create() + literalSource — the simplest end-to-end path:
 // a source that publishes once, a leaf field reading it, then a clean close.
-import { create, literalSource, numeric, string } from "hotconfigs";
+import { create, numeric, string } from "hotconfigs";
+import { literalSource } from "hotconfigs/sources/literal";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -707,7 +645,8 @@ create() + literalSource: publish once, read two leaf fields, close the source.
 ```ts
 // Case: create() + literalSource — the simplest end-to-end path:
 // a source that publishes once, a leaf field reading it, then a clean close.
-import { create, literalSource, numeric, string } from "hotconfigs";
+import { create, numeric, string } from "hotconfigs";
+import { literalSource } from "hotconfigs/sources/literal";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -749,7 +688,8 @@ create() + literalSource: publish once, read two leaf fields, close the source.
 ```ts
 // Case: create() + literalSource — the simplest end-to-end path:
 // a source that publishes once, a leaf field reading it, then a clean close.
-import { create, literalSource, numeric, string } from "hotconfigs";
+import { create, numeric, string } from "hotconfigs";
+import { literalSource } from "hotconfigs/sources/literal";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -788,7 +728,8 @@ create() + literalSource: publish once, read two leaf fields, close the source.
 ```ts
 // Case: create() + literalSource — the simplest end-to-end path:
 // a source that publishes once, a leaf field reading it, then a clean close.
-import { create, literalSource, numeric, string } from "hotconfigs";
+import { create, numeric, string } from "hotconfigs";
+import { literalSource } from "hotconfigs/sources/literal";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -995,7 +936,8 @@ fetchSource performs a real fetch (against a data: URL) and applies treePath.
 // Case: fetchSource against a `data:` URL — no server needed, so the exact
 // same script exercises a real HTTP round trip (fetch + JSON parsing +
 // treePath selection) under node, bun, deno, and a real browser alike.
-import { create, fetchSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { fetchSource } from "hotconfigs/sources/fetch";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1030,7 +972,8 @@ fetchSource performs a real fetch (against a data: URL) and applies treePath.
 // Case: fetchSource against a `data:` URL — no server needed, so the exact
 // same script exercises a real HTTP round trip (fetch + JSON parsing +
 // treePath selection) under node, bun, deno, and a real browser alike.
-import { create, fetchSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { fetchSource } from "hotconfigs/sources/fetch";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1065,7 +1008,8 @@ fetchSource performs a real fetch (against a data: URL) and applies treePath.
 // Case: fetchSource against a `data:` URL — no server needed, so the exact
 // same script exercises a real HTTP round trip (fetch + JSON parsing +
 // treePath selection) under node, bun, deno, and a real browser alike.
-import { create, fetchSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { fetchSource } from "hotconfigs/sources/fetch";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1099,7 +1043,8 @@ fetchSource performs a real fetch (against a data: URL) and applies treePath.
 // Case: fetchSource against a `data:` URL — no server needed, so the exact
 // same script exercises a real HTTP round trip (fetch + JSON parsing +
 // treePath selection) under node, bun, deno, and a real browser alike.
-import { create, fetchSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { fetchSource } from "hotconfigs/sources/fetch";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1136,7 +1081,8 @@ sseSource against an address nothing listens on fails gracefully into null inste
 // via console.error and leave the store empty (null) instead of throwing.
 // Exercised without a live SSE server so it runs identically under every
 // engine, including a browser page.
-import { create, sseSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { sseSource } from "hotconfigs/sources/sse";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1160,15 +1106,15 @@ ok - a failed sseSource connection leaves the field null instead of throwing
 ALL_CHECKS_PASSED
 
 sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): fetch failed
-    at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-gScjwf/node_modules/hotconfigs/utils/http-fetch.js:68:11)
-    at async t (file:///tmp/jondotsoy-configs-test-cases-gScjwf/node_modules/hotconfigs/utils/t.js:8:24)
-    at async Object.start (file:///tmp/jondotsoy-configs-test-cases-gScjwf/node_modules/hotconfigs/sources/sse.js:102:57) {
+    at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-CwIm87/node_modules/hotconfigs/utils/http-fetch.js:69:11)
+    at async t (file:///tmp/jondotsoy-configs-test-cases-CwIm87/node_modules/hotconfigs/utils/t.js:8:24)
+    at async Object.start (file:///tmp/jondotsoy-configs-test-cases-CwIm87/node_modules/hotconfigs/sources/sse.js:102:57) {
   [cause]: TypeError: fetch failed
       at node:internal/deps/undici/undici:14976:13
-      at async download (file:///tmp/jondotsoy-configs-test-cases-gScjwf/node_modules/hotconfigs/utils/http-fetch.js:34:22)
-      at async downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-gScjwf/node_modules/hotconfigs/utils/http-fetch.js:57:20)
-      at async t (file:///tmp/jondotsoy-configs-test-cases-gScjwf/node_modules/hotconfigs/utils/t.js:8:24)
-      at async Object.start (file:///tmp/jondotsoy-configs-test-cases-gScjwf/node_modules/hotconfigs/sources/sse.js:102:57) {
+      at async download (file:///tmp/jondotsoy-configs-test-cases-CwIm87/node_modules/hotconfigs/utils/http-fetch.js:35:22)
+      at async downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-CwIm87/node_modules/hotconfigs/utils/http-fetch.js:58:20)
+      at async t (file:///tmp/jondotsoy-configs-test-cases-CwIm87/node_modules/hotconfigs/utils/t.js:8:24)
+      at async Object.start (file:///tmp/jondotsoy-configs-test-cases-CwIm87/node_modules/hotconfigs/sources/sse.js:102:57) {
     [cause]: Error: bad port
         at makeNetworkError (node:internal/deps/undici/undici:9495:35)
         at mainFetch (node:internal/deps/undici/undici:10721:20)
@@ -1176,10 +1122,10 @@ sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" Attempt
         at fetch (node:internal/deps/undici/undici:10576:20)
         at fetch (node:internal/deps/undici/undici:14974:10)
         at fetch (node:internal/bootstrap/web/exposed-window-or-worker:75:12)
-        at download (file:///tmp/jondotsoy-configs-test-cases-gScjwf/node_modules/hotconfigs/utils/http-fetch.js:34:28)
-        at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-gScjwf/node_modules/hotconfigs/utils/http-fetch.js:57:26)
-        at file:///tmp/jondotsoy-configs-test-cases-gScjwf/node_modules/hotconfigs/sources/sse.js:102:71
-        at t (file:///tmp/jondotsoy-configs-test-cases-gScjwf/node_modules/hotconfigs/utils/t.js:8:63)
+        at download (file:///tmp/jondotsoy-configs-test-cases-CwIm87/node_modules/hotconfigs/utils/http-fetch.js:35:28)
+        at downloadWithRetry (file:///tmp/jondotsoy-configs-test-cases-CwIm87/node_modules/hotconfigs/utils/http-fetch.js:58:26)
+        at file:///tmp/jondotsoy-configs-test-cases-CwIm87/node_modules/hotconfigs/sources/sse.js:102:71
+        at t (file:///tmp/jondotsoy-configs-test-cases-CwIm87/node_modules/hotconfigs/utils/t.js:8:63)
   }
 }
 ```
@@ -1193,7 +1139,8 @@ sseSource against an address nothing listens on fails gracefully into null inste
 // via console.error and leave the store empty (null) instead of throwing.
 // Exercised without a live SSE server so it runs identically under every
 // engine, including a browser page.
-import { create, sseSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { sseSource } from "hotconfigs/sources/sse";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1216,17 +1163,17 @@ Compile: `$ bun test/cases/08-sse-source-connection-failure.ts (running the copy
 ok - a failed sseSource connection leaves the field null instead of throwing
 ALL_CHECKS_PASSED
 
-sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" 63 |                 throw error;
-64 |             lastError = error;
-65 |         }
-66 |         attempt++;
-67 |     } while (attempt < maxAttempts);
-68 |     throw new AttemptsExhaustedError(maxAttempts, lastError);
+sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" 64 |                 throw error;
+65 |             lastError = error;
+66 |         }
+67 |         attempt++;
+68 |     } while (attempt < maxAttempts);
+69 |     throw new AttemptsExhaustedError(maxAttempts, lastError);
                ^
 AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): Unable to connect. Is the computer able to access the url?
-      at downloadWithRetry (/tmp/jondotsoy-configs-test-cases-gScjwf/node_modules/hotconfigs/utils/http-fetch.js:68:11)
-      at async t (/tmp/jondotsoy-configs-test-cases-gScjwf/node_modules/hotconfigs/utils/t.js:8:75)
-      at async start (/tmp/jondotsoy-configs-test-cases-gScjwf/node_modules/hotconfigs/sources/sse.js:102:63)
+      at downloadWithRetry (/tmp/jondotsoy-configs-test-cases-CwIm87/node_modules/hotconfigs/utils/http-fetch.js:69:11)
+      at async t (/tmp/jondotsoy-configs-test-cases-CwIm87/node_modules/hotconfigs/utils/t.js:8:75)
+      at async start (/tmp/jondotsoy-configs-test-cases-CwIm87/node_modules/hotconfigs/sources/sse.js:102:63)
 
 error: Unable to connect. Is the computer able to access the url?
   path: "http://127.0.0.1:9/nobody-listens-here",
@@ -1243,7 +1190,8 @@ sseSource against an address nothing listens on fails gracefully into null inste
 // via console.error and leave the store empty (null) instead of throwing.
 // Exercised without a live SSE server so it runs identically under every
 // engine, including a browser page.
-import { create, sseSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { sseSource } from "hotconfigs/sources/sse";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1275,7 +1223,8 @@ sseSource against an address nothing listens on fails gracefully into null inste
 // via console.error and leave the store empty (null) instead of throwing.
 // Exercised without a live SSE server so it runs identically under every
 // engine, including a browser page.
-import { create, sseSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { sseSource } from "hotconfigs/sources/sse";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1297,9 +1246,9 @@ Compile: `$ bun build test/cases/08-sse-source-connection-failure.ts --target br
 [PASSED]
 Failed to load resource: net::ERR_UNSAFE_PORT
 sseSource: failed to connect to "http://127.0.0.1:9/nobody-listens-here" AttemptsExhaustedError: httpFetch: failed after 1 attempt(s): Failed to fetch
-    at downloadWithRetry (http://localhost:44223/:592:9)
-    at async t (http://localhost:44223/:106:20)
-    at async Object.start (http://localhost:44223/:664:51)
+    at downloadWithRetry (http://localhost:39145/:629:9)
+    at async t (http://localhost:39145/:113:20)
+    at async Object.start (http://localhost:39145/:701:51)
 ok - a failed sseSource connection leaves the field null instead of throwing
 ALL_CHECKS_PASSED
 RESULT: PASS
@@ -1312,7 +1261,8 @@ pullSource pulls immediately, then on every interval, until closed.
 ```ts
 // Case: pullSource calls `pull` immediately, then again every `interval` ms,
 // until the source is closed.
-import { create, pullSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { pullSource } from "hotconfigs/sources/pull";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1360,7 +1310,8 @@ pullSource pulls immediately, then on every interval, until closed.
 ```ts
 // Case: pullSource calls `pull` immediately, then again every `interval` ms,
 // until the source is closed.
-import { create, pullSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { pullSource } from "hotconfigs/sources/pull";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1408,7 +1359,8 @@ pullSource pulls immediately, then on every interval, until closed.
 ```ts
 // Case: pullSource calls `pull` immediately, then again every `interval` ms,
 // until the source is closed.
-import { create, pullSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { pullSource } from "hotconfigs/sources/pull";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1453,7 +1405,8 @@ pullSource pulls immediately, then on every interval, until closed.
 ```ts
 // Case: pullSource calls `pull` immediately, then again every `interval` ms,
 // until the source is closed.
-import { create, pullSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { pullSource } from "hotconfigs/sources/pull";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1882,7 +1835,8 @@ Nested plain-object groups resolve fields at every depth, from a single source.
 ```ts
 // Case: nested config groups — plain nested objects in create()'s shape,
 // several levels deep — resolve fields at every depth from the same source.
-import { create, literalSource, string } from "hotconfigs";
+import { create, string } from "hotconfigs";
+import { literalSource } from "hotconfigs/sources/literal";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1924,7 +1878,8 @@ Nested plain-object groups resolve fields at every depth, from a single source.
 ```ts
 // Case: nested config groups — plain nested objects in create()'s shape,
 // several levels deep — resolve fields at every depth from the same source.
-import { create, literalSource, string } from "hotconfigs";
+import { create, string } from "hotconfigs";
+import { literalSource } from "hotconfigs/sources/literal";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -1966,7 +1921,8 @@ Nested plain-object groups resolve fields at every depth, from a single source.
 ```ts
 // Case: nested config groups — plain nested objects in create()'s shape,
 // several levels deep — resolve fields at every depth from the same source.
-import { create, literalSource, string } from "hotconfigs";
+import { create, string } from "hotconfigs";
+import { literalSource } from "hotconfigs/sources/literal";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2006,7 +1962,8 @@ Nested plain-object groups resolve fields at every depth, from a single source.
 ```ts
 // Case: nested config groups — plain nested objects in create()'s shape,
 // several levels deep — resolve fields at every depth from the same source.
-import { create, literalSource, string } from "hotconfigs";
+import { create, string } from "hotconfigs";
+import { literalSource } from "hotconfigs/sources/literal";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2273,7 +2230,8 @@ A 'shape' field's schema failure throws when required, and is swallowed into nul
 // on `required: false` is logged (via console.error) and swallowed into
 // `null` instead. No validation library needed: `Parseable<T>` is just
 // duck-typed as `{ parse(value: unknown): T }`.
-import { create, literalSource, shape } from "hotconfigs";
+import { create, shape } from "hotconfigs";
+import { literalSource } from "hotconfigs/sources/literal";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2335,7 +2293,8 @@ A 'shape' field's schema failure throws when required, and is swallowed into nul
 // on `required: false` is logged (via console.error) and swallowed into
 // `null` instead. No validation library needed: `Parseable<T>` is just
 // duck-typed as `{ parse(value: unknown): T }`.
-import { create, literalSource, shape } from "hotconfigs";
+import { create, shape } from "hotconfigs";
+import { literalSource } from "hotconfigs/sources/literal";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2397,7 +2356,8 @@ A 'shape' field's schema failure throws when required, and is swallowed into nul
 // on `required: false` is logged (via console.error) and swallowed into
 // `null` instead. No validation library needed: `Parseable<T>` is just
 // duck-typed as `{ parse(value: unknown): T }`.
-import { create, literalSource, shape } from "hotconfigs";
+import { create, shape } from "hotconfigs";
+import { literalSource } from "hotconfigs/sources/literal";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2457,7 +2417,8 @@ A 'shape' field's schema failure throws when required, and is swallowed into nul
 // on `required: false` is logged (via console.error) and swallowed into
 // `null` instead. No validation library needed: `Parseable<T>` is just
 // duck-typed as `{ parse(value: unknown): T }`.
-import { create, literalSource, shape } from "hotconfigs";
+import { create, shape } from "hotconfigs";
+import { literalSource } from "hotconfigs/sources/literal";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2521,7 +2482,8 @@ fileSource reads a real JSON file from disk once — node:fs-backed, so a browse
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, fileSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { fileSource } from "hotconfigs/sources/file";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2568,7 +2530,8 @@ fileSource reads a real JSON file from disk once — node:fs-backed, so a browse
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, fileSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { fileSource } from "hotconfigs/sources/file";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2615,7 +2578,8 @@ fileSource reads a real JSON file from disk once — node:fs-backed, so a browse
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, fileSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { fileSource } from "hotconfigs/sources/file";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2661,7 +2625,8 @@ fileSource reads a real JSON file from disk once — node:fs-backed, so a browse
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, fileSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { fileSource } from "hotconfigs/sources/file";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2704,7 +2669,8 @@ shellSource runs a command via node:child_process's spawn and publishes its pars
 // so a browser bundle stubs it out (see manifest.ts's tolerateFailureEngines
 // for this case) — run there anyway to document the breakage instead of
 // skipping it, same as fileSource's node:fs case (15).
-import { create, shellSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { shellSource } from "hotconfigs/sources/shell";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2738,7 +2704,8 @@ shellSource runs a command via node:child_process's spawn and publishes its pars
 // so a browser bundle stubs it out (see manifest.ts's tolerateFailureEngines
 // for this case) — run there anyway to document the breakage instead of
 // skipping it, same as fileSource's node:fs case (15).
-import { create, shellSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { shellSource } from "hotconfigs/sources/shell";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2772,7 +2739,8 @@ shellSource runs a command via node:child_process's spawn and publishes its pars
 // so a browser bundle stubs it out (see manifest.ts's tolerateFailureEngines
 // for this case) — run there anyway to document the breakage instead of
 // skipping it, same as fileSource's node:fs case (15).
-import { create, shellSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { shellSource } from "hotconfigs/sources/shell";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2805,7 +2773,8 @@ shellSource runs a command via node:child_process's spawn and publishes its pars
 // so a browser bundle stubs it out (see manifest.ts's tolerateFailureEngines
 // for this case) — run there anyway to document the breakage instead of
 // skipping it, same as fileSource's node:fs case (15).
-import { create, shellSource, numeric } from "hotconfigs";
+import { create, numeric } from "hotconfigs";
+import { shellSource } from "hotconfigs/sources/shell";
 
 function assert(cond: unknown, message: string): void {
   if (!cond) throw new Error("FAIL: " + message);
@@ -2826,10 +2795,10 @@ Compile: `$ bun build test/cases/16-shell-source-runs-command.ts --target browse
 ```
 [WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
 shellSource: failed to run "echo {"port":7070}" AttemptsExhaustedError: shellSource: failed after 1 attempt(s): spawn is not a function
-    at runWithRetry (http://localhost:37963/:608:9)
-    at async t (http://localhost:37963/:106:20)
-    at async shellRound (http://localhost:37963/:612:37)
-    at async Object.start (http://localhost:37963/:652:21)
+    at runWithRetry (http://localhost:45523/:663:9)
+    at async t (http://localhost:45523/:113:20)
+    at async shellRound (http://localhost:45523/:667:37)
+    at async Object.start (http://localhost:45523/:707:21)
 RESULT: FAIL: FAIL: shellSource runs a command and parses its stdout as JSON
 ```
 
@@ -2846,7 +2815,8 @@ hotconfigs/node's file() field decodes a source value into a FileBlob, and a URL
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, literalSource } from "hotconfigs";
+import { create } from "hotconfigs";
+import { literalSource } from "hotconfigs/sources/literal";
 import { FileBlob, file } from "hotconfigs/node";
 
 function assert(cond: unknown, message: string): void {
@@ -2943,7 +2913,8 @@ hotconfigs/node's file() field decodes a source value into a FileBlob, and a URL
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, literalSource } from "hotconfigs";
+import { create } from "hotconfigs";
+import { literalSource } from "hotconfigs/sources/literal";
 import { FileBlob, file } from "hotconfigs/node";
 
 function assert(cond: unknown, message: string): void {
@@ -3040,7 +3011,8 @@ hotconfigs/node's file() field decodes a source value into a FileBlob, and a URL
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, literalSource } from "hotconfigs";
+import { create } from "hotconfigs";
+import { literalSource } from "hotconfigs/sources/literal";
 import { FileBlob, file } from "hotconfigs/node";
 
 function assert(cond: unknown, message: string): void {
@@ -3125,7 +3097,8 @@ hotconfigs/node's file() field decodes a source value into a FileBlob, and a URL
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, literalSource } from "hotconfigs";
+import { create } from "hotconfigs";
+import { literalSource } from "hotconfigs/sources/literal";
 import { FileBlob, file } from "hotconfigs/node";
 
 function assert(cond: unknown, message: string): void {
@@ -3195,16 +3168,16 @@ Compile: `$ bun build test/cases/17-node-file-field.ts --target browser --format
 ```
 [WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
 ConfigError: Value at "key" could not be decoded as a file: mkdtempSync is not a function
-    at http://localhost:37179/:850:43
-    at http://localhost:37179/:494:19
-    at Store.runSubscriber (http://localhost:37179/:365:21)
-    at Store.set (http://localhost:37179/:352:12)
-    at http://localhost:37179/:538:16
-    at Store.runSubscriber (http://localhost:37179/:365:21)
-    at Store.set (http://localhost:37179/:352:12)
-    at http://localhost:37179/:627:51
-    at Store.runSubscriber (http://localhost:37179/:365:21)
-    at Store.subscribe (http://localhost:37179/:357:10)
+    at http://localhost:40373/:872:43
+    at http://localhost:40373/:501:19
+    at Store.runSubscriber (http://localhost:40373/:372:21)
+    at Store.set (http://localhost:40373/:359:12)
+    at http://localhost:40373/:549:16
+    at Store.runSubscriber (http://localhost:40373/:372:21)
+    at Store.set (http://localhost:40373/:359:12)
+    at http://localhost:40373/:640:51
+    at Store.runSubscriber (http://localhost:40373/:372:21)
+    at Store.subscribe (http://localhost:40373/:364:10)
 RESULT: FAIL: FAIL: a source's text value resolves to a FileBlob
 ```
 
@@ -3227,7 +3200,10 @@ The README's first example: envSource with explicit, frozen keys for a flat grou
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, choice, numeric, string, boolean, envSource, fetchSource, fileSource, pullSource } from "hotconfigs";
+import { create, choice, numeric, string, boolean, envSource } from "hotconfigs";
+import { fetchSource } from "hotconfigs/sources/fetch";
+import { fileSource } from "hotconfigs/sources/file";
+import { pullSource } from "hotconfigs/sources/pull";
 import { file, FileBlob } from "hotconfigs/node";
 
 function assert(cond: unknown, message: string): void {
@@ -3398,7 +3374,10 @@ The README's first example: envSource with explicit, frozen keys for a flat grou
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, choice, numeric, string, boolean, envSource, fetchSource, fileSource, pullSource } from "hotconfigs";
+import { create, choice, numeric, string, boolean, envSource } from "hotconfigs";
+import { fetchSource } from "hotconfigs/sources/fetch";
+import { fileSource } from "hotconfigs/sources/file";
+import { pullSource } from "hotconfigs/sources/pull";
 import { file, FileBlob } from "hotconfigs/node";
 
 function assert(cond: unknown, message: string): void {
@@ -3569,7 +3548,10 @@ The README's first example: envSource with explicit, frozen keys for a flat grou
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, choice, numeric, string, boolean, envSource, fetchSource, fileSource, pullSource } from "hotconfigs";
+import { create, choice, numeric, string, boolean, envSource } from "hotconfigs";
+import { fetchSource } from "hotconfigs/sources/fetch";
+import { fileSource } from "hotconfigs/sources/file";
+import { pullSource } from "hotconfigs/sources/pull";
 import { file, FileBlob } from "hotconfigs/node";
 
 function assert(cond: unknown, message: string): void {
@@ -3726,7 +3708,10 @@ The README's first example: envSource with explicit, frozen keys for a flat grou
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, choice, numeric, string, boolean, envSource, fetchSource, fileSource, pullSource } from "hotconfigs";
+import { create, choice, numeric, string, boolean, envSource } from "hotconfigs";
+import { fetchSource } from "hotconfigs/sources/fetch";
+import { fileSource } from "hotconfigs/sources/file";
+import { pullSource } from "hotconfigs/sources/pull";
 import { file, FileBlob } from "hotconfigs/node";
 
 function assert(cond: unknown, message: string): void {
@@ -3858,6 +3843,250 @@ console.log("ALL_CHECKS_PASSED");
 ```
 
 Compile: `$ bun build test/cases/18-readme-first-example.ts --target browser --format esm (resolving hotconfigs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
+
+```
+[WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]
+RESULT: FAIL: mkdtemp is not a function
+```
+
+## case test/cases/19-file-source-reads-properties.ts — node
+
+fileSource reads a real .properties file from disk once, nesting its dotted keys into the config tree — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
+
+```ts
+// Case: fileSource reads a real .properties file from disk once (`watch:
+// false`), nesting dotted keys into the config tree, and publishes it —
+// node:fs-backed, so a browser bundle stubs it out (see manifest.ts's
+// tolerateFailureEngines for this case: it still runs there, but a failure
+// is expected and reported as a WARNING, not a FAILED).
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { create, numeric, string } from "hotconfigs";
+import { fileSource } from "hotconfigs/sources/file";
+
+function assert(cond: unknown, message: string): void {
+  if (!cond) throw new Error("FAIL: " + message);
+  console.log("ok - " + message);
+}
+
+const dir = await mkdtemp(join(tmpdir(), "configs-properties-source-case-"));
+const filePath = join(dir, "config.properties");
+
+try {
+  await writeFile(
+    filePath,
+    "game.initial-score=30\nplayers.default-name=default\n",
+  );
+
+  const source = fileSource(filePath, { watch: false });
+  const cfg = await create(
+    {
+      game: { "initial-score": numeric() },
+      players: { "default-name": string() },
+    },
+    { sources: [source] },
+  );
+
+  assert(cfg.game["initial-score"].get() === 30, "fileSource reads and parses a .properties file's nested numeric field");
+  assert(
+    cfg.players["default-name"].get() === "default",
+    "fileSource reads and parses a .properties file's nested string field",
+  );
+
+  await source.close();
+} finally {
+  await rm(dir, { recursive: true, force: true });
+}
+
+console.log("ALL_CHECKS_PASSED");
+```
+
+Compile: `$ node --experimental-strip-types --no-warnings test/cases/19-file-source-reads-properties.ts (running the copy installed against the packed tarball, not the repo's dist/)`
+
+```
+[PASSED]
+ok - fileSource reads and parses a .properties file's nested numeric field
+ok - fileSource reads and parses a .properties file's nested string field
+ALL_CHECKS_PASSED
+```
+
+## case test/cases/19-file-source-reads-properties.ts — bun
+
+fileSource reads a real .properties file from disk once, nesting its dotted keys into the config tree — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
+
+```ts
+// Case: fileSource reads a real .properties file from disk once (`watch:
+// false`), nesting dotted keys into the config tree, and publishes it —
+// node:fs-backed, so a browser bundle stubs it out (see manifest.ts's
+// tolerateFailureEngines for this case: it still runs there, but a failure
+// is expected and reported as a WARNING, not a FAILED).
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { create, numeric, string } from "hotconfigs";
+import { fileSource } from "hotconfigs/sources/file";
+
+function assert(cond: unknown, message: string): void {
+  if (!cond) throw new Error("FAIL: " + message);
+  console.log("ok - " + message);
+}
+
+const dir = await mkdtemp(join(tmpdir(), "configs-properties-source-case-"));
+const filePath = join(dir, "config.properties");
+
+try {
+  await writeFile(
+    filePath,
+    "game.initial-score=30\nplayers.default-name=default\n",
+  );
+
+  const source = fileSource(filePath, { watch: false });
+  const cfg = await create(
+    {
+      game: { "initial-score": numeric() },
+      players: { "default-name": string() },
+    },
+    { sources: [source] },
+  );
+
+  assert(cfg.game["initial-score"].get() === 30, "fileSource reads and parses a .properties file's nested numeric field");
+  assert(
+    cfg.players["default-name"].get() === "default",
+    "fileSource reads and parses a .properties file's nested string field",
+  );
+
+  await source.close();
+} finally {
+  await rm(dir, { recursive: true, force: true });
+}
+
+console.log("ALL_CHECKS_PASSED");
+```
+
+Compile: `$ bun test/cases/19-file-source-reads-properties.ts (running the copy installed against the packed tarball, not the repo's dist/)`
+
+```
+[PASSED]
+ok - fileSource reads and parses a .properties file's nested numeric field
+ok - fileSource reads and parses a .properties file's nested string field
+ALL_CHECKS_PASSED
+```
+
+## case test/cases/19-file-source-reads-properties.ts — deno
+
+fileSource reads a real .properties file from disk once, nesting its dotted keys into the config tree — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
+
+```ts
+// Case: fileSource reads a real .properties file from disk once (`watch:
+// false`), nesting dotted keys into the config tree, and publishes it —
+// node:fs-backed, so a browser bundle stubs it out (see manifest.ts's
+// tolerateFailureEngines for this case: it still runs there, but a failure
+// is expected and reported as a WARNING, not a FAILED).
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { create, numeric, string } from "hotconfigs";
+import { fileSource } from "hotconfigs/sources/file";
+
+function assert(cond: unknown, message: string): void {
+  if (!cond) throw new Error("FAIL: " + message);
+  console.log("ok - " + message);
+}
+
+const dir = await mkdtemp(join(tmpdir(), "configs-properties-source-case-"));
+const filePath = join(dir, "config.properties");
+
+try {
+  await writeFile(
+    filePath,
+    "game.initial-score=30\nplayers.default-name=default\n",
+  );
+
+  const source = fileSource(filePath, { watch: false });
+  const cfg = await create(
+    {
+      game: { "initial-score": numeric() },
+      players: { "default-name": string() },
+    },
+    { sources: [source] },
+  );
+
+  assert(cfg.game["initial-score"].get() === 30, "fileSource reads and parses a .properties file's nested numeric field");
+  assert(
+    cfg.players["default-name"].get() === "default",
+    "fileSource reads and parses a .properties file's nested string field",
+  );
+
+  await source.close();
+} finally {
+  await rm(dir, { recursive: true, force: true });
+}
+
+console.log("ALL_CHECKS_PASSED");
+```
+
+Compile: `$ deno test/cases/19-file-source-reads-properties.ts`
+
+```
+[SKIPPED: deno binary not found on PATH (set DENO_BIN to override)]
+(no output)
+```
+
+## case test/cases/19-file-source-reads-properties.ts — browser
+
+fileSource reads a real .properties file from disk once, nesting its dotted keys into the config tree — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.
+
+```ts
+// Case: fileSource reads a real .properties file from disk once (`watch:
+// false`), nesting dotted keys into the config tree, and publishes it —
+// node:fs-backed, so a browser bundle stubs it out (see manifest.ts's
+// tolerateFailureEngines for this case: it still runs there, but a failure
+// is expected and reported as a WARNING, not a FAILED).
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { create, numeric, string } from "hotconfigs";
+import { fileSource } from "hotconfigs/sources/file";
+
+function assert(cond: unknown, message: string): void {
+  if (!cond) throw new Error("FAIL: " + message);
+  console.log("ok - " + message);
+}
+
+const dir = await mkdtemp(join(tmpdir(), "configs-properties-source-case-"));
+const filePath = join(dir, "config.properties");
+
+try {
+  await writeFile(
+    filePath,
+    "game.initial-score=30\nplayers.default-name=default\n",
+  );
+
+  const source = fileSource(filePath, { watch: false });
+  const cfg = await create(
+    {
+      game: { "initial-score": numeric() },
+      players: { "default-name": string() },
+    },
+    { sources: [source] },
+  );
+
+  assert(cfg.game["initial-score"].get() === 30, "fileSource reads and parses a .properties file's nested numeric field");
+  assert(
+    cfg.players["default-name"].get() === "default",
+    "fileSource reads and parses a .properties file's nested string field",
+  );
+
+  await source.close();
+} finally {
+  await rm(dir, { recursive: true, force: true });
+}
+
+console.log("ALL_CHECKS_PASSED");
+```
+
+Compile: `$ bun build test/cases/19-file-source-reads-properties.ts --target browser --format esm (resolving hotconfigs against the packed tarball's installed exports, inlined into an index.html, driven by Playwright's Chromium)`
 
 ```
 [WARNING: failed, but tolerated for this engine (tolerateFailureEngines in manifest.ts) — does not fail the run]

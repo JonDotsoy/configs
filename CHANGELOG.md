@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `fileSource` now supports a `"properties"` format (`.properties` files, detected automatically
+  from that extension, or forced via `format: "properties"`) — the `java.util.Properties`
+  plain-text syntax (`=`/`:`/whitespace separators, `#`/`!` comments, `\`-continued lines, and
+  `\t`/`\n`/`\r`/`\f`/`\uXXXX`/`\`-escapes), with each dotted key nested into the config tree the
+  same way Spring Boot's `application.properties` does — e.g. `game.initial-score=30` becomes
+  `{ game: { "initial-score": "30" } }`.
+
 ## [1.0.8] - 2026-09-29
 
 ### Added

@@ -70,4 +70,10 @@ export const cases: CaseDef[] = [
     engines: allEngines,
     tolerateFailureEngines: ["browser"],
   },
+  {
+    file: "19-file-source-reads-properties.ts",
+    description: "fileSource reads a real .properties file from disk once, nesting its dotted keys into the config tree — node:fs-backed, so a browser bundle stubs it out; run there anyway to document the breakage instead of skipping it.",
+    engines: allEngines,
+    tolerateFailureEngines: ["browser"],
+  },
 ];

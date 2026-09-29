@@ -2,11 +2,12 @@ import { watch, type FSWatcher } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { Source } from "./source.js";
 import { DotEnv } from "../utils/dotenv.js";
+import { Properties } from "../utils/properties.js";
 import { CounterMetric, HistogramMetric, type Metric } from "../utils/metric.js";
 import { t } from "../utils/t.js";
 import { selectTreePath } from "../utils/tree-path.js";
 
-export type FileFormat = "json" | "env";
+export type FileFormat = "json" | "env" | "properties";
 
 export interface FileSourceOptions<T = unknown> {
   /**
@@ -29,7 +30,8 @@ export interface FileSourceOptions<T = unknown> {
    * detection. Use it when `path` has no extension to detect (e.g.
    * `fileSource("./config", { format: "env" })`), or to force one format on a file named for the
    * other. Ignored when `parser` is set. Defaults to detecting `path`'s extension: `.env` for a
-   * bare or `.env`-named file, `"json"` for anything else.
+   * bare or `.env`-named file, `"properties"` for a `.properties` file, `"json"` for anything
+   * else.
    */
   format?: FileFormat;
   /**
@@ -77,6 +79,7 @@ function createMetrics(): FileSourceMetrics {
 function detectFormat(path: string | URL): FileFormat {
   const pathname = path instanceof URL ? path.pathname : path;
   if (pathname.endsWith(".env")) return "env";
+  if (pathname.endsWith(".properties")) return "properties";
   return "json";
 }
 
@@ -86,6 +89,8 @@ function parseFile(format: FileFormat, text: string): unknown {
       return JSON.parse(text);
     case "env":
       return DotEnv.parse(text);
+    case "properties":
+      return Properties.parse(text);
   }
 }
 
@@ -99,9 +104,12 @@ function defaultParser(path: string | URL, format: FileFormat | undefined): (buf
 }
 
 /**
- * A `Source` that reads a config tree from a local file — `.json` or `.env` by default (matched by
- * `path`'s extension, or by the bare `.env` filename itself; anything else is parsed as JSON), or
- * any format via a custom `parser` option. `path` may be a plain string or a `file:` `URL` (e.g.
+ * A `Source` that reads a config tree from a local file — `.json`, `.env`, or `.properties` by
+ * default (matched by `path`'s extension, or by the bare `.env` filename itself; anything else is
+ * parsed as JSON), or any format via a custom `parser` option. `.properties` files follow the
+ * `java.util.Properties` plain-text syntax and nest each dotted key into the tree
+ * (`"game.initial-score=30"` => `{ game: { "initial-score": "30" } }`), same as Spring Boot's
+ * `application.properties`. `path` may be a plain string or a `file:` `URL` (e.g.
  * `import.meta.resolve(...)` or `new URL("./config.json", import.meta.url)`). Like `fetchSource`
  * and `sseSource`, a read or parse failure is logged via `console.error` and leaves the store
  * empty (`null`) instead of throwing.
@@ -110,7 +118,7 @@ function defaultParser(path: string | URL, format: FileFormat | undefined): (buf
  * and its return value is used as the parsed tree, which lets `fileSource` support formats like
  * YAML without a hard dependency on a YAML library:
  * `fileSource("./file.yaml", { parser: (bytes) => YAML.parse(new TextDecoder().decode(bytes)) })`.
- * `format` picks between the two built-in parsers explicitly instead of relying on `path`'s
+ * `format` picks between the built-in parsers explicitly instead of relying on `path`'s
  * extension — handy for an extensionless path like `fileSource("./config", { format: "env" })`.
  * It's ignored once `parser` is set.
  *
