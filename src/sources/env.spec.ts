@@ -198,6 +198,45 @@ describe("envSource", () => {
     expect(store.get()).toEqual({ FOO: "1", TAR: "2" });
   });
 
+  describe("control.keys filtering, per mapKey strategy", () => {
+    test("mapKey.snakeCase: excludes a var whose mapped path isn't requested", async () => {
+      const source = envSource({
+        env: { SERVER_PORT: "3000", SERVER_HOST: "localhost" },
+        mapKey: mapKey.snakeCase(),
+      });
+      const store = await source.open([["server", "port"]]);
+
+      expect(store.get()).toEqual({ server: { port: "3000" } });
+    });
+
+    test("mapKey.identity: excludes a var whose mapped path isn't requested", async () => {
+      const source = envSource({ env: { FOO: "1", BAR: "2" } });
+      const store = await source.open([["FOO"]]);
+
+      expect(store.get()).toEqual({ FOO: "1" });
+    });
+
+    test("mapKey.camelCase: only includes a var whose camelCased path is requested", async () => {
+      const source = envSource({
+        env: { SERVER_PORT: "3000", UNRELATED_VAR: "ignored" },
+        mapKey: mapKey.camelCase(),
+      });
+      const store = await source.open([["serverPort"]]);
+
+      expect(store.get()).toEqual({ serverPort: "3000" });
+    });
+
+    test("mapKey.lookup: excludes a var whose mapped path (looked-up or fallen-back) isn't requested", async () => {
+      const source = envSource({
+        env: { PORT: "3000", HOST: "localhost", EXTRA: "ignored" },
+        mapKey: mapKey.lookup({ PORT: ["server", "port"] }),
+      });
+      const store = await source.open([["server", "port"], ["HOST"]]);
+
+      expect(store.get()).toEqual({ server: { port: "3000" }, HOST: "localhost" });
+    });
+  });
+
   test("via create(), only reads env vars whose mapped path is actually part of the shape", async () => {
     const source = envSource({
       env: { SERVER_PORT: "3000", UNRELATED: "ignored" },
