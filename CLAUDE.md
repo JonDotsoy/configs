@@ -160,7 +160,10 @@ of what changed and a `## Test plan` checklist covering `bun test`,
 what you ran, and note anything skipped instead of silently omitting it.
 `.github/workflows/pr-test-plan.yaml` runs the whole test plan (including
 `smoke`) on every PR and reflects each step's real outcome back onto
-this checklist.
+this checklist. `bun run smoke` (`scripts/smoke.ts`) builds and packs `dist/`, then
+runs `smoke/smoke.donly` with `@jondotsoy/smoking` against that tarball (the
+`dependency hotconfigs` line is rewritten to its path), so the cases exercise
+this workspace's build, not the version currently on npm.
 
 ### Per-scenario engine coverage (`test/cases/`)
 
