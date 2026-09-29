@@ -149,3 +149,23 @@ case nested-groups-embedded-create {
     assert(configs.port.get() === 3000, "port should be 3000")
     assert(configs.database.host.get() === "db.local", "database.host should be \"db.local\"")
 }
+
+case create-file-source {
+  file ./config.json <<<json
+    { "server": { "host": "localhost", "port": 8080 } }
+  run <<<ts
+    import assert from "node:assert"
+    import { create, numeric, string } from "hotconfigs"
+    import { fileSource } from "hotconfigs/sources/file"
+    await using configs = await create(
+      {
+        server: {
+          host: string(),
+          port: numeric(),
+        },
+      },
+      { sources: [fileSource("./config.json", { watch: false })] },
+    )
+    assert(configs.server.host.get() === "localhost", "server.host should be \"localhost\"")
+    assert(configs.server.port.get() === 8080, "server.port should be 8080")
+}
