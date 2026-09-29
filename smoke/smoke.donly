@@ -1,5 +1,3 @@
-dependency hotconfigs
-
 case string-descriptor {
   env FOO tar
   run <<<ts
