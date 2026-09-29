@@ -156,10 +156,10 @@ When opening the PR itself, use the matching template under
 `feature.md` for new functionality (pick via GitHub's `?template=`
 query param, or `gh pr create --template`). Both share a `## Summary`
 of what changed and a `## Test plan` checklist covering `bun test`,
-`bunx tsc --noEmit -p tsconfig.json`, and `bun run test:cases` — check off
+`bunx tsc --noEmit -p tsconfig.json`, and `bun run smoke` — check off
 what you ran, and note anything skipped instead of silently omitting it.
 `.github/workflows/pr-test-plan.yaml` runs the whole test plan (including
-`test:cases`) on every PR and reflects each step's real outcome back onto
+`smoke`) on every PR and reflects each step's real outcome back onto
 this checklist.
 
 ### Per-scenario engine coverage (`test/cases/`)

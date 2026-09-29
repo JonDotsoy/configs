@@ -15,4 +15,4 @@ import { configs } from "hotconfigs";
 - [ ] `bun test`
 - [ ] `bunx tsc --noEmit -p tsconfig.json`
 - [ ] `bun run test:browser`
-- [ ] `bun run test:cases`
+- [ ] `bun run smoke`
