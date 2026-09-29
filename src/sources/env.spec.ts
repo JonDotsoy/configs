@@ -188,6 +188,13 @@ describe("envSource", () => {
     expect(store.get()).toEqual({ FOO: "1", BAR: "2" });
   });
 
+  test("opened directly with explicit keys, only includes the env vars matching those keys", async () => {
+    const source = envSource({ env: { FOO: "1", TAR: "2", BIZ: "3" } });
+    const store = await source.open([["FOO"], ["TAR"]]);
+
+    expect(store.get()).toEqual({ FOO: "1", TAR: "2" });
+  });
+
   test("via create(), only reads env vars whose mapped path is actually part of the shape", async () => {
     const source = envSource({
       env: { SERVER_PORT: "3000", UNRELATED: "ignored" },
