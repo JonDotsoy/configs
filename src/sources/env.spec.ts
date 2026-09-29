@@ -59,7 +59,7 @@ describe("mapKey.lookup", () => {
 describe("envSource", () => {
   test("defaults to the identity mapping: FOO_TAR => ['FOO_TAR']", async () => {
     const source = envSource({ env: { FOO_TAR: "1" } });
-    const store = await source.open();
+    const store = await source.open([["FOO_TAR"]]);
 
     expect(store.get()).toEqual({ FOO_TAR: "1" });
   });
@@ -69,7 +69,7 @@ describe("envSource", () => {
       env: { FOO_TAR: "baz" },
       mapKey: mapKey.snakeCase(),
     });
-    const store = await source.open();
+    const store = await source.open([["foo", "tar"]]);
 
     expect(store.get()).toEqual({ foo: { tar: "baz" } });
   });
@@ -79,7 +79,10 @@ describe("envSource", () => {
       env: { SERVER_PORT: "3000", SERVER_HOST: "localhost" },
       mapKey: mapKey.snakeCase(),
     });
-    const store = await source.open();
+    const store = await source.open([
+      ["server", "port"],
+      ["server", "host"],
+    ]);
 
     expect(store.get()).toEqual({ server: { port: "3000", host: "localhost" } });
   });
@@ -89,7 +92,7 @@ describe("envSource", () => {
       env: { PORT: "3000", HOST: "localhost" },
       mapKey: mapKey.lookup({ PORT: ["server", "port"] }),
     });
-    const store = await source.open();
+    const store = await source.open([["server", "port"], ["HOST"]]);
 
     expect(store.get()).toEqual({ server: { port: "3000" }, HOST: "localhost" });
   });
@@ -105,7 +108,7 @@ describe("envSource", () => {
     process.env.CONFIGS_TEST_VAR = "hello";
     try {
       const source = envSource();
-      const store = await source.open();
+      const store = await source.open([["CONFIGS_TEST_VAR"]]);
 
       expect((store.get() as Record<string, unknown>).CONFIGS_TEST_VAR).toBe("hello");
     } finally {
@@ -115,35 +118,35 @@ describe("envSource", () => {
 
   test("strips a matching prefix from each key", async () => {
     const source = envSource({ env: { MY_PORT: "3000" }, prefix: "MY_" });
-    const store = await source.open();
+    const store = await source.open([["PORT"]]);
 
     expect(store.get()).toEqual({ PORT: "3000" });
   });
 
   test("excludes keys that don't match the prefix", async () => {
     const source = envSource({ env: { MY_PORT: "3000", OTHER_HOST: "localhost" }, prefix: "MY_" });
-    const store = await source.open();
+    const store = await source.open([["PORT"]]);
 
     expect(store.get()).toEqual({ PORT: "3000" });
   });
 
   test("strips a matching suffix from each key", async () => {
     const source = envSource({ env: { PORT_MY: "3000" }, suffix: "_MY" });
-    const store = await source.open();
+    const store = await source.open([["PORT"]]);
 
     expect(store.get()).toEqual({ PORT: "3000" });
   });
 
   test("excludes keys that don't match the suffix", async () => {
     const source = envSource({ env: { PORT_MY: "3000", HOST_OTHER: "localhost" }, suffix: "_MY" });
-    const store = await source.open();
+    const store = await source.open([["PORT"]]);
 
     expect(store.get()).toEqual({ PORT: "3000" });
   });
 
   test("combines prefix and suffix stripping", async () => {
     const source = envSource({ env: { APP_PORT_DEV: "3000", OTHER_PORT_DEV: "x" }, prefix: "APP_", suffix: "_DEV" });
-    const store = await source.open();
+    const store = await source.open([["PORT"]]);
 
     expect(store.get()).toEqual({ PORT: "3000" });
   });
@@ -154,7 +157,7 @@ describe("envSource", () => {
       prefix: "MY_",
       mapKey: mapKey.snakeCase(),
     });
-    const store = await source.open();
+    const store = await source.open([["server", "port"]]);
 
     expect(store.get()).toEqual({ server: { port: "3000" } });
   });
@@ -181,10 +184,78 @@ describe("envSource", () => {
     expect(cfg.server.host.get()).toBe("localhost");
   });
 
+  test("returns nothing when opened directly with no keys defined", async () => {
+    const source = envSource({ env: { FOO: "1", BAR: "2" } });
+    const store = await source.open();
+
+    expect(store.get()).toEqual({});
+  });
+
+  test("opened directly with explicit keys, only includes the env vars matching those keys", async () => {
+    const source = envSource({ env: { FOO: "1", TAR: "2", BIZ: "3" } });
+    const store = await source.open([["FOO"], ["TAR"]]);
+
+    expect(store.get()).toEqual({ FOO: "1", TAR: "2" });
+  });
+
+  describe("control.keys filtering, per mapKey strategy", () => {
+    test("mapKey.snakeCase: excludes a var whose mapped path isn't requested", async () => {
+      const source = envSource({
+        env: { SERVER_PORT: "3000", SERVER_HOST: "localhost" },
+        mapKey: mapKey.snakeCase(),
+      });
+      const store = await source.open([["server", "port"]]);
+
+      expect(store.get()).toEqual({ server: { port: "3000" } });
+    });
+
+    test("mapKey.identity: excludes a var whose mapped path isn't requested", async () => {
+      const source = envSource({ env: { FOO: "1", BAR: "2" } });
+      const store = await source.open([["FOO"]]);
+
+      expect(store.get()).toEqual({ FOO: "1" });
+    });
+
+    test("mapKey.camelCase: only includes a var whose camelCased path is requested", async () => {
+      const source = envSource({
+        env: { SERVER_PORT: "3000", UNRELATED_VAR: "ignored" },
+        mapKey: mapKey.camelCase(),
+      });
+      const store = await source.open([["serverPort"]]);
+
+      expect(store.get()).toEqual({ serverPort: "3000" });
+    });
+
+    test("mapKey.lookup: excludes a var whose mapped path (looked-up or fallen-back) isn't requested", async () => {
+      const source = envSource({
+        env: { PORT: "3000", HOST: "localhost", EXTRA: "ignored" },
+        mapKey: mapKey.lookup({ PORT: ["server", "port"] }),
+      });
+      const store = await source.open([["server", "port"], ["HOST"]]);
+
+      expect(store.get()).toEqual({ server: { port: "3000" }, HOST: "localhost" });
+    });
+  });
+
+  test("via create(), only reads env vars whose mapped path is actually part of the shape", async () => {
+    const source = envSource({
+      env: { SERVER_PORT: "3000", UNRELATED: "ignored" },
+      mapKey: mapKey.snakeCase(),
+    });
+    const cfg = await create(
+      { server: { port: numeric({ required: true }) } },
+      { sources: [source] },
+    );
+
+    expect(cfg.server.port.get()).toBe(3000);
+    const keys = source.metrics.keys as GaugeMetric;
+    expect(keys.get()).toBe(1);
+  });
+
   describe("metrics", () => {
     test("keys reflects how many env vars ended up in the tree", async () => {
       const source = envSource({ env: { FOO: "1", BAR: "2" } });
-      await source.open();
+      await source.open([["FOO"], ["BAR"]]);
       const keys = source.metrics.keys as GaugeMetric;
 
       expect(keys.get()).toBe(2);
@@ -192,7 +263,7 @@ describe("envSource", () => {
 
     test("keys only counts vars that survive prefix/suffix filtering", async () => {
       const source = envSource({ env: { APP_FOO: "1", OTHER: "2" }, prefix: "APP_" });
-      await source.open();
+      await source.open([["FOO"]]);
       const keys = source.metrics.keys as GaugeMetric;
 
       expect(keys.get()).toBe(1);
