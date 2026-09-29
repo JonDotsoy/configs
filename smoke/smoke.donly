@@ -1,6 +1,6 @@
 dependency hotconfigs
 
-case basic {
+case string-descriptor {
   env FOO tar
   run <<<ts
     import assert from "node:assert"
@@ -10,4 +10,77 @@ case basic {
     })
     assert(typeof configs.foo.get() === "string", "foo should be a string")
     assert(configs.foo.get() === "tar", "foo should be \"tar\"")
+}
+
+case numeric-descriptor {
+  env PORT 8080
+  run <<<ts
+    import assert from "node:assert"
+    import { load, numeric } from "hotconfigs"
+    await using configs = await load({
+      port: numeric({ key: "PORT" })
+    })
+    assert(typeof configs.port.get() === "number", "port should be a number")
+    assert(configs.port.get() === 8080, "port should be 8080")
+}
+
+case boolean-descriptor {
+  env DEBUG true
+  run <<<ts
+    import assert from "node:assert"
+    import { load, boolean } from "hotconfigs"
+    await using configs = await load({
+      debug: boolean({ key: "DEBUG" })
+    })
+    assert(typeof configs.debug.get() === "boolean", "debug should be a boolean")
+    assert(configs.debug.get() === true, "debug should be true")
+}
+
+case url-descriptor {
+  env API_URL https://example.com/api
+  run <<<ts
+    import assert from "node:assert"
+    import { load, url } from "hotconfigs"
+    await using configs = await load({
+      api: url({ key: "API_URL" })
+    })
+    assert(configs.api.get() instanceof URL, "api should be a URL")
+    assert(configs.api.get()?.href === "https://example.com/api", "api should keep its href")
+}
+
+case list-descriptor {
+  env TAGS a,b,c
+  run <<<ts
+    import assert from "node:assert"
+    import { load, list } from "hotconfigs"
+    await using configs = await load({
+      tags: list({ key: "TAGS" })
+    })
+    assert(Array.isArray(configs.tags.get()), "tags should be an array")
+    assert(configs.tags.get()?.join("|") === "a|b|c", "tags should be split on commas")
+}
+
+case choice-descriptor {
+  env LEVEL warn
+  run <<<ts
+    import assert from "node:assert"
+    import { load, choice } from "hotconfigs"
+    await using configs = await load({
+      level: choice({ key: "LEVEL", options: ["debug", "info", "warn"] })
+    })
+    assert(configs.level.get() === "warn", "level should be \"warn\"")
+}
+
+case shape-descriptor {
+  env PAIR issuer=me
+  run <<<ts
+    import assert from "node:assert"
+    import { load, shape } from "hotconfigs"
+    await using configs = await load({
+      pair: shape({
+        key: "PAIR",
+        schema: { parse: (value) => Object.fromEntries([String(value).split("=")]) as { issuer: string } },
+      })
+    })
+    assert(configs.pair.get()?.issuer === "me", "pair.issuer should be \"me\"")
 }
