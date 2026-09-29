@@ -169,3 +169,25 @@ case create-file-source {
     assert(configs.server.host.get() === "localhost", "server.host should be \"localhost\"")
     assert(configs.server.port.get() === 8080, "server.port should be 8080")
 }
+
+case fetch-source-local-server {
+  run <<<ts
+    import assert from "node:assert"
+    import { create, numeric, string } from "hotconfigs"
+    import { fetchSource } from "hotconfigs/sources/fetch"
+    using server = Bun.serve({
+      port: 0,
+      fetch: () => Response.json({ server: { host: "localhost", port: 8080 } }),
+    })
+    await using configs = await create(
+      {
+        server: {
+          host: string(),
+          port: numeric(),
+        },
+      },
+      { sources: [fetchSource({ url: `http://localhost:${server.port}/config` })] },
+    )
+    assert(configs.server.host.get() === "localhost", "server.host should be \"localhost\"")
+    assert(configs.server.port.get() === 8080, "server.port should be 8080")
+}
