@@ -71,16 +71,38 @@ case choice-descriptor {
     assert(configs.level.get() === "warn", "level should be \"warn\"")
 }
 
-case shape-descriptor {
-  env PAIR issuer=me
+case shape-json-descriptor {
+  file ./config.json <<<json
+    { "game": { "initial-score": "30" } }
   run <<<ts
     import assert from "node:assert"
     import { load, shape } from "hotconfigs"
-    await using configs = await load({
-      pair: shape({
-        key: "PAIR",
-        schema: { parse: (value) => Object.fromEntries([String(value).split("=")]) as { issuer: string } },
-      })
-    })
-    assert(configs.pair.get()?.issuer === "me", "pair.issuer should be \"me\"")
+    import { fileSource } from "hotconfigs/sources/file"
+    await using configs = await load(
+      {
+        game: shape({
+          schema: { parse: (value) => value as { "initial-score": string } },
+        }),
+      },
+      { sources: [fileSource("./config.json", { watch: false })] },
+    )
+    assert(configs.game.get()?.["initial-score"] === "30", "game.initial-score should be \"30\"")
+}
+
+case shape-properties-descriptor {
+  file ./config.properties <<<properties
+    game.initial-score=30
+  run <<<ts
+    import assert from "node:assert"
+    import { load, shape } from "hotconfigs"
+    import { fileSource } from "hotconfigs/sources/file"
+    await using configs = await load(
+      {
+        game: shape({
+          schema: { parse: (value) => value as { "initial-score": string } },
+        }),
+      },
+      { sources: [fileSource("./config.properties", { watch: false })] },
+    )
+    assert(configs.game.get()?.["initial-score"] === "30", "game.initial-score should be \"30\"")
 }
