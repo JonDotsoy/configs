@@ -89,6 +89,11 @@ export function envSource(options: EnvSourceOptions = {}): Source<Record<string,
   return new Source<Record<string, unknown>>({
     metrics,
     start(control) {
+      // Empty when opened directly (no `create()` shape behind it) — falls back to including
+      // everything, same as before `control.keys` existed.
+      const requested =
+        control.keys.length > 0 ? new Set(control.keys.map((path) => path.join("\u0000"))) : null;
+
       const tree: Record<string, unknown> = {};
       let keyCount = 0;
       for (const [key, value] of Object.entries(env)) {
@@ -100,7 +105,10 @@ export function envSource(options: EnvSourceOptions = {}): Source<Record<string,
           prefix !== undefined ? prefix.length : 0,
           suffix !== undefined ? key.length - suffix.length : key.length,
         );
-        setPath(tree, mapKey(trimmedKey), value);
+        const path = mapKey(trimmedKey);
+        if (requested !== null && !requested.has(path.join("\u0000"))) continue;
+
+        setPath(tree, path, value);
         keyCount++;
       }
       metrics.keys.set(keyCount);

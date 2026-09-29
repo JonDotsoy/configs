@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `envSource` now uses `control.keys` (when opened through `create()`/`load()`) to only read the
+  env vars whose mapped path is actually part of the shape, instead of always reading every var in
+  `env`. Opened directly (`source.open()`, no `create()` shape behind it), `control.keys` is empty
+  and it still reads everything, as before.
 - **BREAKING**: `Source.start()` no longer runs eagerly at `new Source(...)` construction time —
   it's now deferred until the `Source` is first `open()`ed (directly, or by `create()`/`load()`
   opening it as one of `options.sources`), which is what makes `control.keys` available in time.

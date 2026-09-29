@@ -181,6 +181,28 @@ describe("envSource", () => {
     expect(cfg.server.host.get()).toBe("localhost");
   });
 
+  test("includes every mapped key when opened directly, with no control.keys to narrow it", async () => {
+    const source = envSource({ env: { FOO: "1", BAR: "2" } });
+    const store = await source.open();
+
+    expect(store.get()).toEqual({ FOO: "1", BAR: "2" });
+  });
+
+  test("via create(), only reads env vars whose mapped path is actually part of the shape", async () => {
+    const source = envSource({
+      env: { SERVER_PORT: "3000", UNRELATED: "ignored" },
+      mapKey: mapKey.snakeCase(),
+    });
+    const cfg = await create(
+      { server: { port: numeric({ required: true }) } },
+      { sources: [source] },
+    );
+
+    expect(cfg.server.port.get()).toBe(3000);
+    const keys = source.metrics.keys as GaugeMetric;
+    expect(keys.get()).toBe(1);
+  });
+
   describe("metrics", () => {
     test("keys reflects how many env vars ended up in the tree", async () => {
       const source = envSource({ env: { FOO: "1", BAR: "2" } });
