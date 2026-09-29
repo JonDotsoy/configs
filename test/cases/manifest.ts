@@ -1,4 +1,7 @@
 /**
+ * @deprecated `test/cases/` and `bun run test:cases` are deprecated in favor of `bun run smoke`
+ * (smoke/smoke.donly). Don't add new cases here.
+ *
  * Registry of the numbered case scripts in this folder, and which engines
  * each one is expected to run under. Consumed by scripts/run-test-cases.ts.
  */

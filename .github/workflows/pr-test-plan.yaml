@@ -39,8 +39,9 @@ jobs:
           echo "fail=$fail" >> "$GITHUB_OUTPUT"
           echo "total=$total" >> "$GITHUB_OUTPUT"
 
-      # test/cases/*.ts imports the package by its own name (e.g. "hotconfigs"),
-      # resolved via package.json's self-reference — which only works once dist/ exists.
+      # The deprecated test/cases/*.ts scripts (no longer run here; see `bun run smoke`) import the
+      # package by its own name (e.g. "hotconfigs"), resolved via package.json's self-reference —
+      # which only works once dist/ exists.
       - run: bun run build
 
       - name: bunx tsc --noEmit -p tsconfig.json
