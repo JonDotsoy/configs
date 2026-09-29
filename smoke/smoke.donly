@@ -1,0 +1,12 @@
+dependency hotconfigs
+
+case basic {
+  env FOO tar
+  run <<<ts
+    import { load, string } from "hotconfigs"
+    await using configs = await load({
+      foo: string()
+    })
+    expect(typeof configs.foo === "string", ".....")
+    expect(configs.foo === "tar", ".....")
+}

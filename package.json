@@ -51,7 +51,8 @@
     "build": "bun scripts/build.ts",
     "build:tsc": "tsc -p tsconfig.build.json",
     "test:browser": "playwright test",
-    "test:cases": "bun run scripts/run-test-cases.ts"
+    "test:cases": "bun run scripts/run-test-cases.ts",
+    "smoke": "bunx @jondotsoy/smoking smoke/smoke.donly"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
