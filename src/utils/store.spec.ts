@@ -444,3 +444,16 @@ test("subscribe supports `using` for automatic unsubscribe", () => {
   s.set(3);
   expect(seen).toEqual([1, 2]);
 });
+
+test("listen supports `using` for automatic unsubscribe", () => {
+  const s = new Store(1);
+  const seen: number[] = [];
+  {
+    using _unsub = s.listen((v) => {
+      seen.push(v);
+    });
+    s.set(2);
+  }
+  s.set(3);
+  expect(seen).toEqual([2]);
+});

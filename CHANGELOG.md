@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- The `Unsubscribe` function returned by `store.subscribe()`/`listen()` (and `Store.onMount`) is now
+- The `Unsubscribe` function returned by `store.subscribe()`/`store.listen()` (and `Store.onMount`) is now
   `Disposable`, so it works with `using unsub = store.subscribe(...)`.
 
 ## [1.0.9] - 2026-09-29
