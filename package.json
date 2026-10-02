@@ -1,6 +1,6 @@
 {
   "name": "hotconfigs",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "A reactive, typed configuration library backed by pluggable sources (env, fetch, sse, file, literal).",
   "keywords": [
     "config",
@@ -51,7 +51,8 @@
     "build": "bun scripts/build.ts",
     "build:tsc": "tsc -p tsconfig.build.json",
     "test:browser": "playwright test",
-    "test:cases": "bun run scripts/run-test-cases.ts"
+    "test:cases": "bun run scripts/run-test-cases.ts",
+    "smoke": "bun scripts/smoke.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

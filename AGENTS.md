@@ -156,13 +156,23 @@ When opening the PR itself, use the matching template under
 `feature.md` for new functionality (pick via GitHub's `?template=`
 query param, or `gh pr create --template`). Both share a `## Summary`
 of what changed and a `## Test plan` checklist covering `bun test`,
-`bunx tsc --noEmit -p tsconfig.json`, and `bun run test:cases` — check off
+`bunx tsc --noEmit -p tsconfig.json`, and `bun run smoke` — check off
 what you ran, and note anything skipped instead of silently omitting it.
 `.github/workflows/pr-test-plan.yaml` runs the whole test plan (including
-`test:cases`) on every PR and reflects each step's real outcome back onto
-this checklist.
+`smoke`) on every PR and reflects each step's real outcome back onto
+this checklist. `bun run smoke` (`scripts/smoke.ts`) builds and packs `dist/`, then
+runs `smoke/smoke.donly` with `@jondotsoy/smoking --dependency <tarball>` (the
+file declares no `dependency` of its own), so the cases exercise this
+workspace's build, not the version currently on npm.
 
-### Per-scenario engine coverage (`test/cases/`)
+### Per-scenario engine coverage (`test/cases/`) — DEPRECATED
+
+> **Deprecated.** `bun run test:cases`, `scripts/run-test-cases.ts` and
+> `test/cases/` are superseded by `bun run smoke` (`smoke/smoke.donly`, see
+> "Before opening a PR" above), which is what CI runs now. The suite is kept
+> only for reference and will be removed: don't add new cases or manifest
+> entries here — add a `case` to `smoke/smoke.donly` instead. The description
+> below documents the legacy behavior.
 
 `test/cases/` holds numbered, single-purpose scripts (`01-import-root.ts`,
 `02-import-sources-subpaths.ts`, ...), each exercising one specific piece of
@@ -302,12 +312,14 @@ test("port narrows to number when a default is set", () => {
 ```
 
 Integration tests exercise the latest built implementation, not source via
-Bun's resolver: each is a single, self-contained script under
+Bun's resolver. New ones are `case` blocks in `smoke/smoke.donly` (run with
+`bun run smoke`). The legacy form — deprecated, don't add to it — is a single,
+self-contained script under
 `test/cases/` (e.g. `test/cases/16-shell-source-runs-command.ts`) that runs
 unmodified end-to-end against the built `dist/` output, registered in
 `test/cases/manifest.ts` with the engines (`node`/`bun`/`deno`/`browser`) it
-must pass under. Run them with `bun run test:cases` (see "Per-scenario
-engine coverage" below).
+must pass under. Run them with `bun run test:cases` (deprecated; see
+"Per-scenario engine coverage" below).
 
 ## Frontend
 

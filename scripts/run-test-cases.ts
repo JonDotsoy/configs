@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
 /**
+ * @deprecated `bun run test:cases` is deprecated in favor of `bun run smoke` (scripts/smoke.ts,
+ * smoke/smoke.donly), which is what CI runs now. This runner and test/cases/ are kept for reference
+ * and will be removed; don't add new cases here — add them to smoke/smoke.donly instead.
+ *
  * Runs every case in test/cases/ under every engine it declares support for
  * (node, bun, deno, browser), and writes a Markdown report to
  * test-cases-report/report.md.
@@ -268,6 +272,7 @@ async function runBrowser(
 }
 
 async function main() {
+  console.warn("DEPRECATED: `bun run test:cases` is deprecated; use `bun run smoke` instead (see smoke/smoke.donly).");
   console.log("== build ==");
   await Bun.$`bun run build`.cwd(repoRoot).quiet();
 

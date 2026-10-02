@@ -39,8 +39,9 @@ jobs:
           echo "fail=$fail" >> "$GITHUB_OUTPUT"
           echo "total=$total" >> "$GITHUB_OUTPUT"
 
-      # test/cases/*.ts imports the package by its own name (e.g. "hotconfigs"),
-      # resolved via package.json's self-reference — which only works once dist/ exists.
+      # The deprecated test/cases/*.ts scripts (no longer run here; see `bun run smoke`) import the
+      # package by its own name (e.g. "hotconfigs"), resolved via package.json's self-reference —
+      # which only works once dist/ exists.
       - run: bun run build
 
       - name: bunx tsc --noEmit -p tsconfig.json
@@ -67,148 +68,10 @@ jobs:
           echo "passed=${passed:-0}" >> "$GITHUB_OUTPUT"
           echo "total=${total:-0}" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: lts/*
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: latest
-
-      - name: Record CLI binaries for test:cases
-        run: |
-          echo "NODE_BIN=$(which node)" >> "$GITHUB_ENV"
-          echo "BUN_BIN=$(which bun)" >> "$GITHUB_ENV"
-          echo "DENO_BIN=$(which deno)" >> "$GITHUB_ENV"
-
-      - name: bun run test:cases
-        id: test_cases
+      - name: bun run smoke
+        id: smoke
         continue-on-error: true
-        run: |
-          set -o pipefail
-          bun run test:cases 2>&1 | tee test-cases-output.txt
-
-      - name: Summarize test:cases coverage
-        id: test_cases_summary
-        run: |
-          # Matched on the "<n> case runs: ..." keyword line, not anchored to the full
-          # trailing text — so it keeps working if the wording after each count changes.
-          line=$(grep -E '^[0-9]+ case runs:' test-cases-output.txt || echo "0 case runs: 0 passed, 0 failed, 0 warned, 0 skipped.")
-          total=$(echo "$line" | grep -oE '^[0-9]+')
-          passed=$(echo "$line" | grep -oE '[0-9]+ passed' | grep -oE '^[0-9]+')
-          warned=$(echo "$line" | grep -oE '[0-9]+ warned' | grep -oE '^[0-9]+')
-          skipped=$(echo "$line" | grep -oE '[0-9]+ skipped' | grep -oE '^[0-9]+')
-          echo "passed=${passed:-0}" >> "$GITHUB_OUTPUT"
-          echo "warned=${warned:-0}" >> "$GITHUB_OUTPUT"
-          echo "skipped=${skipped:-0}" >> "$GITHUB_OUTPUT"
-          echo "total=${total:-0}" >> "$GITHUB_OUTPUT"
-
-      - name: Upload test cases report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-cases-report
-          path: test-cases-report/report.md
-
-      # Posts (or updates, on a later push) a single PR comment summarizing test-cases-report/report.md
-      # as a case x engine matrix — the full report is too large for a PR comment (GitHub's 65536-char
-      # limit), so this links to it (at this commit, and as this run's build artifact) instead.
-      - name: Post/update test cases report comment
-        if: always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require("fs");
-            const reportPath = "test-cases-report/report.md";
-            if (!fs.existsSync(reportPath)) return;
-
-            const content = fs.readFileSync(reportPath, "utf8");
-            const sections = content.split(/^## case /m).slice(1);
-            const rows = [];
-            for (const section of sections) {
-              const [header, ...rest] = section.split("\n");
-              const match = header.match(/^test\/cases\/(\S+) — (\w+)/);
-              if (!match) continue;
-              const [, file, engine] = match;
-              const body = rest.join("\n");
-              const statusMatch = body.match(/```\n\[(.*?)\]/);
-              rows.push({ file, engine, status: statusMatch ? statusMatch[1] : "?" });
-            }
-            if (rows.length === 0) return;
-
-            const icon = (status) => {
-              if (status.startsWith("PASSED")) return "✅";
-              if (status.startsWith("WARNING")) return "⚠️";
-              if (status.startsWith("SKIPPED")) return "⏭️";
-              if (status.startsWith("FAILED")) return "❌";
-              return "❔";
-            };
-
-            const files = [...new Set(rows.map((r) => r.file))];
-            const engines = ["node", "bun", "deno", "browser"];
-            const cellFor = new Map(rows.map((r) => [`${r.file}|${r.engine}`, icon(r.status)]));
-
-            let table = "| case | node | bun | deno | browser |\n| --- | --- | --- | --- | --- |\n";
-            for (const file of files) {
-              const cells = engines.map((engine) => cellFor.get(`${file}|${engine}`) ?? "—");
-              table += `| \`${file}\` | ${cells.join(" | ")} |\n`;
-            }
-
-            const passed = rows.filter((r) => r.status.startsWith("PASSED")).length;
-            const warned = rows.filter((r) => r.status.startsWith("WARNING"));
-            const failed = rows.filter((r) => r.status.startsWith("FAILED")).length;
-            const skipped = rows.filter((r) => r.status.startsWith("SKIPPED")).length;
-
-            // context.sha is the ephemeral merge commit `pull_request` events run against, not the
-            // PR branch's real tip — link against the actual head sha instead so it resolves.
-            const headSha = context.payload.pull_request.head.sha;
-            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const blobUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/blob/${headSha}/test-cases-report/report.md`;
-            const shortSha = headSha.slice(0, 7);
-
-            let warnedSection = "";
-            if (warned.length > 0) {
-              warnedSection =
-                "\n⚠️ = a tolerated failure (`tolerateFailureEngines` in `test/cases/manifest.ts`) — it still runs, but doesn't fail the job:\n\n" +
-                warned.map((w) => `- \`${w.file}\` (${w.engine})`).join("\n") +
-                "\n";
-            }
-
-            const counts = [`${passed}/${rows.length} passed`];
-            if (failed > 0) counts.push(`${failed} failed`);
-            if (warned.length > 0) counts.push(`${warned.length} warned`);
-            if (skipped > 0) counts.push(`${skipped} skipped`);
-
-            const marker = "<!-- test-cases-report-comment -->";
-            const body =
-              `${marker}\n` +
-              `## \`test:cases\` report\n\n` +
-              `From [this run](${runUrl}) (commit \`${shortSha}\`): **${counts.join(", ")}**.\n\n` +
-              `${table}${warnedSection}\n` +
-              `Full report: [test-cases-report/report.md](${blobUrl}) at this commit, or download the \`test-cases-report\` artifact from [this run](${runUrl}).`;
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              per_page: 100,
-            });
-            const existing = comments.find((c) => c.body && c.body.includes(marker));
-
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
+        run: bun run smoke
 
       - name: Write job summary
         if: always()
@@ -221,7 +84,7 @@ jobs:
             echo "| \`bun test\` | ${{ steps.bun_test.outcome == 'success' && '✅' || '❌' }} | ${{ steps.bun_test_summary.outputs.pass }}/${{ steps.bun_test_summary.outputs.total }} tests passed |"
             echo "| \`bunx tsc --noEmit -p tsconfig.json\` | ${{ steps.tsc.outcome == 'success' && '✅' || '❌' }} | — |"
             echo "| \`bun run test:browser\` | ${{ steps.test_browser.outcome == 'success' && '✅' || '❌' }} | ${{ steps.test_browser_summary.outputs.passed }}/${{ steps.test_browser_summary.outputs.total }} tests passed |"
-            echo "| \`bun run test:cases\` | ${{ steps.test_cases.outcome == 'success' && '✅' || '❌' }} | ${{ steps.test_cases_summary.outputs.passed }}/${{ steps.test_cases_summary.outputs.total }} case runs passed (${{ steps.test_cases_summary.outputs.warned }} warned, ${{ steps.test_cases_summary.outputs.skipped }} skipped) |"
+            echo "| \`bun run smoke\` | ${{ steps.smoke.outcome == 'success' && '✅' || '❌' }} | — |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       # Reflects each step's real outcome — and bun test's pass/total
@@ -243,9 +106,8 @@ jobs:
                 outcome: "${{ steps.test_browser.outcome }}",
                 coverage: "${{ steps.test_browser_summary.outputs.passed }}/${{ steps.test_browser_summary.outputs.total }} tests passed",
               },
-              "`bun run test:cases`": {
-                outcome: "${{ steps.test_cases.outcome }}",
-                coverage: "${{ steps.test_cases_summary.outputs.passed }}/${{ steps.test_cases_summary.outputs.total }} case runs passed (${{ steps.test_cases_summary.outputs.warned }} warned, ${{ steps.test_cases_summary.outputs.skipped }} skipped)",
+              "`bun run smoke`": {
+                outcome: "${{ steps.smoke.outcome }}",
               },
             };
 
@@ -276,5 +138,5 @@ jobs:
           steps.bun_test.outcome == 'failure' ||
           steps.tsc.outcome == 'failure' ||
           steps.test_browser.outcome == 'failure' ||
-          steps.test_cases.outcome == 'failure'
+          steps.smoke.outcome == 'failure'
         run: exit 1

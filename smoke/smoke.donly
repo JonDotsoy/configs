@@ -1,0 +1,191 @@
+case string-descriptor {
+  env FOO tar
+  run <<<ts
+    import assert from "node:assert"
+    import { load, string } from "hotconfigs"
+    await using configs = await load({
+      foo: string({ key: "FOO" })
+    })
+    assert(typeof configs.foo.get() === "string", "foo should be a string")
+    assert(configs.foo.get() === "tar", "foo should be \"tar\"")
+}
+
+case numeric-descriptor {
+  env PORT 8080
+  run <<<ts
+    import assert from "node:assert"
+    import { load, numeric } from "hotconfigs"
+    await using configs = await load({
+      port: numeric({ key: "PORT" })
+    })
+    assert(typeof configs.port.get() === "number", "port should be a number")
+    assert(configs.port.get() === 8080, "port should be 8080")
+}
+
+case boolean-descriptor {
+  env DEBUG true
+  run <<<ts
+    import assert from "node:assert"
+    import { load, boolean } from "hotconfigs"
+    await using configs = await load({
+      debug: boolean({ key: "DEBUG" })
+    })
+    assert(typeof configs.debug.get() === "boolean", "debug should be a boolean")
+    assert(configs.debug.get() === true, "debug should be true")
+}
+
+case url-descriptor {
+  env API_URL https://example.com/api
+  run <<<ts
+    import assert from "node:assert"
+    import { load, url } from "hotconfigs"
+    await using configs = await load({
+      api: url({ key: "API_URL" })
+    })
+    assert(configs.api.get() instanceof URL, "api should be a URL")
+    assert(configs.api.get()?.href === "https://example.com/api", "api should keep its href")
+}
+
+case list-descriptor {
+  env TAGS a,b,c
+  run <<<ts
+    import assert from "node:assert"
+    import { load, list } from "hotconfigs"
+    await using configs = await load({
+      tags: list({ key: "TAGS" })
+    })
+    assert(Array.isArray(configs.tags.get()), "tags should be an array")
+    assert(configs.tags.get()?.join("|") === "a|b|c", "tags should be split on commas")
+}
+
+case choice-descriptor {
+  env LEVEL warn
+  run <<<ts
+    import assert from "node:assert"
+    import { load, choice } from "hotconfigs"
+    await using configs = await load({
+      level: choice({ key: "LEVEL", options: ["debug", "info", "warn"] })
+    })
+    assert(configs.level.get() === "warn", "level should be \"warn\"")
+}
+
+case shape-json-descriptor {
+  file ./config.json <<<json
+    { "game": { "initial-score": "30" } }
+  run <<<ts
+    import assert from "node:assert"
+    import { load, shape } from "hotconfigs"
+    import { fileSource } from "hotconfigs/sources/file"
+    await using configs = await load(
+      {
+        game: shape({
+          schema: { parse: (value) => value as { "initial-score": string } },
+        }),
+      },
+      { sources: [fileSource("./config.json", { watch: false })] },
+    )
+    assert(configs.game.get()?.["initial-score"] === "30", "game.initial-score should be \"30\"")
+}
+
+case shape-properties-descriptor {
+  file ./config.properties <<<properties
+    game.initial-score=30
+  run <<<ts
+    import assert from "node:assert"
+    import { load, shape } from "hotconfigs"
+    import { fileSource } from "hotconfigs/sources/file"
+    await using configs = await load(
+      {
+        game: shape({
+          schema: { parse: (value) => value as { "initial-score": string } },
+        }),
+      },
+      { sources: [fileSource("./config.properties", { watch: false })] },
+    )
+    assert(configs.game.get()?.["initial-score"] === "30", "game.initial-score should be \"30\"")
+}
+
+case nested-groups {
+  env SERVER_PORT 8080
+  env SERVER_TLS_ENABLED true
+  run <<<ts
+    import assert from "node:assert"
+    import { create, boolean, numeric } from "hotconfigs"
+    import { envSource, mapKey } from "hotconfigs/sources/env"
+    await using configs = await create(
+      {
+        server: {
+          port: numeric(),
+          tls: {
+            enabled: boolean(),
+          },
+        },
+      },
+      { sources: [envSource({ mapKey: mapKey.snakeCase() })] },
+    )
+    assert(configs.server.port.get() === 8080, "server.port should be 8080")
+    assert(configs.server.tls.enabled.get() === true, "server.tls.enabled should be true")
+}
+
+case nested-groups-embedded-create {
+  env DATABASE_HOST db.local
+  env PORT 3000
+  run <<<ts
+    import assert from "node:assert"
+    import { create, numeric, string } from "hotconfigs"
+    import { envSource } from "hotconfigs/sources/env"
+    await using configs = await create(
+      {
+        port: numeric({ key: "PORT" }),
+        database: create(
+          { host: string({ key: "HOST" }) },
+          { sources: [envSource({ prefix: "DATABASE_" })] },
+        ),
+      },
+      { sources: [envSource()] },
+    )
+    assert(configs.port.get() === 3000, "port should be 3000")
+    assert(configs.database.host.get() === "db.local", "database.host should be \"db.local\"")
+}
+
+case create-file-source {
+  file ./config.json <<<json
+    { "server": { "host": "localhost", "port": 8080 } }
+  run <<<ts
+    import assert from "node:assert"
+    import { create, numeric, string } from "hotconfigs"
+    import { fileSource } from "hotconfigs/sources/file"
+    await using configs = await create(
+      {
+        server: {
+          host: string(),
+          port: numeric(),
+        },
+      },
+      { sources: [fileSource("./config.json", { watch: false })] },
+    )
+    assert(configs.server.host.get() === "localhost", "server.host should be \"localhost\"")
+    assert(configs.server.port.get() === 8080, "server.port should be 8080")
+}
+
+case fetch-source-local-server {
+  run <<<ts
+    import assert from "node:assert"
+    import { create, numeric, string } from "hotconfigs"
+    import { fetchSource } from "hotconfigs/sources/fetch"
+    using server = Bun.serve({
+      port: 0,
+      fetch: () => Response.json({ server: { host: "localhost", port: 8080 } }),
+    })
+    await using configs = await create(
+      {
+        server: {
+          host: string(),
+          port: numeric(),
+        },
+      },
+      { sources: [fetchSource({ url: `http://localhost:${server.port}/config` })] },
+    )
+    assert(configs.server.host.get() === "localhost", "server.host should be \"localhost\"")
+    assert(configs.server.port.get() === 8080, "server.port should be 8080")
+}

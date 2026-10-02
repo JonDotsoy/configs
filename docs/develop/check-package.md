@@ -195,7 +195,7 @@ recibe un consumidor nuevo, y lo que hay que validar después de cada `npm publi
    node --experimental-strip-types test.ts
    ```
 
-Cubierto parcialmente en el repo vía `bun run test:cases` (engine `node`) — empaqueta con `npm pack` corrido dentro de `dist/` (mismo tarball que produciría `npm publish ./dist`) e instala ese tarball con `npm install` en un directorio aparte antes de correr el caso, así que sí valida la instalación real del paquete empaquetado (no la última de npm, pero sí el mismo tarball que se publicaría); solo valida runtime, no tipado.
+Cubierto parcialmente en el repo vía `bun run test:cases` (engine `node`; **deprecado** en favor de `bun run smoke`) — empaqueta con `npm pack` corrido dentro de `dist/` (mismo tarball que produciría `npm publish ./dist`) e instala ese tarball con `npm install` en un directorio aparte antes de correr el caso, así que sí valida la instalación real del paquete empaquetado (no la última de npm, pero sí el mismo tarball que se publicaría); solo valida runtime, no tipado.
 
 ### Bun
 
@@ -230,7 +230,7 @@ Cubierto parcialmente en el repo vía `bun run test:cases` (engine `node`) — e
    bun run test.ts
    ```
 
-Cubierto parcialmente en el repo vía `bun run test:cases` (engine `bun`) — mismo tarball empaquetado con `npm pack` dentro de `dist/` e instalado con `npm install`, no la última versión de npm; solo valida runtime, no tipado.
+Cubierto parcialmente en el repo vía `bun run test:cases` (engine `bun`; **deprecado** en favor de `bun run smoke`) — mismo tarball empaquetado con `npm pack` dentro de `dist/` e instalado con `npm install`, no la última versión de npm; solo valida runtime, no tipado.
 
 ### Deno
 
