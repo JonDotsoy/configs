@@ -1,6 +1,9 @@
 /** Return `Unsubscribe` for cleanup run when this subscriber unsubscribes; any other return value is ignored. */
 export type Subscriber<T> = (value: T) => unknown;
-export type Unsubscribe = () => void;
+export type Unsubscribe = (() => void) & Disposable;
+
+/** Wraps `fn` so it can also be used with `using unsub = store.subscribe(...)`. */
+const disposable = (fn: () => void): Unsubscribe => Object.assign(fn, { [Symbol.dispose]: fn });
 export type EventListener = () => void;
 
 /** A read-only view of a `Store<T>`: exposes `get`/`subscribe`/`listen` but never `set`. */
@@ -15,7 +18,7 @@ export interface ReadOnlyStore<T> {
 export class Store<T> {
   private value: T;
   private readonly subscribers = new Set<Subscriber<T>>();
-  private readonly cleanups = new Map<Subscriber<T>, Unsubscribe>();
+  private readonly cleanups = new Map<Subscriber<T>, () => void>();
   private readonly mountListeners = new Set<EventListener>();
   private readonly unmountListeners = new Set<EventListener>();
 
@@ -38,35 +41,35 @@ export class Store<T> {
   subscribe(subscriber: Subscriber<T>): Unsubscribe {
     this.addSubscriber(subscriber);
     this.runSubscriber(subscriber, this.value);
-    return () => this.removeSubscriber(subscriber);
+    return disposable(() => this.removeSubscriber(subscriber));
   }
 
   /** Calls `subscriber` only on subsequent `set` calls, not with the current value. */
   listen(subscriber: Subscriber<T>): Unsubscribe {
     this.addSubscriber(subscriber);
-    return () => this.removeSubscriber(subscriber);
+    return disposable(() => this.removeSubscriber(subscriber));
   }
 
   /** Runs `subscriber` and stores its returned cleanup, if any, to run on unsubscribe. */
   private runSubscriber(subscriber: Subscriber<T>, value: T): void {
     const cleanup = subscriber(value);
-    if (typeof cleanup === "function") this.cleanups.set(subscriber, cleanup as Unsubscribe);
+    if (typeof cleanup === "function") this.cleanups.set(subscriber, cleanup as () => void);
   }
 
   /** Fires once a first subscriber is registered (via `subscribe` or `listen`). */
   private onMount(listener: EventListener): Unsubscribe {
     this.mountListeners.add(listener);
-    return () => {
+    return disposable(() => {
       this.mountListeners.delete(listener);
-    };
+    });
   }
 
   /** Fires once the last subscriber is removed. */
   private onUnmount(listener: EventListener): Unsubscribe {
     this.unmountListeners.add(listener);
-    return () => {
+    return disposable(() => {
       this.unmountListeners.delete(listener);
-    };
+    });
   }
 
   private addSubscriber(subscriber: Subscriber<T>): void {
@@ -93,8 +96,8 @@ export class Store<T> {
    * Runs `callback` on mount; if it returns a function, that function runs on unmount.
    * Returns an unsubscribe that tears down the wiring (running any pending cleanup first).
    */
-  static onMount<T>(store: Store<T>, callback: () => void | Unsubscribe): Unsubscribe {
-    let cleanup: void | Unsubscribe;
+  static onMount<T>(store: Store<T>, callback: () => void | (() => void)): Unsubscribe {
+    let cleanup: void | (() => void);
 
     const unsubMount = store.onMount(() => {
       cleanup = callback();
@@ -104,12 +107,12 @@ export class Store<T> {
       cleanup = undefined;
     });
 
-    return () => {
+    return disposable(() => {
       cleanup?.();
       cleanup = undefined;
       unsubMount();
       unsubUnmount();
-    };
+    });
   }
 }
 

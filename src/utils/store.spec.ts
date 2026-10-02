@@ -431,3 +431,16 @@ describe("store.computed", () => {
     expect(a).toBe(0);
   });
 });
+
+test("subscribe supports `using` for automatic unsubscribe", () => {
+  const s = new Store(1);
+  const seen: number[] = [];
+  {
+    using _unsub = s.subscribe((v) => {
+      seen.push(v);
+    });
+    s.set(2);
+  }
+  s.set(3);
+  expect(seen).toEqual([1, 2]);
+});
