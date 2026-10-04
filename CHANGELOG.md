@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `file()` fields now read from disk when a source's raw value is a `file://` URL (e.g. an env var
+  `FOO=file:///etc/secrets/foo`), using that URL as `.location` instead of copying the content to a temp file.
+  A value that can't be read is handled like any other decoding failure (`null`, or a `ConfigError` with `required`).
 - The `Unsubscribe` function returned by `store.subscribe()`/`store.listen()` (and `Store.onMount`) is now
   `Disposable`, so it works with `using unsub = store.subscribe(...)`.
 

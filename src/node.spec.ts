@@ -220,14 +220,30 @@ describe("file()", () => {
       expect(await readFile(blob.location!, "utf-8")).toBe("hello");
     });
 
-    test("a file() field is loaded from an envSource", async () => {
-      const cfg = await create({ foo: file() }, { sources: [envSource({ env: { foo: "hello" } })] });
+    test("a file:// URL from an envSource is read from that location", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "configs-file-field-"));
+      try {
+        const path = join(dir, "foo");
+        await Bun.write(path, "hello");
+        const url = pathToFileURL(path);
 
-      const blob = cfg.foo.get()!;
-      expect(blob.location).toBeInstanceOf(URL);
-      expect(await readFile(blob.location!, "utf-8")).toBe("hello");
+        const cfg = await create({ foo: file() }, { sources: [envSource({ env: { foo: url.href } })] });
 
-      await cfg.close();
+        const blob = cfg.foo.get()!;
+        expect(blob.location!.href).toBe(url.href);
+        expect(await blob.text()).toBe("hello");
+
+        await cfg.close();
+        expect(await Bun.file(path).exists()).toBe(true);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    test("a file:// URL from an envSource whose file is missing resolves to null", async () => {
+      const cfg = await create({ foo: file() }, { sources: [envSource({ env: { foo: "file://tar/biz/foo" } })] });
+
+      expect(cfg.foo.get()).toBeNull();
     });
 
     test.skipIf(process.platform === "win32")(

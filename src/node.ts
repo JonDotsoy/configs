@@ -258,6 +258,16 @@ function blobFromText(value: string, format: FileValueFormat | undefined, ctx: T
   return new FileBlob(payload, writeTempFileSync(payload, ctx));
 }
 
+/**
+ * Builds a `FileBlob` from a raw `file://` URL string: the file is read from that existing location
+ * and used as-is (`.location` is the URL itself, never copied to a temp file nor tracked for cleanup,
+ * same as a `URL` default). Throws if the URL is invalid or the file can't be read.
+ */
+function blobFromLocation(raw: string): FileBlob {
+  const location = new URL(raw);
+  return new FileBlob(new Uint8Array(readFileSync(location)), location);
+}
+
 /** Reads `location` from disk synchronously; `undefined` (not thrown) when the file doesn't exist. */
 function readLocationSync(location: URL): Uint8Array | undefined {
   try {
@@ -305,7 +315,7 @@ function fileStart(
         new ConfigError(`Value at "${path.join(".")}" is not a file: expected a string, got ${describeValue(raw, path)}`),
       ) as FileBlob;
     }
-    const [ok, err, result] = tSync(() => blobFromText(raw, options.format, ctx));
+    const [ok, err, result] = tSync(() => (raw.startsWith("file://") ? blobFromLocation(raw) : blobFromText(raw, options.format, ctx)));
     if (ok) return result;
     const message = err instanceof Error ? err.message : String(err);
     return shapeFailure(
